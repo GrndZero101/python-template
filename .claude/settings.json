@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } || exit 2",
+            "statusMessage": "Formatting and checking...",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run:*)",
+      "Bash(uv add:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv tool:*)",
+      "Bash(uv lock:*)",
+      "Bash(ruff:*)",
+      "Bash(ty:*)",
+      "Bash(rumdl:*)",
+      "Bash(prek:*)"
+    ]
+  }
+}

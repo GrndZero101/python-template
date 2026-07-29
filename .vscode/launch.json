@@ -1,0 +1,43 @@
+{
+  // The style rules only pay off if stepping through is one keypress.
+  // justMyCode is false everywhere so you can step into library frames.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "Pytest: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-vv", "--no-header", "-p", "no:cacheprovider"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "Pytest: all",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-vv", "--no-header"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "Attach to process (debugpy)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5678 },
+      "justMyCode": false
+    }
+  ]
+}

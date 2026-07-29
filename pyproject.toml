@@ -1,0 +1,103 @@
+[project]
+name = "claude"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Timothy Longbottom", email = "tim.longbottom@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — replaces black, isort, flake8, pylint, bandit, pyupgrade
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+preview = true  # required: PLR1702 and PLR0914 are preview rules
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "UP", "N",     # core, imports, modernization, naming
+    "D", "ANN",                        # docstrings + annotations
+    "B",                               # bugbear — B023 loop-var closure capture
+    "C4", "SIM", "PERF", "FURB", "RUF",
+    "RET",                             # RET505 no else-after-return -> guard clauses
+    "TRY", "EM", "BLE",                # exception hygiene, intact tracebacks
+    "LOG", "G", "T20",                 # logging correctness; T20 bans print
+    "PTH", "DTZ", "ARG", "SLF", "FBT", "PT", "S",
+    "PL", "C90",                       # the complexity dials below
+]
+# ruff 0.16 wants rule names rather than codes here, which reads better anyway.
+ignore = [
+    # mutually conflicting docstring rules — pick one of each pair
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+    # docstrings required on public functions/classes, not on every module
+    "undocumented-public-module",
+    "undocumented-public-package",
+    "undocumented-magic-method",
+    "undocumented-public-init",
+    # the formatter owns line length
+    "line-too-long",
+    # conflict with the formatter
+    "missing-trailing-comma",
+    "single-line-implicit-string-concatenation",
+    # redundant with EM (which already forces messages out of the raise)
+    "raise-vanilla-args",
+]
+
+# The maintainability dials. These are what indirectly penalise nested helpers:
+# a nested def consumes a local slot and its body inflates the parent.
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+max-nested-blocks = 3
+max-locals = 12
+max-statements = 40
+max-args = 5
+max-branches = 10
+max-returns = 6
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use bare literals, and poke at internals — all fine there.
+"tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
+# The checker's whole job is printing findings to stdout.
+"tools/**" = ["T20"]
+
+# ---------------------------------------------------------------------------
+# rumdl — markdown lint + format, mirrors ruff's check/fmt split
+# ---------------------------------------------------------------------------
+[tool.rumdl]
+line-length = 100
+respect-gitignore = true
+exclude = [".venv", "node_modules"]
+
+[tool.rumdl.MD013]
+code_blocks = false  # never wrap code
+tables = false
+
+# ---------------------------------------------------------------------------
+# ty — replaces mypy
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+# tools/ is not a package, so ty needs it named explicitly to resolve its tests.
+extra-paths = ["tools"]
+
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+addopts = "-x -q --tb=short"
+testpaths = ["tests"]
+pythonpath = ["tools"]  # so the nested-def checker is importable by its tests
