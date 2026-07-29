@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } || exit 2",
+            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } 1>&2 || exit 2",
             "statusMessage": "Formatting and checking...",
             "timeout": 120
           }
