@@ -5,13 +5,19 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Status snapshot
 
-- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, plus one custom check
-  (`tools/check_nested_defs.py` — no linter covers `def` inside `def`).
-- Guards live: `PreToolUse` blocks edits on `main`, `no-commit-to-branch` blocks direct commits,
-  `conventional-pre-commit` checks every message, `SessionStart` reports branch and tree state.
+- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`. Four modules under `tools/`:
+  `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and `gate` (the two
+  hooks), and `hook_payload` (shared parsing so they cannot diverge).
+- Guards live: `PreToolUse` blocks edits to *repo* files on `main`, `no-commit-to-branch` blocks
+  direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
+  message, `SessionStart` reports branch and tree state.
+- **Every hook is a single executable invocation, no shell operators** — the portability rule.
+  The edit-time gate runs `prek run --files <edited>`, so it and the commit-time gate are the
+  same list by construction rather than two lists that can drift.
 - Six skills under `.claude/skills/`: `python-cli`, `python-cli-stdlib`, `python-cli-modern`,
   `python-data`, `python-fastapi`, `python-tui`.
-- Three commands: `publicip`, `whoami`, `geo get-coordinates`.
+- Three commands, all on the typer/httpx/pydantic/rich/loguru stack: `publicip`, `whoami`,
+  `geo get-coordinates`.
 - The `geo` build was a deliberate test of whether the guardrails let a cheaper model self-correct.
   It passed: no `noqa`, no `type: ignore`, no `Any`, no new per-file-ignores, and the skills
   demonstrably steered (`logging_setup.py` and `typer_entrypoint.py` are both prescribed by
@@ -19,21 +25,56 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Do next
 
-### 1. Land `refactor/modern-cli-stack`
+### 1. Trial `mcp-debugger` — do this before deleting anything
 
-One commit (`780efc2`), converts `publicip` and `whoami` to the typer/httpx/pydantic/rich/loguru
-stack so all three commands match. Gate and tests were green on the branch.
+Time-sensitive: item 2 removes `publicip` and `whoami`, and the template work eventually strips
+the example code back. Once that happens there is nothing left to set a breakpoint in, and a
+debugger tested against a hello-world proves nothing.
 
-```bash
-git switch refactor/modern-cli-stack
-git rebase main                    # trivial: one commit
-prek run --all-files               # required after any rebase — no hooks run during one
-git switch main
-git merge --no-ff refactor/modern-cli-stack
-git branch -d refactor/modern-cli-stack
+`geo` is the right subject. It has an injected httpx client, a rate limiter and pure parsing
+functions — exactly the shape CLAUDE.md's debuggability rules exist to produce. Confirming that a
+breakpoint can be set and an injected dependency inspected **validates the premise of the whole
+ruleset**, which has never actually been checked because the agent has never had a debugger.
+
+[debugmcp/mcp-debugger](https://github.com/debugmcp/mcp-debugger) — Node 22+, drives `debugpy`
+over DAP, works on Windows, ~18 tools (`set_breakpoint`, `get_stack_trace`, `get_variables`,
+`step_into`, `evaluate_expression`). Install via `npm install -g @debugmcp/mcp-debugger`, or the
+repo's `scripts/install-claude-mcp.sh`. The `stdio` argument is required or the protocol corrupts.
+
+### 2. Restructure to a single `cli` with two subcommands
+
+Target shape, replacing three separate console scripts:
+
+```text
+cli geo <location>          # existing, keep
+cli currency <args>         # new
 ```
 
-### 2. Document the merge-message convention
+Delete `publicip` and `whoami`. `whoami` also shadows the OS command, which closes that open
+decision by deletion rather than by choosing a name.
+
+`currency` demonstrates FX conversion and margin calculation — e.g. the spread between the
+interbank rate and a quoted rate. API is **Frankfurter**, no auth, no User-Agent restriction:
+
+```text
+https://api.frankfurter.dev/v1/latest?base=GBP&symbols=AUD,USD,EUR
+https://api.frankfurter.dev/v1/2026-01-15?base=GBP&symbols=AUD    # historical
+https://api.frankfurter.dev/v1/2026-01-01..2026-01-10?base=GBP    # time series
+https://api.frankfurter.dev/v1/currencies                          # supported list
+```
+
+Response shape: `{"amount":1.0,"base":"GBP","date":"2026-07-30","rates":{"AUD":1.9179}}`.
+
+Two traps worth knowing before starting:
+
+- **`api.frankfurter.app` 301-redirects to `api.frankfurter.dev/v1/`.** httpx does **not** follow
+  redirects by default, unlike requests, so the old domain fails with a bare 301 rather than
+  working. Use the `.dev` host directly, or set `follow_redirects=True` deliberately.
+- **Money is not a float.** Rates come back as JSON numbers; conversions and margin arithmetic
+  belong in `decimal.Decimal`, with rounding stated explicitly. This is the one place a
+  demonstration CLI can be subtly, invisibly wrong.
+
+### 3. Document the merge-message convention
 
 The only rule in this repo written down **nowhere** — not in CLAUDE.md, not in the enforcement
 table — and predictably the only one that has already drifted: `ea8131f` used git's default
@@ -48,7 +89,7 @@ Add a short subsection to `## Merging` covering:
 - `Refs: #N` trailer once there is a remote and PRs exist. Footers are part of the Conventional
   Commits spec; branch names are not, and git stores them nowhere.
 
-### 3. Convert this repo into a project template
+### 4. Convert this repo into a project template
 
 **Decided: template, not global promotion.** Promoting `CLAUDE.md`, settings and skills to
 `~/.claude` was the earlier plan and has been dropped. The two are competing designs, and
@@ -76,26 +117,6 @@ Work needed:
   `main`, and into a directory that is not yet a git repository at all — the hook currently assumes
   both.
 
-### 4. Trial `mcp-debugger`
-
-[debugmcp/mcp-debugger](https://github.com/debugmcp/mcp-debugger) — 138 stars, actively maintained
-(last push 2026-07-27), drives `debugpy` over DAP for breakpoints, stepping, variable inspection and
-expression evaluation.
-
-TypeScript, so it needs Node — which cuts against the Python preference, but this is a dev tool, and
-`ruff`/`prek`/`rumdl` are already Rust. The Python alternatives are all far less maintained:
-`dap_mcp` (40 stars, last push 2025-09), `mcp-debugpy` (8 stars, 2025-11).
-
-Worth trialling because all of CLAUDE.md's debuggability rules exist to make step-debugging possible,
-and that capability currently goes unused by the agent that has to follow them.
-
-## Decisions still open
-
-### `whoami` shadows the system command
-
-`[project.scripts]` installs a `whoami` that masks the OS one on `PATH`. Flagged early, never
-decided. Rename, or accept it.
-
 ## Nice to have
 
 - **Exercise the untested skills.** `python-fastapi`, `python-tui` and `python-data` have never
@@ -104,5 +125,5 @@ decided. Rename, or accept it.
   to get a hard count of how often the gate catches something. Lower value now the guardrail test
   has already passed.
 - **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
-  72-character rule, which stays a convention. A custom `commit-msg` check could close it, but that
-  would be a second piece of custom code — the bar is "prove no native tool does it" first.
+  72-character rule, which stays a convention. A custom `commit-msg` check could close it, but the
+  bar is still "prove no native tool does it first".
