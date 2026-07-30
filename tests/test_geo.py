@@ -1,7 +1,10 @@
 """Tests for the geo coordinate lookup.
 
 No network: every request is served by an httpx MockTransport, so these are
-deterministic and run offline.
+deterministic and run offline. Log assertions add a local loguru sink and
+disable the app's own logging setup, since loguru does not propagate to
+pytest's `caplog` and `configure_logging` would otherwise strip any sink a
+test installs.
 """
 
 import functools
@@ -9,8 +12,9 @@ import json
 
 import httpx
 import pytest
+from loguru import logger
 
-from claude.geo import NOMINATIM_URL, Place, find_coordinates, format_places, main
+from claude.geo import NOMINATIM_URL, Place, find_coordinates, main, render_places_json
 
 CLEVE = {
     "display_name": "Cleve, Eyre Peninsula, South Australia, 5640, Australia",
@@ -51,11 +55,26 @@ def _always(places: list[Place], *_args: object, **_kwargs: object) -> list[Plac
     return places
 
 
+def _record_query(seen_queries: list[str], query: str, **_kwargs: object) -> list[Place]:
+    """Stand in for find_coordinates, recording the query it was called with."""
+    seen_queries.append(query)
+    return [Place(display_name="x", lat=0.0, lon=0.0, type="town")]
+
+
+def _no_op_configure_logging(*, verbose: bool = False) -> None:
+    """Stand in for configure_logging so a test's own sink survives."""
+
+
 def test_returns_a_place_parsed_from_the_body() -> None:
     with client_returning([CLEVE]) as client:
         places = find_coordinates("cleve", client=client)
     assert places == [
-        Place("Cleve, Eyre Peninsula, South Australia, 5640, Australia", -33.7075, 136.4931, "town")
+        Place(
+            display_name="Cleve, Eyre Peninsula, South Australia, 5640, Australia",
+            lat=-33.7075,
+            lon=136.4931,
+            type="town",
+        )
     ]
 
 
@@ -82,14 +101,9 @@ def test_caller_supplied_client_is_not_closed() -> None:
         assert not client.is_closed
 
 
-def test_format_places_as_text() -> None:
-    place = Place("Cleve, South Australia", -33.7075, 136.4931, "town")
-    assert format_places([place]) == "-33.707500, 136.493100  (town)  Cleve, South Australia"
-
-
-def test_format_places_as_json() -> None:
-    place = Place("Cleve, South Australia", -33.7075, 136.4931, "town")
-    decoded = json.loads(format_places([place], as_json=True))
+def test_render_places_json() -> None:
+    place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
+    decoded = json.loads(render_places_json([place]))
     assert decoded == [
         {
             "display_name": "Cleve, South Australia",
@@ -104,17 +118,22 @@ def test_main_prints_matches_to_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    place = Place("Cleve, South Australia", -33.7075, 136.4931, "town")
+    place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
     monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
     assert main(["get-coordinates", "cleve"]) == 0
     captured = capsys.readouterr()
     assert "Cleve, South Australia" in captured.out
 
 
-def _record_query(seen_queries: list[str], query: str, **_: object) -> list[Place]:
-    """Stand in for find_coordinates, recording the query it was called with."""
-    seen_queries.append(query)
-    return [Place("x", 0.0, 0.0, "town")]
+def test_main_output_json_emits_parseable_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
+    monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
+    assert main(["get-coordinates", "cleve", "--output", "json"]) == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert decoded[0]["display_name"] == "Cleve, South Australia"
 
 
 def test_main_joins_multi_word_location(
@@ -131,29 +150,41 @@ def test_main_joins_multi_word_location(
 def test_main_reports_no_matches_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, []))
-    assert main(["get-coordinates", "nowhere-at-all-xyz"]) == 1
+    monkeypatch.setattr("claude.geo.configure_logging", _no_op_configure_logging)
+    messages: list[str] = []
+    sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
+    try:
+        assert main(["get-coordinates", "nowhere-at-all-xyz"]) == 1
+    finally:
+        logger.remove(sink_id)
     assert not capsys.readouterr().out
-    assert "no matches" in caplog.text
+    assert any("no matches" in message for message in messages)
 
 
 def test_main_reports_unreachable_service_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr("claude.geo.find_coordinates", _unreachable)
-    assert main(["get-coordinates", "cleve"]) == 1
+    monkeypatch.setattr("claude.geo.configure_logging", _no_op_configure_logging)
+    messages: list[str] = []
+    sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
+    try:
+        assert main(["get-coordinates", "cleve"]) == 1
+    finally:
+        logger.remove(sink_id)
     assert not capsys.readouterr().out
-    assert "could not reach" in caplog.text
-    assert "ConnectError" in caplog.text
+    assert any("could not reach" in message for message in messages)
 
 
 def test_main_requires_a_subcommand() -> None:
-    with pytest.raises(SystemExit):
-        main([])
+    assert main([]) == 0
+
+
+def test_unknown_subcommand_is_a_usage_error() -> None:
+    assert main(["bogus"]) == 2
 
 
 def test_nominatim_url_is_the_official_endpoint() -> None:
