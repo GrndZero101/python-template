@@ -66,7 +66,7 @@ which rest on your own discipline.
 | No lambda assigned to a name | `E731` |
 | Timezone-aware datetimes | `DTZ` |
 | No unused args, no private-member access | `ARG` `SLF` |
-| No edits while on `main` | `PreToolUse` branch guard in `.claude/settings.json` |
+| No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |
 | No direct commits to `main` (merges allowed) | `no-commit-to-branch` at `pre-commit` stage only |
 | Conventional Commit format, every branch | `conventional-pre-commit` (prek, `commit-msg` stage) |
 | Branch consolidated to one commit before merge | *convention — review only* |
@@ -105,7 +105,7 @@ This is enforced twice, deliberately, because the two catch different mistakes:
 
 | Guard | Fires when | Effect |
 |---|---|---|
-| `PreToolUse` branch guard | any `Edit`/`Write` while on `main` | blocks the edit before it lands |
+| `PreToolUse` branch guard | `Edit`/`Write` to a file **inside the repo** while on `main` | blocks the edit before it lands |
 | `no-commit-to-branch` | `git commit` on `main` | blocks the commit |
 
 The edit-time guard is the one that matters. Without it, work lands in `main`'s working tree and only
