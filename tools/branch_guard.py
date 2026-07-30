@@ -19,9 +19,10 @@ Two deliberate implementation choices:
 
 import argparse
 import dataclasses
-import json
 import sys
 from pathlib import Path
+
+from hook_payload import find_repo_root, inside_repo, target_path
 
 SENTINEL = ".allow-main-edit"
 HEAD_PREFIX = "ref: refs/heads/"
@@ -35,15 +36,6 @@ class Decision:
 
     blocked: bool
     reason: str
-
-
-def find_repo_root(start: Path | None = None) -> Path | None:
-    """Return the nearest ancestor containing a `.git` entry, or None if there is none."""
-    current = (start or Path.cwd()).resolve()
-    for candidate in [current, *current.parents]:
-        if (candidate / ".git").exists():
-            return candidate
-    return None
 
 
 def git_dir(root: Path) -> Path:
@@ -71,22 +63,6 @@ def read_branch(root: Path) -> str | None:
     return head.removeprefix(HEAD_PREFIX)
 
 
-def target_path(payload: str) -> Path | None:
-    """Extract the edited file path from a hook payload.
-
-    Returns None for malformed input, which the caller treats as "allow". Failing open is
-    deliberate: a parse error must not block every edit in the session, and the commit-time
-    `no-commit-to-branch` hook still backstops anything that slips past.
-    """
-    try:
-        document = json.loads(payload)
-    except json.JSONDecodeError:
-        return None
-    tool_input = document.get("tool_input") if isinstance(document, dict) else None
-    raw = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-    return Path(raw) if isinstance(raw, str) and raw else None
-
-
 def branch_reason(branch: str | None, protected: frozenset[str]) -> str | None:
     """Return why the branch itself permits the edit, or None when it is protected."""
     if branch is None:
@@ -110,7 +86,7 @@ def decide(
     allowed = branch_reason(branch, protected)
     if allowed is not None:
         return Decision(blocked=False, reason=allowed)
-    if not target.resolve().is_relative_to(root.resolve()):
+    if not inside_repo(target, root):
         return Decision(blocked=False, reason="file is outside the repository")
     if (root / SENTINEL).exists():
         return Decision(blocked=False, reason=f"{SENTINEL} override present")

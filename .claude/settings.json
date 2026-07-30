@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ \"$(git symbolic-ref --short HEAD 2>/dev/null)\" = main ]; then echo 'On main. Branch before editing: git switch -c <type>/<short-name>'; fi; git status --short --branch 2>/dev/null | head -20",
+            "command": "git status --short --branch",
             "timeout": 15
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } 1>&2 || exit 2",
+            "command": "uv run --no-sync python tools/gate.py",
             "timeout": 120,
             "statusMessage": "Formatting and checking..."
           }

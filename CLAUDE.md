@@ -48,6 +48,25 @@ Every rule here exists so a human can stop the program and inspect it.
 - Errors name the fix: `raise ValueError(f"expected .json, got {path.suffix}; pass a JSON file")`.
 - Tests are deterministic: seed randomness, freeze time, no network.
 
+## Portability
+
+Everything here must run unchanged on **Windows native** and on **Unix-alikes** — Linux, macOS,
+and containers, which are Linux. This is a template; a generated project may land anywhere.
+
+- **`pathlib`, never string paths or `os.path`.** Path containment and comparison are
+  case-insensitive and separator-agnostic on Windows, case-sensitive with `/` on POSIX.
+  `pathlib` gets both right with no branching; hand-rolled string logic gets one of them wrong.
+- **Explicit `encoding="utf-8"`** on every read and write. The default encoding is UTF-8 on
+  Linux and macOS and locale-dependent on Windows, so omitting it is a latent decoding bug.
+- **No POSIX-only modules** — `pwd`, `grp`, `fcntl`, `termios` — outside a guarded import.
+- **No `shell=True`, no shell string.** Build a subprocess command as a list.
+- **Hook commands are a single executable invocation, never a shell pipeline.** No `&&`, `||`,
+  `|`, `;`, `{ }`, `1>&2`, `if`/`fi`, or `$( )`.
+  *Why: a hook that needs `sh` fails where `sh` is absent, and it fails **open** — the check
+  silently stops running while still looking healthy. Logic beyond one command belongs in a
+  script under `tools/`, which is also then testable.*
+- **Never assert on a literal path separator in a test.** Compare against `str(Path(...))`.
+
 ## What is mechanically enforced
 
 Everything above is checked. This table says by what, so you know which rules bite immediately and
@@ -66,6 +85,10 @@ which rest on your own discipline.
 | No lambda assigned to a name | `E731` |
 | Timezone-aware datetimes | `DTZ` |
 | No unused args, no private-member access | `ARG` `SLF` |
+| `pathlib` over `os.path` | `PTH` |
+| Explicit `encoding=` on reads and writes | `unspecified-encoding` |
+| Hook commands are one executable, not a shell pipeline | *convention — review only* |
+| No literal path separators asserted in tests | *convention — review only* |
 | No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |
 | No direct commits to `main` (merges allowed) | `no-commit-to-branch` at `pre-commit` stage only |
 | Conventional Commit format, every branch | `conventional-pre-commit` (prek, `commit-msg` stage) |
