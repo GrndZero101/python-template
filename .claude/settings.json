@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ \"$(git symbolic-ref --short HEAD 2>/dev/null)\" != main ] || [ -f .allow-main-edit ] || { echo 'Refusing to edit on main. Create a branch first: git switch -c <type>/<short-name>. To override deliberately: touch .allow-main-edit' >&2; exit 2; }",
+            "command": "uv run --no-sync python tools/branch_guard.py --protected main master",
             "timeout": 15,
             "statusMessage": "Checking branch..."
           }
