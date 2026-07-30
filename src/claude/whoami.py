@@ -3,20 +3,35 @@
 Exit codes: 0 on success, 1 if the identity cannot be determined, 2 on usage error.
 """
 
-import argparse
-import dataclasses
 import getpass
 import json
-import logging
 import socket
 import sys
 from collections.abc import Callable
+from enum import StrEnum
+from typing import Annotated
 
-logger = logging.getLogger(__name__)
+import typer
+from loguru import logger
+from pydantic import BaseModel
+from rich.console import Console
+
+from claude.logging_setup import configure_logging
+from claude.typer_entrypoint import run_app
+
+out = Console()  # data only — stdout
+
+app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 
-@dataclasses.dataclass(frozen=True)
-class Identity:
+class OutputFormat(StrEnum):
+    """How to render the command result."""
+
+    text = "text"
+    json = "json"
+
+
+class Identity(BaseModel):
     """Who this process is running as, and where."""
 
     user: str
@@ -35,51 +50,48 @@ def current_identity(
     return Identity(user=get_user(), host=get_host())
 
 
-def format_identity(identity: Identity, *, as_json: bool = False) -> str:
-    """Render `identity` for stdout, as JSON or as `user@host`."""
-    if as_json:
-        return json.dumps(dataclasses.asdict(identity))
+def render_identity(identity: Identity, fmt: OutputFormat) -> str:
+    """Render `identity` as `user@host` text or as a JSON object."""
+    if fmt is OutputFormat.json:
+        return json.dumps(identity.model_dump())
     return f"{identity.user}@{identity.host}"
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    """Return the command-line parser."""
-    parser = argparse.ArgumentParser(
-        prog="whoami",
-        description="Print the current user and hostname.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="emit a JSON object instead of user@host",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="log details to stderr",
-    )
-    return parser
+def emit(identity: Identity, fmt: OutputFormat) -> None:
+    """Write `identity` to stdout in the requested format."""
+    rendered = render_identity(identity, fmt)
+    if fmt is OutputFormat.json:
+        sys.stdout.write(rendered + "\n")
+        return
+    out.print(rendered)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Entry point. Returns an exit code; never calls sys.exit itself."""
-    args = _build_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.WARNING,
-        stream=sys.stderr,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+OutputOption = Annotated[
+    OutputFormat, typer.Option("--output", "-o", envvar="WHOAMI_OUTPUT", help="output format")
+]
 
+
+@app.command()
+def whoami(
+    output: OutputOption = OutputFormat.text,
+    *,
+    verbose: Annotated[bool, typer.Option("-v", "--verbose", help="log details to stderr")] = False,
+) -> None:
+    """Print the current user and hostname."""
+    configure_logging(verbose=verbose)
     try:
         identity = current_identity()
     except OSError:
         logger.exception("could not determine the current user or hostname")
-        return 1
+        raise typer.Exit(1) from None
 
-    logger.debug("resolved user=%s host=%s", identity.user, identity.host)
-    sys.stdout.write(f"{format_identity(identity, as_json=args.json)}\n")
-    return 0
+    logger.debug("resolved user={} host={}", identity.user, identity.host)
+    emit(identity, output)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point. Returns an exit code; never calls sys.exit itself."""
+    return run_app(app, argv, prog_name="whoami")
 
 
 if __name__ == "__main__":

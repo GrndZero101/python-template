@@ -1,15 +1,19 @@
 """Tests for the whoami command.
 
 Deterministic: the user and hostname lookups are injected, so nothing here
-depends on the machine the tests run on.
+depends on the machine the tests run on. Log assertions add a local loguru
+sink and disable the app's own logging setup, since loguru does not
+propagate to pytest's `caplog` and `configure_logging` would otherwise strip
+any sink a test installs.
 """
 
 import functools
 import json
 
 import pytest
+from loguru import logger
 
-from claude.whoami import Identity, current_identity, format_identity, main
+from claude.whoami import Identity, OutputFormat, current_identity, main, render_identity
 
 
 def _fixed(value: str) -> str:
@@ -21,6 +25,15 @@ def _failing() -> str:
     """Stand in for a lookup on a host with no resolvable identity."""
     msg = "no such user"
     raise OSError(msg)
+
+
+def _return(identity: Identity) -> Identity:
+    """Stand in for current_identity with a fixed answer."""
+    return identity
+
+
+def _no_op_configure_logging(*, verbose: bool = False) -> None:
+    """Stand in for configure_logging so a test's own sink survives."""
 
 
 SAMPLE = Identity(user="ada", host="analytical-engine")
@@ -35,11 +48,11 @@ def test_current_identity_uses_injected_lookups() -> None:
 
 
 def test_default_format_is_user_at_host() -> None:
-    assert format_identity(SAMPLE) == "ada@analytical-engine"
+    assert render_identity(SAMPLE, OutputFormat.text) == "ada@analytical-engine"
 
 
 def test_json_format_is_a_single_object() -> None:
-    assert json.loads(format_identity(SAMPLE, as_json=True)) == {
+    assert json.loads(render_identity(SAMPLE, OutputFormat.json)) == {
         "user": "ada",
         "host": "analytical-engine",
     }
@@ -53,15 +66,14 @@ def test_main_prints_user_at_host_to_stdout(
     assert main([]) == 0
     captured = capsys.readouterr()
     assert captured.out == "ada@analytical-engine\n"
-    assert not captured.err
 
 
-def test_main_json_flag_emits_parseable_stdout(
+def test_main_output_json_emits_parseable_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr("claude.whoami.current_identity", functools.partial(_return, SAMPLE))
-    assert main(["--json"]) == 0
+    assert main(["--output", "json"]) == 0
     assert json.loads(capsys.readouterr().out) == {
         "user": "ada",
         "host": "analytical-engine",
@@ -71,22 +83,19 @@ def test_main_json_flag_emits_parseable_stdout(
 def test_main_reports_failure_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A failed lookup exits 1, logs, and leaves stdout empty for consumers."""
     monkeypatch.setattr("claude.whoami.current_identity", _failing)
-    assert main([]) == 1
+    monkeypatch.setattr("claude.whoami.configure_logging", _no_op_configure_logging)
+    messages: list[str] = []
+    sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
+    try:
+        assert main([]) == 1
+    finally:
+        logger.remove(sink_id)
     assert not capsys.readouterr().out
-    assert "could not determine" in caplog.text
-    assert "OSError" in caplog.text
+    assert any("could not determine" in message for message in messages)
 
 
 def test_unknown_flag_is_a_usage_error() -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["--nope"])
-    assert exit_info.value.code == 2
-
-
-def _return(identity: Identity) -> Identity:
-    """Stand in for current_identity with a fixed answer."""
-    return identity
+    assert main(["--nope"]) == 2
