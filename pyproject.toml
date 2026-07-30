@@ -87,6 +87,14 @@ max-returns = 6
 "tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
 # The checker's whole job is printing findings to stdout.
 "tools/**" = ["T20"]
+# Invoking an external tool IS this module's purpose, so the subprocess warnings cannot be
+# designed away. The command is built from a literal list, never a shell string, and `prek`
+# is resolved from PATH deliberately so the hook follows whatever uv installed.
+"tools/gate.py" = [
+    "suspicious-subprocess-import",
+    "subprocess-without-shell-equals-true",
+    "start-process-with-partial-path",
+]
 
 # ---------------------------------------------------------------------------
 # rumdl — markdown lint + format, mirrors ruff's check/fmt split

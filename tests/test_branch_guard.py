@@ -13,11 +13,9 @@ from branch_guard import (
     SENTINEL,
     Decision,
     decide,
-    find_repo_root,
     git_dir,
     main,
     read_branch,
-    target_path,
 )
 
 MAIN = frozenset({"main"})
@@ -89,49 +87,8 @@ def test_protects_every_configured_branch(tmp_path: Path) -> None:
     assert decide(root / "x.py", root, "master", MAIN).blocked is False
 
 
-# --- payload parsing -------------------------------------------------------------------
-
-
-def test_extracts_file_path_from_payload() -> None:
-    payload = json.dumps({"tool_input": {"file_path": "/repo/src/x.py"}})
-    assert target_path(payload) == Path("/repo/src/x.py")
-
-
-def test_backslash_path_survives_json_round_trip() -> None:
-    r"""A Windows payload carries C:\repo\x.py; json handles the escaping, not us."""
-    payload = json.dumps({"tool_input": {"file_path": r"C:\repo\x.py"}})
-    assert target_path(payload) == Path(r"C:\repo\x.py")
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        "not json at all",
-        "[]",
-        "{}",
-        '{"tool_input": null}',
-        '{"tool_input": {}}',
-        '{"tool_input": {"file_path": ""}}',
-        '{"tool_input": {"file_path": 42}}',
-    ],
-)
-def test_malformed_payloads_fail_open(payload: str) -> None:
-    """None means allow. A parse error must never block every edit in a session."""
-    assert target_path(payload) is None
-
-
 # --- reading git state without subprocess ---------------------------------------------
-
-
-def test_finds_repo_root_from_a_nested_directory(tmp_path: Path) -> None:
-    root = _work_tree(tmp_path)
-    nested = root / "src" / "deep" / "deeper"
-    nested.mkdir(parents=True)
-    assert find_repo_root(nested) == root.resolve()
-
-
-def test_returns_none_outside_any_repository(tmp_path: Path) -> None:
-    assert find_repo_root(tmp_path) is None
+# Payload parsing and repo-root discovery now live in hook_payload; see test_hook_payload.py.
 
 
 def test_reads_branch_from_head(tmp_path: Path) -> None:
