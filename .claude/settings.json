@@ -9,7 +9,9 @@
       "Bash(ruff:*)",
       "Bash(ty:*)",
       "Bash(rumdl:*)",
-      "Bash(prek:*)"
+      "Bash(prek:*)",
+      "mcp__context7__query-docs",
+      "mcp__context7__resolve-library-id"
     ]
   },
   "hooks": {
