@@ -48,28 +48,48 @@ Add a short subsection to `## Merging` covering:
 - `Refs: #N` trailer once there is a remote and PRs exist. Footers are part of the Conventional
   Commits spec; branch names are not, and git stores them nowhere.
 
-### 3. Promote the config to `~/.claude`
+### 3. Convert this repo into a project template
 
-The original plan said to wait for real use before promoting. That condition is now met.
+**Decided: template, not global promotion.** Promoting `CLAUDE.md`, settings and skills to
+`~/.claude` was the earlier plan and has been dropped. The two are competing designs, and
+per-project wins: a repo-local `CLAUDE.md` makes a project self-describing to any agent, on any
+machine, for any collaborator, and survives being cloned. Global config gives none of that. Keep
+`~/.claude` for genuinely personal preferences only.
 
-Promote: `CLAUDE.md`, `.claude/settings.json`, `.claude/skills/`.
-Leave per-repo: `pyproject.toml`, `.pre-commit-config.yaml`, `tools/check_nested_defs.py`.
+Tooling: **copier** (`uv tool install copier`, 9.17.0 verified). `uv` has no template mechanism —
+there is no `uv init --template`. Copier is chosen over cookiecutter for one reason: `copier update`
+re-applies template changes to *already-generated* projects, so improvements to CLAUDE.md or a skill
+can be pulled downstream instead of being stranded in whichever repo they were written in.
 
-Check first that the `PreToolUse` branch guard behaves in a repo whose default branch is not
-`main`, and in a directory that is not a git repository at all — the hook currently assumes both.
+Work needed:
+
+- `copier.yml` asking: package name, project name, description, author, and **project type**. The
+  type maps onto the existing two-axis skill design — `cli-stdlib`, `cli-modern`, `fastapi`, `tui`,
+  `data` — and conditionally ships the matching skill, dependencies and lint config (e.g. `"FAST"`
+  added to `select` only for FastAPI).
+- Parameterise the package name. It is currently `claude` in `src/claude/`, which is wrong for
+  every generated project.
+- Decide what is infrastructure and what is example. `publicip`, `whoami` and `geo` are
+  demonstrations, not things a new project wants.
+- Templated files use Jinja; the `.jinja` suffix convention keeps the source repo itself runnable.
+- Verify the `PreToolUse` branch guard survives generation into a repo whose default branch is not
+  `main`, and into a directory that is not yet a git repository at all — the hook currently assumes
+  both.
+
+### 4. Trial `mcp-debugger`
+
+[debugmcp/mcp-debugger](https://github.com/debugmcp/mcp-debugger) — 138 stars, actively maintained
+(last push 2026-07-27), drives `debugpy` over DAP for breakpoints, stepping, variable inspection and
+expression evaluation.
+
+TypeScript, so it needs Node — which cuts against the Python preference, but this is a dev tool, and
+`ruff`/`prek`/`rumdl` are already Rust. The Python alternatives are all far less maintained:
+`dap_mcp` (40 stars, last push 2025-09), `mcp-debugpy` (8 stars, 2025-11).
+
+Worth trialling because all of CLAUDE.md's debuggability rules exist to make step-debugging possible,
+and that capability currently goes unused by the agent that has to follow them.
 
 ## Decisions still open
-
-### What is this repo?
-
-It is named `claude`, the package is `src/claude/`, and it now holds three real CLI tools plus a
-toolchain. Three readings, each implying different next steps:
-
-- **Template** to clone for new Python work → rename the package, strip the tools back to examples,
-  write the README that explains how to use it.
-- **Real project** that happens to have good tooling → the toy commands should go.
-- **Sandbox** for tuning Claude Code config → promotion (item 3) is the whole point and the tools
-  are scaffolding.
 
 ### `whoami` shadows the system command
 
@@ -83,7 +103,6 @@ decided. Rename, or accept it.
 - **Gate instrumentation.** Append pass/fail from the `PostToolUse` hook to a gitignored `.gate.log`
   to get a hard count of how often the gate catches something. Lower value now the guardrail test
   has already passed.
-- **`mcp-debugger` trial.** Worth it only if inspecting live state starts beating adding log lines.
 - **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
   72-character rule, which stays a convention. A custom `commit-msg` check could close it, but that
   would be a second piece of custom code — the bar is "prove no native tool does it" first.
