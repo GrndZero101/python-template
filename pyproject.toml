@@ -26,6 +26,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.21",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
 ]
