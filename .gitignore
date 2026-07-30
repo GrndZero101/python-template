@@ -9,6 +9,9 @@ dist/
 .venv/
 venv/
 
+# Deliberate override for the PreToolUse branch guard (see CLAUDE.md > Branching)
+.allow-main-edit
+
 # Tool caches
 .ruff_cache/
 .pytest_cache/

@@ -4,6 +4,11 @@
 # `pre-commit` tool. That is a deliberate trade for zero-clone, offline hygiene hooks.
 # If this repo ever needs to support plain `pre-commit`, swap the builtin block for
 # https://github.com/pre-commit/pre-commit-hooks (prek fast-paths it automatically).
+#
+# Install ALL THREE shims — `prek install` alone wires only pre-commit, so the
+# commit-msg check would never fire and `git merge --no-ff` into main would be
+# blocked by no-commit-to-branch:
+#   prek install && prek install -t commit-msg && prek install -t pre-merge-commit
 repos:
   - repo: builtin
     hooks:
@@ -14,6 +19,24 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: detect-private-key
+      # Work happens on a branch; main only ever receives merge commits.
+      # `stages: [pre-commit]` is load-bearing: git runs `pre-merge-commit`
+      # for a merge, so restricting this hook to the pre-commit stage lets
+      # `git merge --no-ff` through while still blocking a direct commit.
+      # That only holds if the pre-merge-commit shim is installed (see below);
+      # without it git falls back to pre-commit and blocks merges too.
+      - id: no-commit-to-branch
+        args: [--branch, main]
+        stages: [pre-commit]
+
+  # Enforces the `type(scope): summary` rule in CLAUDE.md at commit time.
+  # Default types match that list exactly, so no args are needed.
+  # Note: it does NOT check summary length — the 72-char rule stays convention.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.0

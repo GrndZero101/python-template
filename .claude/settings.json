@@ -1,19 +1,4 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } 1>&2 || exit 2",
-            "statusMessage": "Formatting and checking...",
-            "timeout": 120
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(uv run:*)",
@@ -26,5 +11,47 @@
       "Bash(rumdl:*)",
       "Bash(prek:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$(git symbolic-ref --short HEAD 2>/dev/null)\" = main ]; then echo 'On main. Branch before editing: git switch -c <type>/<short-name>'; fi; git status --short --branch 2>/dev/null | head -20",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$(git symbolic-ref --short HEAD 2>/dev/null)\" != main ] || [ -f .allow-main-edit ] || { echo 'Refusing to edit on main. Create a branch first: git switch -c <type>/<short-name>. To override deliberately: touch .allow-main-edit' >&2; exit 2; }",
+            "timeout": 15,
+            "statusMessage": "Checking branch..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{ ruff format . && ruff check --fix . && rumdl fmt . && rumdl check . && ty check && uv run --no-sync python tools/check_nested_defs.py src tests tools ; } 1>&2 || exit 2",
+            "timeout": 120,
+            "statusMessage": "Formatting and checking..."
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "commit-commands@claude-plugins-official": false
   }
 }
