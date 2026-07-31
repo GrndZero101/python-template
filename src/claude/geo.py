@@ -8,43 +8,21 @@ one request, so no client-side throttling is needed.
 
 import json
 import sys
-from enum import StrEnum
 from typing import Annotated
 
 import httpx
 import typer
 from loguru import logger
 from pydantic import BaseModel, Field
-from rich.console import Console
 from rich.table import Table
 
 from claude.logging_setup import configure_logging
-from claude.typer_entrypoint import run_app
-
-out = Console()  # data only — stdout
-
-# A bare @app.command() with nothing else registered collapses into a
-# single top-level command, so `geo get-coordinates cleve` would parse as
-# `geo <location=get-coordinates,cleve>` instead. The no-op callback below
-# forces typer to keep `get-coordinates` as an explicit subcommand.
-app = typer.Typer(add_completion=False, no_args_is_help=True)
+from claude.output import OutputFormat, OutputOption, out
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "claude-geo-cli (https://github.com/tboss-dev)"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_LIMIT = 10
-
-
-@app.callback()
-def _geo() -> None:
-    """Look up geographic data via OpenStreetMap's Nominatim API."""
-
-
-class OutputFormat(StrEnum):
-    """How to render the command result."""
-
-    table = "table"
-    json = "json"
 
 
 class Place(BaseModel):
@@ -120,13 +98,7 @@ def emit(places: list[Place], fmt: OutputFormat) -> None:
     out.print(_build_places_table(places))
 
 
-OutputOption = Annotated[
-    OutputFormat, typer.Option("--output", "-o", envvar="GEO_OUTPUT", help="output format")
-]
-
-
-@app.command("get-coordinates")
-def get_coordinates(
+def geo(
     location: Annotated[
         list[str],
         typer.Argument(help="free-text place name, e.g. cleve or 'cleve, south australia'"),
@@ -156,12 +128,3 @@ def get_coordinates(
         raise typer.Exit(1)
 
     emit(places, output)
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Entry point. Returns an exit code; never calls sys.exit itself."""
-    return run_app(app, argv, prog_name="geo")
-
-
-if __name__ == "__main__":
-    sys.exit(main())
