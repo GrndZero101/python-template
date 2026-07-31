@@ -14,7 +14,8 @@ import httpx
 import pytest
 from loguru import logger
 
-from claude.geo import NOMINATIM_URL, Place, find_coordinates, main, render_places_json
+from claude.cli import main
+from claude.geo import NOMINATIM_URL, Place, find_coordinates, render_places_json
 
 CLEVE = {
     "display_name": "Cleve, Eyre Peninsula, South Australia, 5640, Australia",
@@ -120,7 +121,7 @@ def test_main_prints_matches_to_stdout(
 ) -> None:
     place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
     monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
-    assert main(["get-coordinates", "cleve"]) == 0
+    assert main(["geo", "cleve"]) == 0
     captured = capsys.readouterr()
     assert "Cleve, South Australia" in captured.out
 
@@ -131,7 +132,7 @@ def test_main_output_json_emits_parseable_stdout(
 ) -> None:
     place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
     monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
-    assert main(["get-coordinates", "cleve", "--output", "json"]) == 0
+    assert main(["geo", "cleve", "--output", "json"]) == 0
     decoded = json.loads(capsys.readouterr().out)
     assert decoded[0]["display_name"] == "Cleve, South Australia"
 
@@ -143,7 +144,7 @@ def test_main_joins_multi_word_location(
     monkeypatch.setattr(
         "claude.geo.find_coordinates", functools.partial(_record_query, seen_queries)
     )
-    main(["get-coordinates", "cleve,", "south", "australia"])
+    main(["geo", "cleve,", "south", "australia"])
     assert seen_queries == ["cleve, south australia"]
 
 
@@ -156,7 +157,7 @@ def test_main_reports_no_matches_without_polluting_stdout(
     messages: list[str] = []
     sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
     try:
-        assert main(["get-coordinates", "nowhere-at-all-xyz"]) == 1
+        assert main(["geo", "nowhere-at-all-xyz"]) == 1
     finally:
         logger.remove(sink_id)
     assert not capsys.readouterr().out
@@ -172,7 +173,7 @@ def test_main_reports_unreachable_service_without_polluting_stdout(
     messages: list[str] = []
     sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
     try:
-        assert main(["get-coordinates", "cleve"]) == 1
+        assert main(["geo", "cleve"]) == 1
     finally:
         logger.remove(sink_id)
     assert not capsys.readouterr().out

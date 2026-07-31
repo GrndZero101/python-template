@@ -16,9 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-publicip = "claude.publicip:main"
-whoami = "claude.whoami:main"
-geo = "claude.geo:main"
+cli = "claude.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]

@@ -1,0 +1,207 @@
+"""Tests for the currency conversion command.
+
+No network: every request is served by an httpx MockTransport, so these are deterministic and
+run offline. Log assertions add a local loguru sink and disable the app's own logging setup,
+since loguru does not propagate to pytest's `caplog` and `configure_logging` would otherwise
+strip any sink a test installs.
+"""
+
+import functools
+import json
+from decimal import Decimal
+
+import httpx
+import pytest
+from loguru import logger
+
+from claude.cli import main
+from claude.currency import (
+    ConversionRequest,
+    RateQuote,
+    convert,
+    fetch_rate,
+    parse_decimal,
+    parse_pair,
+    parse_request,
+    render_conversion_json,
+)
+
+GBP_AUD = {"amount": 1.0, "base": "GBP", "date": "2026-07-30", "rates": {"AUD": 1.9179}}
+QUOTE = RateQuote(base="GBP", quote="AUD", rate=Decimal("1.9179"), on="2026-07-30")
+
+
+def _make_response(status: int, body: str, _request: httpx.Request) -> httpx.Response:
+    """MockTransport handler: build a fresh response for every request."""
+    return httpx.Response(status, text=body)
+
+
+def client_returning(payload: dict[str, object] | None = None, status: int = 200) -> httpx.Client:
+    """Return a client whose every request answers with `payload` and `status`."""
+    body = json.dumps(payload if payload is not None else GBP_AUD)
+    handler = functools.partial(_make_response, status, body)
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _unreachable(*_args: object, **_kwargs: object) -> RateQuote:
+    """Stand in for fetch_rate when the service cannot be reached."""
+    msg = "connection refused"
+    raise httpx.ConnectError(msg)
+
+
+def _always(quote: RateQuote, *_args: object, **_kwargs: object) -> RateQuote:
+    """Stand in for fetch_rate with a fixed answer."""
+    return quote
+
+
+def _no_op_configure_logging(*, verbose: bool = False) -> None:
+    """Stand in for configure_logging so a test's own sink survives."""
+
+
+# --- parsing ---------------------------------------------------------------------------
+
+
+def test_parses_a_currency_pair() -> None:
+    assert parse_pair("gbp/aud") == ("GBP", "AUD")
+
+
+@pytest.mark.parametrize("raw", ["GBPAUD", "GBP/", "/AUD", "GBP/AUD/USD", ""])
+def test_rejects_a_malformed_pair(raw: str) -> None:
+    with pytest.raises(ValueError, match="GBP/AUD"):
+        parse_pair(raw)
+
+
+def test_decimal_parsing_is_exact() -> None:
+    """Taking a string keeps 0.1 exactly one tenth; via float it would not."""
+    total = parse_decimal("0.1", "amount") + parse_decimal("0.2", "amount")
+    assert total == Decimal("0.3")
+
+
+def test_rejects_a_non_numeric_amount() -> None:
+    with pytest.raises(ValueError, match="expected a number for amount"):
+        parse_decimal("abc", "amount")
+
+
+def test_parse_request_builds_a_validated_request() -> None:
+    assert parse_request("1000", "gbp/aud", "2.5") == ConversionRequest(
+        amount=Decimal(1000), base="GBP", quote="AUD", margin_percent=Decimal("2.5")
+    )
+
+
+# --- the pure conversion ----------------------------------------------------------------
+
+
+def test_zero_margin_leaves_the_interbank_amount_untouched() -> None:
+    result = convert(QUOTE, Decimal(1000), Decimal(0))
+    assert result.effective_rate == Decimal("1.917900")
+    assert result.interbank_amount == result.effective_amount
+    assert result.margin_cost == Decimal("0.00")
+
+
+def test_margin_reduces_what_the_customer_receives() -> None:
+    result = convert(QUOTE, Decimal(1000), Decimal("2.5"))
+    assert result.effective_rate == Decimal("1.869952")
+    assert result.interbank_amount == Decimal("1917.90")
+    assert result.effective_amount == Decimal("1869.95")
+    assert result.margin_cost == Decimal("47.95")
+
+
+def test_margin_cost_reconciles_exactly() -> None:
+    """Money must balance to the cent — the reason this is Decimal and not float."""
+    result = convert(QUOTE, Decimal("1234.56"), Decimal("1.75"))
+    assert result.interbank_amount - result.effective_amount == result.margin_cost
+
+
+def test_amounts_are_rounded_to_cents() -> None:
+    result = convert(QUOTE, Decimal("0.01"), Decimal(3))
+    assert result.interbank_amount.as_tuple().exponent == -2
+    assert result.effective_amount.as_tuple().exponent == -2
+
+
+# --- fetching --------------------------------------------------------------------------
+
+
+def test_returns_the_published_rate() -> None:
+    with client_returning() as client:
+        quote = fetch_rate("GBP", "AUD", client=client)
+    assert quote == QUOTE
+
+
+def test_rate_never_passes_through_a_float() -> None:
+    """parse_float=Decimal is what keeps a binary artifact out of the rate."""
+    with client_returning({"base": "GBP", "date": "2026-07-30", "rates": {"AUD": 1.1}}) as client:
+        quote = fetch_rate("GBP", "AUD", client=client)
+    assert quote.rate == Decimal("1.1")
+
+
+def test_unquoted_currency_is_an_error() -> None:
+    with client_returning() as client, pytest.raises(ValueError, match="not quoted against"):
+        fetch_rate("GBP", "XYZ", client=client)
+
+
+def test_http_error_propagates() -> None:
+    with client_returning(status=503) as client, pytest.raises(httpx.HTTPStatusError):
+        fetch_rate("GBP", "AUD", client=client)
+
+
+def test_caller_supplied_client_is_not_closed() -> None:
+    """The function must not close a client it does not own."""
+    with client_returning() as client:
+        fetch_rate("GBP", "AUD", client=client)
+        assert not client.is_closed
+
+
+def test_render_conversion_json_keeps_decimals_as_strings() -> None:
+    decoded = json.loads(render_conversion_json(convert(QUOTE, Decimal(1000), Decimal("2.5"))))
+    assert decoded["effective_amount"] == "1869.95"
+    assert decoded["quote"]["rate"] == "1.9179"
+
+
+# --- entry point -----------------------------------------------------------------------
+
+
+def test_main_prints_a_table_to_stdout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("claude.currency.fetch_rate", functools.partial(_always, QUOTE))
+    assert main(["currency", "1000", "GBP/AUD", "--margin", "2.5"]) == 0
+    assert "Cost of margin" in capsys.readouterr().out
+
+
+def test_main_output_json_emits_parseable_stdout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("claude.currency.fetch_rate", functools.partial(_always, QUOTE))
+    assert main(["currency", "1000", "GBP/AUD", "-m", "2.5", "-o", "json"]) == 0
+    assert json.loads(capsys.readouterr().out)["margin_cost"] == "47.95"
+
+
+def test_main_rejects_a_bad_pair_as_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("claude.currency.configure_logging", _no_op_configure_logging)
+    assert main(["currency", "1000", "GBPAUD"]) == 2
+    assert not capsys.readouterr().out
+
+
+def test_main_reports_unreachable_service_without_polluting_stdout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("claude.currency.fetch_rate", _unreachable)
+    monkeypatch.setattr("claude.currency.configure_logging", _no_op_configure_logging)
+    messages: list[str] = []
+    sink_id = logger.add(functools.partial(_collect, messages), format="{message}")
+    try:
+        assert main(["currency", "1000", "GBP/AUD"]) == 1
+    finally:
+        logger.remove(sink_id)
+    assert not capsys.readouterr().out
+    assert any("could not reach" in message for message in messages)
+
+
+def _collect(messages: list[str], message: str) -> None:
+    """loguru sink that records each formatted message.
+
+    A loguru `Message` is a `str` subclass, so this needs no attribute access and stays
+    typed — unlike reaching into `message.record`.
+    """
+    messages.append(str(message))
