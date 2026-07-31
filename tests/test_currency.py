@@ -14,8 +14,8 @@ import httpx
 import pytest
 from loguru import logger
 
-from claude.cli import main
-from claude.currency import (
+from python_template.cli import main
+from python_template.currency import (
     ConversionRequest,
     RateQuote,
     convert,
@@ -162,7 +162,7 @@ def test_render_conversion_json_keeps_decimals_as_strings() -> None:
 def test_main_prints_a_table_to_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("claude.currency.fetch_rate", functools.partial(_always, QUOTE))
+    monkeypatch.setattr("python_template.currency.fetch_rate", functools.partial(_always, QUOTE))
     assert main(["currency", "1000", "GBP/AUD", "--margin", "2.5"]) == 0
     assert "Cost of margin" in capsys.readouterr().out
 
@@ -170,7 +170,7 @@ def test_main_prints_a_table_to_stdout(
 def test_main_output_json_emits_parseable_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("claude.currency.fetch_rate", functools.partial(_always, QUOTE))
+    monkeypatch.setattr("python_template.currency.fetch_rate", functools.partial(_always, QUOTE))
     assert main(["currency", "1000", "GBP/AUD", "-m", "2.5", "-o", "json"]) == 0
     assert json.loads(capsys.readouterr().out)["margin_cost"] == "47.95"
 
@@ -178,7 +178,7 @@ def test_main_output_json_emits_parseable_stdout(
 def test_main_rejects_a_bad_pair_as_a_usage_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("claude.currency.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr("python_template.currency.configure_logging", _no_op_configure_logging)
     assert main(["currency", "1000", "GBPAUD"]) == 2
     assert not capsys.readouterr().out
 
@@ -186,8 +186,8 @@ def test_main_rejects_a_bad_pair_as_a_usage_error(
 def test_main_reports_unreachable_service_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("claude.currency.fetch_rate", _unreachable)
-    monkeypatch.setattr("claude.currency.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr("python_template.currency.fetch_rate", _unreachable)
+    monkeypatch.setattr("python_template.currency.configure_logging", _no_op_configure_logging)
     messages: list[str] = []
     sink_id = logger.add(functools.partial(_collect, messages), format="{message}")
     try:
