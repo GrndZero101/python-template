@@ -94,6 +94,7 @@ which rest on your own discipline.
 | Conventional Commit format, every branch | `conventional-pre-commit` (prek, `commit-msg` stage) |
 | Branch consolidated to one commit before merge | *convention — review only* |
 | `main` receives merge commits, never fast-forwards | *convention — review only* |
+| Merge subject describes the work, never `Merge branch '...'` | *convention — `Merge` is exempt from the message check* |
 | Clean tree before starting work | *convention — `SessionStart` reports it, does not block* |
 | Commit summary ≤72 chars, imperative | *convention — review only* |
 | One logical change per commit | *convention — review only* |
@@ -161,7 +162,7 @@ git merge --squash feat/x-wip
 git commit -m "feat(x): ..."              # full gate + message check run HERE
 git rebase main                           # resolve conflicts HERE, never on main
 git switch main
-git merge --no-ff feat/x
+git merge --no-ff -m "feat(x): ..." feat/x   # subject repeats the branch commit's summary
 git branch -D feat/x feat/x-wip
 ```
 
@@ -178,13 +179,44 @@ forbids when a branch genuinely did two things. Consolidate with autosquash inst
 git commit --fixup=HEAD                             # corrections, as you go
 GIT_SEQUENCE_EDITOR=true git rebase --autosquash main
 prek run --all-files                                # REQUIRED — see below
-git switch main && git merge --no-ff feat/x
+git switch main && git merge --no-ff --log -m "feat(x): ..." feat/x
 ```
 
 **No hooks run during a rebase** — not the gate, not the message check. A rebase that resolved a
 conflict produces a tree nothing has ever checked, so `prek run --all-files` afterwards is not
 optional. For the same reason, never consolidate with an interactive-rebase squash and assume the
 result was verified. It was not.
+
+### The merge message
+
+Always pass `-m`. Git's default subject is `Merge branch 'feat/x'`, which is the one form this repo
+does not use — and also the one form nothing will catch. `commit-msg` *does* fire on
+`git merge --no-ff`, but `conventional-pre-commit` exempts any message beginning with `Merge`, so
+the default sails through while `adds a probe file` is correctly rejected. The convention below is
+therefore review-only in practice, however enforced the rest of the commit rules look.
+
+It matters because the merge commit is the only place the work is described. Git records the branch
+name nowhere in the commit — only in the reflog, which is local and expires — so once
+`feat/geo-get-coordinates` is deleted, the merge subject is all that is left.
+
+- **Squash path** (the branch is one commit): the merge subject repeats that commit's conventional
+  summary verbatim. The body carries anything the branch commit does not already say, and nothing
+  otherwise — do not manufacture prose to fill it.
+
+  ```bash
+  git merge --no-ff -m "feat(geo): add coordinate lookup" feat/geo
+  ```
+
+- **Rebase path** (the branch holds several commits): the merge subject summarises the branch as a
+  whole, and `--log` populates the body with the commits that arrived, so the "and" the subject
+  cannot contain lands in the body instead.
+
+  ```bash
+  git merge --no-ff --log -m "feat(geo): add lookup and caching" feat/geo
+  ```
+
+Once there is a remote and PRs exist, add a `Refs: #N` trailer. Footers are part of the Conventional
+Commits spec; branch names are not.
 
 ### Never resolve conflicts on `main`
 
