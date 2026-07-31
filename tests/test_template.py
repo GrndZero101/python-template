@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 from pytest_copie.plugin import Copie
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 PROJECT_TYPES = ["cli-modern", "cli-stdlib", "fastapi", "tui", "data"]
 
 # The example CLI travels only with cli-modern; every other type gets infrastructure and its
@@ -48,9 +50,13 @@ def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
 
 
-def _generate(copie: Copie, project_type: str) -> Path:
-    """Generate a project and return its directory, failing the test if copier did not."""
-    result = copie.copy(extra_answers=_answers(project_type))
+def _generate(copie: Copie, project_type: str, template_dir: Path | None = None) -> Path:
+    """Generate a project and return its directory, failing the test if copier did not.
+
+    `template_dir` overrides the repo under test, which the update tests need so they can move
+    the template forward without committing to the real one.
+    """
+    result = copie.copy(extra_answers=_answers(project_type), template_dir=template_dir)
     assert result.exception is None, f"copier raised: {result.exception}"
     assert result.exit_code == 0, f"copier exited {result.exit_code}"
     assert result.project_dir is not None
@@ -59,6 +65,33 @@ def _generate(copie: Copie, project_type: str) -> Path:
 
 requires_uv = pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed")
 requires_prek = pytest.mark.skipif(shutil.which("prek") is None, reason="prek is not installed")
+requires_copier = pytest.mark.skipif(shutil.which("copier") is None, reason="copier is not on PATH")
+
+
+def _clone_template(destination: Path) -> Path:
+    """Clone this repo so a test can commit to the template without touching the real one.
+
+    `copier update` compares the commit recorded in `.copier-answers.yml` against a newer ref, so
+    a meaningful test needs a template it can actually move forward. Only committed state is
+    cloned, which is what a generated project would pull from anyway.
+    """
+    clone = destination / "template-clone"
+    cloned = _run(["git", "clone", "--quiet", str(REPO_ROOT), str(clone)], destination)
+    assert cloned.returncode == 0, cloned.stderr
+    return clone
+
+
+def _commit_all(repo: Path, message: str) -> None:
+    """Commit everything in `repo`, bypassing hooks.
+
+    `--no-verify` is deliberate. A *generated* project has its own guards installed and sits on
+    `main`, so an ordinary commit is refused by `no-commit-to-branch` — which is the behaviour
+    those guards exist for. These commits stand in for work a user already did; the guards
+    themselves are tested separately.
+    """
+    _run(["git", "add", "-A"], repo)
+    committed = _run(["git", "commit", "--no-verify", "-m", message], repo)
+    assert committed.returncode == 0, committed.stdout + committed.stderr
 
 
 # --- structure ----------------------------------------------------------------------------
@@ -158,6 +191,72 @@ def test_generated_project_passes_its_own_tests(copie: Copie, project_type: str)
     project = _generate(copie, project_type)
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+# --- copier update ------------------------------------------------------------------------
+#
+# The reason copier was chosen over cookiecutter: an improvement to CLAUDE.md or a skill can be
+# pulled into projects that already exist. These tests are what make that claim true rather than
+# assumed. Each clones the repo so the template can be moved forward without touching the real one.
+
+MARKER = "A line added by the template after this project was generated."
+
+
+@requires_uv
+@requires_copier
+def test_update_pulls_a_later_template_change_into_an_existing_project(
+    copie: Copie, tmp_path: Path
+) -> None:
+    clone = _clone_template(tmp_path)
+    project = _generate(copie, "cli-modern", template_dir=clone)
+    assert MARKER not in (project / "CLAUDE.md").read_text(encoding="utf-8")
+
+    claude_md = clone / "template" / "CLAUDE.md"
+    claude_md.write_text(claude_md.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8")
+    _commit_all(clone, "docs: add a marker line")
+
+    updated = _run(["copier", "update", "--trust", "--defaults"], project)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    assert MARKER in (project / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+@requires_uv
+@requires_copier
+def test_update_preserves_a_file_the_project_has_edited(copie: Copie, tmp_path: Path) -> None:
+    """The case that decides whether updating is safe: local work must not be silently lost."""
+    clone = _clone_template(tmp_path)
+    project = _generate(copie, "cli-modern", template_dir=clone)
+
+    local_edit = "# A line this project added for itself.\n"
+    readme = project / "README.md"
+    readme.write_text(readme.read_text(encoding="utf-8") + local_edit, encoding="utf-8")
+    _commit_all(project, "docs: local change")
+
+    template_readme = clone / "template" / "README.md.jinja"
+    template_readme.write_text(
+        template_readme.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8"
+    )
+    _commit_all(clone, "docs: change the readme upstream")
+
+    updated = _run(["copier", "update", "--trust", "--defaults"], project)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    assert local_edit in readme.read_text(encoding="utf-8"), "local work was discarded"
+
+
+@requires_uv
+@requires_prek
+@requires_copier
+def test_a_project_still_passes_its_gate_after_updating(copie: Copie, tmp_path: Path) -> None:
+    clone = _clone_template(tmp_path)
+    project = _generate(copie, "cli-modern", template_dir=clone)
+
+    claude_md = clone / "template" / "CLAUDE.md"
+    claude_md.write_text(claude_md.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8")
+    _commit_all(clone, "docs: add a marker line")
+    _run(["copier", "update", "--trust", "--defaults"], project)
+
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
 
 
 @requires_uv

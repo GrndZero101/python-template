@@ -101,11 +101,24 @@ _exclude:
 # has the clean tree it requires, and it gives `prek run --all-files` tracked files to look at:
 # prek sees only what git knows about, so before the first commit the whole gate reports
 # "no files to check" and passes vacuously.
+#
+# Every task is guarded to the initial copy. On `copier update` the project is already a git
+# repo with the shims installed, and re-running the commit task fails outright: by then the
+# project's own `no-commit-to-branch` hook is live and the project is on `main`, which is
+# exactly the commit that hook exists to refuse. An update therefore leaves its changes in the
+# working tree for review, which is the right behaviour anyway.
 _tasks:
-  - ["git", "init", "-b", "main"]
-  - ["uv", "sync"]
-  - ["git", "add", "-A"]
-  - ["git", "commit", "-m", "chore: generate project from python-template"]
-  - ["prek", "install"]
-  - ["prek", "install", "-t", "commit-msg"]
-  - ["prek", "install", "-t", "pre-merge-commit"]
+  - command: ["git", "init", "-b", "main"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["uv", "sync"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["git", "add", "-A"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["git", "commit", "-m", "chore: generate project from python-template"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["prek", "install"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["prek", "install", "-t", "commit-msg"]
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: ["prek", "install", "-t", "pre-merge-commit"]
+    when: "{{ _copier_operation == 'copy' }}"
