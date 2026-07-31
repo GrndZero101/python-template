@@ -23,7 +23,7 @@ uv tool install prek
 ## Path A — start a new project from this template
 
 ```bash
-copier copy gh:tboss-dev/python-template my-project     # answer the prompts
+copier copy gh:GrndZero101/python-template my-project     # answer the prompts
 cd my-project
 ```
 
@@ -58,7 +58,7 @@ have edited keep your changes, and genuine conflicts arrive as markers to resolv
 To pin a version, or to move deliberately:
 
 ```bash
-copier copy --vcs-ref v1.2.0 gh:tboss-dev/python-template my-project
+copier copy --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
 copier update --trust --vcs-ref v1.3.0
 ```
 
@@ -69,7 +69,7 @@ Do not delete `.copier-answers.yml` — `copier update` reads it to know what yo
 ## Path B — work on the template itself
 
 ```bash
-git clone https://github.com/tboss-dev/python-template
+git clone https://github.com/GrndZero101/python-template
 cd python-template
 uv sync
 prek install && prek install -t commit-msg && prek install -t pre-merge-commit

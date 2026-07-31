@@ -20,7 +20,7 @@ from .logging_setup import configure_logging
 from .output import OutputFormat, OutputOption, out
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "geo-cli (https://github.com/tboss-dev)"
+USER_AGENT = "geo-cli (https://github.com/GrndZero101)"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_LIMIT = 10
 

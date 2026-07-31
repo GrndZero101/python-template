@@ -50,7 +50,7 @@ where a skill calls for it.
 
 Everything so far is verified against a **local** template path. Untested:
 
-- `copier copy gh:tboss-dev/python-template <dest>` from an actual remote.
+- `copier copy gh:GrndZero101/python-template <dest>` from an actual remote.
 - `copier update` on a generated project — the machinery is in place (`.copier-answers.yml` ships,
   the generation tasks leave a clean tree and an initial commit) but no update has been run.
   `pytest-copie` exposes `.update()` for this.
