@@ -7,7 +7,7 @@ and hoped for.
 
 ## What's here
 
-- **`src/claude/`** — a demo CLI (`cli`) with two subcommands, `geo` and `currency`, on the
+- **`src/python_template/`** — a demo CLI (`cli`) with two subcommands, `geo` and `currency`, on the
   typer/httpx/pydantic/rich/loguru stack. Offline-tested via `httpx.MockTransport`.
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
   `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that

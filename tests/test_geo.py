@@ -14,8 +14,8 @@ import httpx
 import pytest
 from loguru import logger
 
-from claude.cli import main
-from claude.geo import NOMINATIM_URL, Place, find_coordinates, render_places_json
+from python_template.cli import main
+from python_template.geo import NOMINATIM_URL, Place, find_coordinates, render_places_json
 
 CLEVE = {
     "display_name": "Cleve, Eyre Peninsula, South Australia, 5640, Australia",
@@ -120,7 +120,7 @@ def test_main_prints_matches_to_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
-    monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
+    monkeypatch.setattr("python_template.geo.find_coordinates", functools.partial(_always, [place]))
     assert main(["geo", "cleve"]) == 0
     captured = capsys.readouterr()
     assert "Cleve, South Australia" in captured.out
@@ -131,7 +131,7 @@ def test_main_output_json_emits_parseable_stdout(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     place = Place(display_name="Cleve, South Australia", lat=-33.7075, lon=136.4931, type="town")
-    monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, [place]))
+    monkeypatch.setattr("python_template.geo.find_coordinates", functools.partial(_always, [place]))
     assert main(["geo", "cleve", "--output", "json"]) == 0
     decoded = json.loads(capsys.readouterr().out)
     assert decoded[0]["display_name"] == "Cleve, South Australia"
@@ -142,7 +142,7 @@ def test_main_joins_multi_word_location(
 ) -> None:
     seen_queries: list[str] = []
     monkeypatch.setattr(
-        "claude.geo.find_coordinates", functools.partial(_record_query, seen_queries)
+        "python_template.geo.find_coordinates", functools.partial(_record_query, seen_queries)
     )
     main(["geo", "cleve,", "south", "australia"])
     assert seen_queries == ["cleve, south australia"]
@@ -152,8 +152,8 @@ def test_main_reports_no_matches_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr("claude.geo.find_coordinates", functools.partial(_always, []))
-    monkeypatch.setattr("claude.geo.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr("python_template.geo.find_coordinates", functools.partial(_always, []))
+    monkeypatch.setattr("python_template.geo.configure_logging", _no_op_configure_logging)
     messages: list[str] = []
     sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
     try:
@@ -168,8 +168,8 @@ def test_main_reports_unreachable_service_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr("claude.geo.find_coordinates", _unreachable)
-    monkeypatch.setattr("claude.geo.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr("python_template.geo.find_coordinates", _unreachable)
+    monkeypatch.setattr("python_template.geo.configure_logging", _no_op_configure_logging)
     messages: list[str] = []
     sink_id = logger.add(lambda msg: messages.append(msg.record["message"]), format="{message}")
     try:
