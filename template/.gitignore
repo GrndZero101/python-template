@@ -1,9 +1,13 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
 
 # Environments
 .venv/
+venv/
 
 # Deliberate override for the PreToolUse branch guard (see CLAUDE.md > Branching)
 .allow-main-edit
@@ -13,3 +17,5 @@ __pycache__/
 .pytest_cache/
 .ty_cache/
 .rumdl_cache/
+.coverage
+htmlcov/

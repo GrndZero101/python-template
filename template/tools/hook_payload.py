@@ -41,3 +41,32 @@ def inside_repo(target: Path, root: Path) -> bool:
     getting it right is why these hooks are Python rather than shell.
     """
     return target.resolve().is_relative_to(root.resolve())
+
+
+GATE_CONFIG_NAMES = ("prek.toml", ".pre-commit-config.yaml")
+
+
+def _has_gate_config(directory: Path) -> bool:
+    """Return whether `directory` holds a prek configuration file."""
+    return any((directory / name).exists() for name in GATE_CONFIG_NAMES)
+
+
+def find_gate_root(target: Path, root: Path) -> Path | None:
+    """Return the nearest ancestor of `target` holding a prek config, bounded by `root`.
+
+    In a generated project the config sits at the repository root, so this returns `root` and
+    the gate behaves exactly as it did when that root was hard-coded. In this template repo the
+    project lives one level down under `template/`, and the answer is that subdirectory — which
+    is why the hook needs to search rather than assume.
+
+    None means no config governs the file. The caller lets the edit stand rather than blocking,
+    because a directory outside any project — this repo's own root, holding only markdown — is a
+    legitimate place to edit.
+    """
+    resolved_root = root.resolve()
+    for candidate in [target.resolve().parent, *target.resolve().parents]:
+        if not candidate.is_relative_to(resolved_root):
+            return None
+        if _has_gate_config(candidate):
+            return candidate
+    return None

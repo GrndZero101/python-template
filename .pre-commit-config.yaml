@@ -1,72 +1,51 @@
-# Run with: prek run --all-files
+# The gate for the TEMPLATE REPOSITORY itself. Run with: prek run --all-files
 #
-# NOTE: `repo: builtin` is a prek extension and is NOT understood by the original
-# `pre-commit` tool. That is a deliberate trade for zero-clone, offline hygiene hooks.
-# If this repo ever needs to support plain `pre-commit`, swap the builtin block for
-# https://github.com/pre-commit/pre-commit-hooks (prek fast-paths it automatically).
+# `.git` lives here, at the root, so `prek install` wires the git hooks to this file and this
+# file is what every commit-time guard reads. That is why the root cannot be metadata-only.
 #
-# Install ALL THREE shims — `prek install` alone wires only pre-commit, so the
-# commit-msg check would never fire and `git merge --no-ff` into main would be
-# blocked by no-commit-to-branch:
-#   prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+# The division of labour is deliberate:
+#
+# - Everything here EXCLUDES `template/`, and covers only the repo's own markdown and the
+#   commit-level rules that need a `.git` to act on.
+# - No code checking appears here at all. prek treats a nested `.pre-commit-config.yaml` as a
+#   workspace member, so files under `template/` are routed to that config and run with
+#   `template/` as the working directory. The lint list therefore exists exactly once, in the
+#   file a generated project actually receives.
+#
+# A second copy at this level would have to duplicate the dependency list and build a second venv
+# as well, because `ty` resolves imports through the project environment.
+#
+# NOTE: workspace discovery is a prek extension; plain `pre-commit` does not have it and would
+# leave `template/` unchecked. That is the same trade already made for `repo: builtin` below.
 repos:
   - repo: builtin
     hooks:
       - id: trailing-whitespace
+        exclude: ^template/
       - id: end-of-file-fixer
+        exclude: ^template/
       - id: check-merge-conflict
+        exclude: ^template/
       - id: check-added-large-files
-      - id: check-toml
       - id: check-yaml
+        exclude: ^template/
       - id: detect-private-key
-      # Work happens on a branch; main only ever receives merge commits.
-      # `stages: [pre-commit]` is load-bearing: git runs `pre-merge-commit`
-      # for a merge, so restricting this hook to the pre-commit stage lets
-      # `git merge --no-ff` through while still blocking a direct commit.
-      # That only holds if the pre-merge-commit shim is installed (see below);
-      # without it git falls back to pre-commit and blocks merges too.
+      # Work happens on a branch; main only ever receives merge commits. See the note in
+      # template/.pre-commit-config.yaml — `stages: [pre-commit]` is what lets `--no-ff` through.
       - id: no-commit-to-branch
         args: [--branch, main]
         stages: [pre-commit]
 
-  # Enforces the `type(scope): summary` rule in CLAUDE.md at commit time.
-  # Default types match that list exactly, so no args are needed.
-  # Note: it does NOT check summary length — the 72-char rule stays convention.
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
-    hooks:
-      - id: ruff-format
-      - id: ruff-check  # `ruff` is a legacy alias as of v0.16.0
-        args: [--fix]
-
-  - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.64
-    hooks:
-      - id: ty
-
   - repo: https://github.com/rvben/rumdl-pre-commit
     rev: v0.2.45
     hooks:
       - id: rumdl-fmt
+        exclude: ^template/
       - id: rumdl
-
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.12.0
-    hooks:
-      - id: uv-lock
-
-  # The single custom rule. No native linter covers `def` inside `def`.
-  # language: system so it shares the project interpreter and needs no isolated env.
-  - repo: local
-    hooks:
-      - id: no-nested-defs
-        name: no nested function definitions
-        entry: uv run python tools/check_nested_defs.py
-        language: system
-        types: [python]
+        exclude: ^template/

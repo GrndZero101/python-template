@@ -1,48 +1,36 @@
 # python-template
 
-A Python project template built around one idea: every rule in [CLAUDE.md](CLAUDE.md) exists so a
-human (or an AI agent) can stop the program and inspect it. Structure, debuggability, and
-portability rules are mechanically enforced by lint config and a `prek` gate — not just documented
-and hoped for.
+A [copier](https://copier.readthedocs.io/) template for Python projects built around one idea:
+every rule in the generated `CLAUDE.md` exists so a human (or an AI agent) can stop the program and
+inspect it. Structure, debuggability and portability rules are mechanically enforced by lint config
+and a `prek` gate — not just documented and hoped for.
 
-## What's here
+## Layout
 
-- **`src/python_template/`** — a demo CLI (`cli`) with two subcommands, `geo` and `currency`, on the
-  typer/httpx/pydantic/rich/loguru stack. Offline-tested via `httpx.MockTransport`.
-- **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
-  `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
-  block edits to `main` and run the lint gate on save), and `hook_payload.py` (shared parsing).
-- **`.claude/skills/`** — stack-specific conventions (`python-cli`, `python-cli-stdlib`,
-  `python-cli-modern`, `python-fastapi`, `python-tui`, `python-data`) that an agent loads based on
-  what the project actually depends on.
-- **`CLAUDE.md`** — the full rule set: structure, debuggability, agent-friendliness, portability,
-  branching, and commit conventions, plus a table of exactly what is enforced by what.
+- **`template/`** — everything a generated project receives. It is an ordinary, runnable Python
+  project: it has its own tests, its own gate, and is held to the rules it ships.
+- **`.pre-commit-config.yaml`** — the gate for this repository. It owns the commit-level rules and
+  delegates all code checking into `template/`, so the lint list exists in exactly one place.
+- **`CLAUDE.md`** — how to work on the template. Imports `template/CLAUDE.md` for the rules
+  themselves.
+- **`TODO.md`** — outstanding work.
 
-## Setup
+## Status
+
+Mid-conversion. The tree has been restructured for `_subdirectory`, but `copier.yml` does not exist
+yet and the package name, project type and example code are still fixed to the `geo`/`currency`
+demo. See [TODO.md](TODO.md).
+
+## Working on it
 
 ```bash
-uv sync
 prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+prek run --all-files                  # delegates into template/
+uv run --directory template pytest    # the generated project's own suite
 ```
 
 All three shims are required — `prek install` alone wires only `pre-commit`, which silently skips
 the commit-message check and breaks `--no-ff` merges into `main`.
-
-## Commands
-
-```bash
-ruff format . && ruff check --fix .              # format, then auto-fix
-ty check                                         # types
-rumdl fmt . && rumdl check .                     # markdown
-uv run pytest                                    # tests
-uv run python tools/check_nested_defs.py src tests tools
-prek run --all-files                             # everything above, as one gate
-```
-
-## Status
-
-This template is mid-conversion into a `copier` template (package name, project type, and example
-code still hardcoded to the `geo`/`currency` demo). See [TODO.md](TODO.md) for what's outstanding.
 
 ## License
 
