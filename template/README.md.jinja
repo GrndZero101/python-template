@@ -1,0 +1,57 @@
+# {{ project_name }}
+
+{% if project_description %}{{ project_description }}
+
+{% endif %}Generated from [python-template](https://github.com/tboss-dev/python-template), built
+around one idea: every rule in [CLAUDE.md](CLAUDE.md) exists so a human (or an AI agent) can stop
+the program and inspect it. Structure, debuggability and portability rules are mechanically enforced
+by lint config and a `prek` gate — not just documented and hoped for.
+
+## What's here
+
+- **`src/{{ package_name }}/`** — the package.{% if project_type == "cli-modern" %} It ships a demo
+  CLI (`cli`) with two subcommands, `geo` and `currency`, on the typer/httpx/pydantic/rich/loguru
+  stack, offline-tested via `httpx.MockTransport`. That is example code: pattern-match against it,
+  then delete it.{% endif %}
+- **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
+  `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
+  block edits to `main` and run the lint gate on save), and `hook_payload.py` (shared parsing).
+- **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply.
+- **`CLAUDE.md`** — the full rule set: structure, debuggability, agent-friendliness, portability,
+  branching, and commit conventions, plus a table of exactly what is enforced by what.
+
+## Setup
+
+The template's generation tasks already ran these. Repeat them only on a fresh clone:
+
+```bash
+uv sync
+prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+```
+
+All three shims are required — `prek install` alone wires only `pre-commit`, which silently skips
+the commit-message check and breaks `--no-ff` merges into `main`.
+
+## Commands
+
+```bash
+ruff format . && ruff check --fix .              # format, then auto-fix
+ty check                                         # types
+rumdl fmt . && rumdl check .                     # markdown
+uv run pytest                                    # tests
+uv run python tools/check_nested_defs.py src tests tools
+prek run --all-files                             # everything above, as one gate
+{% if project_type == "cli-modern" %}uv run cli --help                                # the demo CLI
+{% endif %}```
+
+## Updating from the template
+
+```bash
+copier update
+```
+
+Requires a clean tree and the `.copier-answers.yml` written at generation. Do not delete that file.
+
+## License
+
+[MIT](LICENSE)

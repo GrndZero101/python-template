@@ -49,3 +49,38 @@ repos:
         exclude: ^template/
       - id: rumdl
         exclude: ^template/
+
+  # The root's own Python is just the generation tests, but they are held to the same rules.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-format
+        exclude: ^template/
+      - id: ruff-check
+        args: [--fix]
+        exclude: ^template/
+
+  - repo: local
+    hooks:
+      # The template's own custom checker, reused on the repo that ships it. It is a literal
+      # .py file, so it runs here unchanged.
+      - id: no-nested-defs
+        name: no nested function definitions
+        entry: uv run python template/tools/check_nested_defs.py
+        language: system
+        types: [python]
+        exclude: ^template/
+
+      # The only thing that verifies template/. It generates a project for each project type
+      # and runs that project's gate and test suite inside it, so it is slow — around a minute.
+      # That is the price of template/ not being lintable in place. To skip it deliberately:
+      #   SKIP=generation-tests git commit ...
+      # `stages: [pre-commit]` is load-bearing. Without it the hook also fires at the commit-msg
+      # stage, running the whole minute-long suite a second time for a message check.
+      - id: generation-tests
+        name: generate projects and run their gates
+        entry: uv run pytest tests
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

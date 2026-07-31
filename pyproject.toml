@@ -1,11 +1,72 @@
 # Configuration for the TEMPLATE REPOSITORY, not for a generated project.
 #
-# There is deliberately no [project] table and no dependency list: the root is not a Python
-# package and has no venv of its own. Everything Python lives in `template/`, which carries the
-# full ruff/ty/rumdl configuration that a generated project receives.
+# There is no [project] table: the root is not a package and ships nothing. It has a dev
+# dependency group and a venv for one purpose only — running the generation tests, which are
+# the sole thing that verifies `template/` now that it holds Jinja and cannot be linted in
+# place. A generated project's own configuration lives in `template/pyproject.toml.jinja`.
 #
-# This file exists so `rumdl` applies the same line length to the repo's own markdown as the
-# template applies to its.
+# The lint config here is deliberately smaller than the template's. The root holds one test
+# module, not a project, so it gets the rules that catch real defects and none of the dials
+# that exist to shape a codebase.
+
+# Not published and not importable — this exists so uv has a `requires-python` to resolve the
+# dev group against. `package = false` keeps uv from trying to build it.
+[project]
+name = "python-template-dev"
+version = "0"
+requires-python = ">=3.14"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "copier>=9.17.0",
+    "pytest>=9.1.1",
+    "pytest-copie>=0.3.1",
+]
+
+[tool.pytest.ini_options]
+# --template is required by pytest-copie and names the directory holding copier.yml.
+addopts = "-q --tb=short --template=."
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+preview = true  # required to name rules rather than codes in `ignore` below
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "UP", "N",
+    "D", "ANN",
+    "B", "C4", "SIM", "PERF", "RUF",
+    "RET", "TRY", "EM", "BLE",
+    "T20", "PTH", "DTZ", "ARG", "SLF", "PT", "S",
+]
+ignore = [
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+    "undocumented-public-module",
+    "undocumented-public-package",
+    "line-too-long",
+    "missing-trailing-comma",
+    "raise-vanilla-args",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Generation tests assert, use literals, and must shell out to run the generated project's own
+# gate — running that gate in-process is not possible, and it is the whole point of the test.
+"tests/**" = [
+    "assert",
+    "D",
+    "ANN",
+    "magic-value-comparison",
+    "suspicious-subprocess-import",
+    "subprocess-without-shell-equals-true",
+    "start-process-with-partial-path",
+]
+
 [tool.rumdl]
 line-length = 100
 respect-gitignore = true

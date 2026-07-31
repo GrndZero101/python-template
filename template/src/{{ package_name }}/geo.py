@@ -16,11 +16,11 @@ from loguru import logger
 from pydantic import BaseModel, Field
 from rich.table import Table
 
-from python_template.logging_setup import configure_logging
-from python_template.output import OutputFormat, OutputOption, out
+from .logging_setup import configure_logging
+from .output import OutputFormat, OutputOption, out
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "python-template-geo-cli (https://github.com/tboss-dev)"
+USER_AGENT = "geo-cli (https://github.com/tboss-dev)"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 DEFAULT_LIMIT = 10
 

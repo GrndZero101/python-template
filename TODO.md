@@ -5,99 +5,83 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Status snapshot
 
-- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`. Four modules under `tools/`:
-  `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and `gate` (the two
-  hooks), and `hook_payload` (shared parsing so they cannot diverge).
+- The repo **is** a working copier template. `copier.yml` at the root, everything that becomes a
+  generated project under `template/` via `_subdirectory`. All five project types
+  (`cli-modern`, `cli-stdlib`, `fastapi`, `tui`, `data`) generate, pass their own gate and pass
+  their own tests.
+- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Four modules under
+  `template/tools/`: `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and
+  `gate` (the two hooks), and `hook_payload` (shared parsing so they cannot diverge).
 - Guards live: `PreToolUse` blocks edits to *repo* files on `main`, `no-commit-to-branch` blocks
   direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
-  message, `SessionStart` reports branch and tree state.
-- **Every hook is a single executable invocation, no shell operators** — the portability rule.
-  The edit-time gate runs `prek run --files <edited>`, so it and the commit-time gate are the
-  same list by construction rather than two lists that can drift.
-- Six skills under `.claude/skills/`: `python-cli`, `python-cli-stdlib`, `python-cli-modern`,
-  `python-data`, `python-fastapi`, `python-tui`.
-- **One console script, `cli`**, with two subcommands on the typer/httpx/pydantic/rich/loguru
-  stack: `cli geo <location>` and `cli currency <amount> <PAIR>`. Shared plumbing in
-  `output.py` (two consoles, `CLI_OUTPUT`), `logging_setup.py`, `typer_entrypoint.py`.
-  85 tests, all offline via `httpx.MockTransport`.
+  message, `SessionStart` reports branch and tree state. Every hook is a single executable
+  invocation, no shell operators.
+- Only five files under `template/` are `.jinja`: `pyproject.toml`, `README.md`,
+  `.pre-commit-config.yaml`, `.copier-answers.yml`, and the two example test modules. The six
+  source modules ship literally because their internal imports are **relative** — nothing inside
+  `src/` names the package, so copier renders only the directory name.
+- `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py` is
+  the only thing that verifies it: 25 tests that generate a project per type and run that
+  project's gate and suite inside it. It is wired into the gate and costs about a minute.
 - `mcp-debugger` is installed and **proven** against `geo`. Node LTS 24.18.0 via winget,
   `@debugmcp/mcp-debugger` 0.23.0 global, `debugpy` a dev dependency, server registered at
   **user scope** so nothing ships yet. It confirmed CLAUDE.md's central claim empirically: a
   module-level helper was called from a breakpoint with invented literal arguments
   (`render_places_json([Place.model_validate({...})])`), which a nested `def` makes impossible.
-  Injected `client` inspected fine; `Place(...)` reprs in four fields where the raw dict
-  truncated mid-key through `place_id`/`licence`.
-- The `geo` build was a deliberate test of whether the guardrails let a cheaper model
-  self-correct. It passed: no `noqa`, no `type: ignore`, no `Any`, no new per-file-ignores, and
-  the skills demonstrably steered.
 
 ## Do next
 
-### 1. Convert this repo into a project template
+### 1. Non-`cli-modern` types generate an empty package
 
-**Decided: template, not global promotion.** Promoting `CLAUDE.md`, settings and skills to
-`~/.claude` was the earlier plan and has been dropped. The two are competing designs, and
-per-project wins: a repo-local `CLAUDE.md` makes a project self-describing to any agent, on any
-machine, for any collaborator, and survives being cloned. Global config gives none of that. Keep
-`~/.claude` for genuinely personal preferences only.
+`fastapi`, `tui`, `data` and `cli-stdlib` receive the infrastructure — `tools/`, `CLAUDE.md`, the
+gate, the hooks, their one skill — but `src/<package>/` contains only `__init__.py` and `py.typed`.
+That is honest (the `geo`/`currency` demo is a typer demonstration and would drag typer, httpx and
+rich into an unrelated stack) but it gives those projects nothing to pattern-match against.
 
-Tooling: **copier** (`uv tool install copier`, 9.17.0 verified). `uv` has no template mechanism —
-there is no `uv init --template`. Copier is chosen over cookiecutter for one reason: `copier update`
-re-applies template changes to *already-generated* projects, so improvements to CLAUDE.md or a skill
-can be pulled downstream instead of being stranded in whichever repo they were written in.
+Each needs a small example in its own idiom: a FastAPI app with one router and an `ASGITransport`
+test, a Textual app with a Pilot test, a polars/duckdb pipeline, an argparse CLI. The skills already
+describe the conventions; this is about shipping one worked instance of each.
 
-**How the template stays testable** — this is copier's own documented answer to "placeholders make
-the repo unrunnable": `_subdirectory`. The repo root stops being a Python project and holds only
-template metadata; everything that becomes a generated project lives one level down.
+Note `logging_setup.py` is currently excluded from those types because it imports `loguru`. A
+stdlib `logging` equivalent is probably the right shared default, with the loguru one shipping only
+where a skill calls for it.
 
-```text
-copier.yml              # _subdirectory: template
-tests/test_template.py  # generates into tmp, then runs the generated project's own gate
-template/               # <- becomes the new project
-  pyproject.toml.jinja  # needs substitution
-  CLAUDE.md             # literal copy — no placeholders, stays real
-  tools/                # literal copies — still lintable, still testable
-  src/{{ package_name }}/
-```
+### 2. Publish and test the remote path
 
-Only files needing substitution take the `.jinja` suffix, so `branch_guard.py`,
-`check_nested_defs.py` and every skill remain ordinary files.
+Everything so far is verified against a **local** template path. Untested:
 
-Work needed:
+- `copier copy gh:tboss-dev/python-template <dest>` from an actual remote.
+- `copier update` on a generated project — the machinery is in place (`.copier-answers.yml` ships,
+  the generation tasks leave a clean tree and an initial commit) but no update has been run.
+  `pytest-copie` exposes `.update()` for this.
+- `_src_path` currently records the local filesystem path in generated projects.
 
-- `copier.yml` asking: package name, project name, description, author, and **project type**. The
-  type maps onto the existing two-axis skill design — `cli-stdlib`, `cli-modern`, `fastapi`, `tui`,
-  `data` — and conditionally ships the matching skill, dependencies and lint config (e.g. `"FAST"`
-  added to `select` only for FastAPI).
-- `_tasks` for the side effects: `git init -b main`, `uv sync`, and **all three** prek shims
-  (`prek install && prek install -t commit-msg && prek install -t pre-merge-commit`). Ship
-  `pyproject.toml.jinja` in full rather than calling `uv init` — the ~110 lines of ruff/ty/rumdl
-  config are the entire value, and `uv init` emits a stub with none of it.
-- Parameterise the package name. It is currently `claude` in `src/claude/`, which is wrong for
-  every generated project.
-- Decide what is infrastructure and what is example. `cli geo` and `cli currency` are
-  demonstrations. Keeping **one** is probably right — a template with zero example code gives a
-  new project nothing to pattern-match against.
-- Test with [pytest-copie](https://github.com/12rambau/pytest-copie) (22 stars, active): generate
-  into a tmp dir, then run `prek run --all-files` and `pytest` *inside the generated project*.
-  That is the only test that proves anything; `copier-template-tester` checks rendering alone.
-  Prior art worth reading first: [mjun0812/python-copier-template](https://github.com/mjun0812/python-copier-template).
-- Verify the `PreToolUse` branch guard survives generation into a repo whose default branch is not
-  `main` (it takes `--protected main master`), and into a directory that is not yet a git
-  repository at all.
-- Decide whether `mcp-debugger` moves from user scope into the template. It is currently user-only
-  precisely because project scope would force **Node 22+ onto every generated Python project**.
-  `debugpy` is already a dev dependency, so the Python half travels regardless.
-- `copier update` needs the generated project to be a git repo with a **clean tree**, and depends
-  on the `.copier-answers.yml` written at generation. Do not delete that file.
+Copier resolves a local template from the **working tree**, warning `DirtyLocalWarning`, which is
+why the generation tests validate uncommitted work. A remote template resolves from a tag or
+branch instead, so version pinning only starts mattering once this is published.
+
+### 3. Verify generation into unusual git states
+
+Listed earlier and still unverified:
+
+- A destination directory that is already a git repo, and one whose default branch is not `main`
+  (`branch_guard` takes `--protected main master`).
+- The generation tasks assume `git init -b main` succeeds, i.e. that nothing is there yet.
+
+### 4. Decide whether `mcp-debugger` ships
+
+Still user-scope only, deliberately: project scope would force **Node 22+ onto every generated
+Python project**. `debugpy` is already a dev dependency, so the Python half travels regardless.
 
 ## Nice to have
 
-- **Exercise the untested skills.** `python-fastapi`, `python-tui` and `python-data` have never
-  been run against real work. Only `python-cli`, `python-cli-stdlib` and `python-cli-modern` have.
-- **Gate instrumentation.** Append pass/fail from the `PostToolUse` hook to a gitignored `.gate.log`
-  to get a hard count of how often the gate catches something. Lower value now the guardrail test
-  has already passed.
 - **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
-  72-character rule, which stays a convention. A custom `commit-msg` check could close it, but the
-  bar is still "prove no native tool does it first".
+  72-character rule. A custom `commit-msg` check could close it, but the bar is still "prove no
+  native tool does it first".
+- **The merge-subject convention is unenforceable by the current checker.**
+  `conventional-pre-commit` exempts any message beginning with `Merge`, so git's default subject
+  passes. Documented in `template/CLAUDE.md`; only `/code-review` catches a violation.
+- **Gate instrumentation.** Append pass/fail from the `PostToolUse` hook to a gitignored
+  `.gate.log` for a hard count of how often the gate catches something.
+- **The generation tests are not offline.** `uv sync` runs during generation and reaches the
+  network on a cold cache. Everything else about them is deterministic.

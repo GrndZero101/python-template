@@ -1,0 +1,111 @@
+# copier template metadata. The generated project is everything under `template/`.
+#
+# Run with:  copier copy gh:tboss-dev/python-template <destination>
+# Update an already-generated project with:  copier update
+_subdirectory: template
+
+_message_after_copy: |
+  Project created in {{ _copier_conf.dst_path }}.
+
+  The git repo, the venv and all three prek shims are already wired. Read CLAUDE.md first —
+  the rules there are enforced by a gate, not by convention alone.
+
+# ---------------------------------------------------------------------------
+# Questions
+# ---------------------------------------------------------------------------
+project_name:
+  type: str
+  help: Project name, as a human would write it (e.g. "Weather Tools")
+
+package_name:
+  type: str
+  help: Importable package name, under src/
+  default: "{{ project_name | lower | replace('-', '_') | replace(' ', '_') }}"
+  validator: >-
+    {% if not package_name %}package_name is required
+    {% elif not (package_name | regex_search('^[a-z_][a-z0-9_]*$')) %}
+    must be lower case, start with a letter or underscore, and contain only letters, digits
+    and underscores; got "{{ package_name }}"
+    {% endif %}
+
+project_description:
+  type: str
+  help: One-line description
+  default: ""
+
+author_name:
+  type: str
+  help: Author name
+
+author_email:
+  type: str
+  help: Author email
+
+python_version:
+  type: str
+  help: Minimum Python version
+  default: "3.14"
+
+project_type:
+  type: str
+  help: What kind of project is this? Selects dependencies, lint rules and the skill that ships.
+  default: cli-modern
+  choices:
+    "CLI on typer/httpx/pydantic/rich/loguru (ships the geo example)": cli-modern
+    "CLI on the standard library, minimal dependencies": cli-stdlib
+    "FastAPI service": fastapi
+    "Textual TUI": tui
+    "Local data processing with polars/duckdb": data
+
+# ---------------------------------------------------------------------------
+# What not to copy
+# ---------------------------------------------------------------------------
+# The example CLI is the typer stack's demonstration. Shipping it into a FastAPI or Textual
+# project would drag typer, httpx and rich in with it, so it travels with cli-modern only.
+# Every other project type receives the infrastructure — tools/, CLAUDE.md, the gate, the
+# hooks — plus the one skill that matches the stack it is actually built on.
+_exclude:
+  - "copier.yml"
+  - "~*"
+  - "*.py[co]"
+  - "__pycache__"
+  - ".git"
+  - ".venv"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/cli.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/geo.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/currency.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_currency.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/output.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/typer_entrypoint.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/logging_setup.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_geo.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}.claude/skills/python-cli-modern{% endif %}"
+  - "{% if project_type != 'cli-stdlib' %}.claude/skills/python-cli-stdlib{% endif %}"
+  - "{% if project_type != 'fastapi' %}.claude/skills/python-fastapi{% endif %}"
+  - "{% if project_type != 'tui' %}.claude/skills/python-tui{% endif %}"
+  - "{% if project_type != 'data' %}.claude/skills/python-data{% endif %}"
+  - "{% if project_type not in ['cli-modern', 'cli-stdlib'] %}.claude/skills/python-cli{% endif %}"
+
+# ---------------------------------------------------------------------------
+# Side effects, run in the generated project
+# ---------------------------------------------------------------------------
+# Each entry is a list, so it is executed directly rather than through a shell — the same
+# portability rule the template's own hooks follow.
+#
+# All three prek shims are installed. `prek install` alone wires only pre-commit, which
+# silently disables the commit-message check and makes `git merge --no-ff` into main fail.
+#
+# ORDER MATTERS. The initial commit happens BEFORE the shims are installed, because the project's
+# own `no-commit-to-branch` rule would otherwise block it — a generated project starts on `main`,
+# which is exactly where that hook refuses to commit. Committing first also means `copier update`
+# has the clean tree it requires, and it gives `prek run --all-files` tracked files to look at:
+# prek sees only what git knows about, so before the first commit the whole gate reports
+# "no files to check" and passes vacuously.
+_tasks:
+  - ["git", "init", "-b", "main"]
+  - ["uv", "sync"]
+  - ["git", "add", "-A"]
+  - ["git", "commit", "-m", "chore: generate project from python-template"]
+  - ["prek", "install"]
+  - ["prek", "install", "-t", "commit-msg"]
+  - ["prek", "install", "-t", "pre-merge-commit"]
