@@ -16,65 +16,24 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   same list by construction rather than two lists that can drift.
 - Six skills under `.claude/skills/`: `python-cli`, `python-cli-stdlib`, `python-cli-modern`,
   `python-data`, `python-fastapi`, `python-tui`.
-- Three commands, all on the typer/httpx/pydantic/rich/loguru stack: `publicip`, `whoami`,
-  `geo get-coordinates`.
-- The `geo` build was a deliberate test of whether the guardrails let a cheaper model self-correct.
-  It passed: no `noqa`, no `type: ignore`, no `Any`, no new per-file-ignores, and the skills
-  demonstrably steered (`logging_setup.py` and `typer_entrypoint.py` are both prescribed by
-  `python-cli-modern`, not obvious inventions).
+- **One console script, `cli`**, with two subcommands on the typer/httpx/pydantic/rich/loguru
+  stack: `cli geo <location>` and `cli currency <amount> <PAIR>`. Shared plumbing in
+  `output.py` (two consoles, `CLI_OUTPUT`), `logging_setup.py`, `typer_entrypoint.py`.
+  85 tests, all offline via `httpx.MockTransport`.
+- `mcp-debugger` is installed and **proven** against `geo`. Node LTS 24.18.0 via winget,
+  `@debugmcp/mcp-debugger` 0.23.0 global, `debugpy` a dev dependency, server registered at
+  **user scope** so nothing ships yet. It confirmed CLAUDE.md's central claim empirically: a
+  module-level helper was called from a breakpoint with invented literal arguments
+  (`render_places_json([Place.model_validate({...})])`), which a nested `def` makes impossible.
+  Injected `client` inspected fine; `Place(...)` reprs in four fields where the raw dict
+  truncated mid-key through `place_id`/`licence`.
+- The `geo` build was a deliberate test of whether the guardrails let a cheaper model
+  self-correct. It passed: no `noqa`, no `type: ignore`, no `Any`, no new per-file-ignores, and
+  the skills demonstrably steered.
 
 ## Do next
 
-### 1. Trial `mcp-debugger` — do this before deleting anything
-
-Time-sensitive: item 2 removes `publicip` and `whoami`, and the template work eventually strips
-the example code back. Once that happens there is nothing left to set a breakpoint in, and a
-debugger tested against a hello-world proves nothing.
-
-`geo` is the right subject. It has an injected httpx client, a rate limiter and pure parsing
-functions — exactly the shape CLAUDE.md's debuggability rules exist to produce. Confirming that a
-breakpoint can be set and an injected dependency inspected **validates the premise of the whole
-ruleset**, which has never actually been checked because the agent has never had a debugger.
-
-[debugmcp/mcp-debugger](https://github.com/debugmcp/mcp-debugger) — Node 22+, drives `debugpy`
-over DAP, works on Windows, ~18 tools (`set_breakpoint`, `get_stack_trace`, `get_variables`,
-`step_into`, `evaluate_expression`). Install via `npm install -g @debugmcp/mcp-debugger`, or the
-repo's `scripts/install-claude-mcp.sh`. The `stdio` argument is required or the protocol corrupts.
-
-### 2. Restructure to a single `cli` with two subcommands
-
-Target shape, replacing three separate console scripts:
-
-```text
-cli geo <location>          # existing, keep
-cli currency <args>         # new
-```
-
-Delete `publicip` and `whoami`. `whoami` also shadows the OS command, which closes that open
-decision by deletion rather than by choosing a name.
-
-`currency` demonstrates FX conversion and margin calculation — e.g. the spread between the
-interbank rate and a quoted rate. API is **Frankfurter**, no auth, no User-Agent restriction:
-
-```text
-https://api.frankfurter.dev/v1/latest?base=GBP&symbols=AUD,USD,EUR
-https://api.frankfurter.dev/v1/2026-01-15?base=GBP&symbols=AUD    # historical
-https://api.frankfurter.dev/v1/2026-01-01..2026-01-10?base=GBP    # time series
-https://api.frankfurter.dev/v1/currencies                          # supported list
-```
-
-Response shape: `{"amount":1.0,"base":"GBP","date":"2026-07-30","rates":{"AUD":1.9179}}`.
-
-Two traps worth knowing before starting:
-
-- **`api.frankfurter.app` 301-redirects to `api.frankfurter.dev/v1/`.** httpx does **not** follow
-  redirects by default, unlike requests, so the old domain fails with a bare 301 rather than
-  working. Use the `.dev` host directly, or set `follow_redirects=True` deliberately.
-- **Money is not a float.** Rates come back as JSON numbers; conversions and margin arithmetic
-  belong in `decimal.Decimal`, with rounding stated explicitly. This is the one place a
-  demonstration CLI can be subtly, invisibly wrong.
-
-### 3. Document the merge-message convention
+### 1. Document the merge-message convention
 
 The only rule in this repo written down **nowhere** — not in CLAUDE.md, not in the enforcement
 table — and predictably the only one that has already drifted: `ea8131f` used git's default
@@ -89,7 +48,7 @@ Add a short subsection to `## Merging` covering:
 - `Refs: #N` trailer once there is a remote and PRs exist. Footers are part of the Conventional
   Commits spec; branch names are not, and git stores them nowhere.
 
-### 4. Convert this repo into a project template
+### 2. Convert this repo into a project template
 
 **Decided: template, not global promotion.** Promoting `CLAUDE.md`, settings and skills to
 `~/.claude` was the earlier plan and has been dropped. The two are competing designs, and
@@ -102,20 +61,50 @@ there is no `uv init --template`. Copier is chosen over cookiecutter for one rea
 re-applies template changes to *already-generated* projects, so improvements to CLAUDE.md or a skill
 can be pulled downstream instead of being stranded in whichever repo they were written in.
 
+**How the template stays testable** — this is copier's own documented answer to "placeholders make
+the repo unrunnable": `_subdirectory`. The repo root stops being a Python project and holds only
+template metadata; everything that becomes a generated project lives one level down.
+
+```text
+copier.yml              # _subdirectory: template
+tests/test_template.py  # generates into tmp, then runs the generated project's own gate
+template/               # <- becomes the new project
+  pyproject.toml.jinja  # needs substitution
+  CLAUDE.md             # literal copy — no placeholders, stays real
+  tools/                # literal copies — still lintable, still testable
+  src/{{ package_name }}/
+```
+
+Only files needing substitution take the `.jinja` suffix, so `branch_guard.py`,
+`check_nested_defs.py` and every skill remain ordinary files.
+
 Work needed:
 
 - `copier.yml` asking: package name, project name, description, author, and **project type**. The
   type maps onto the existing two-axis skill design — `cli-stdlib`, `cli-modern`, `fastapi`, `tui`,
   `data` — and conditionally ships the matching skill, dependencies and lint config (e.g. `"FAST"`
   added to `select` only for FastAPI).
+- `_tasks` for the side effects: `git init -b main`, `uv sync`, and **all three** prek shims
+  (`prek install && prek install -t commit-msg && prek install -t pre-merge-commit`). Ship
+  `pyproject.toml.jinja` in full rather than calling `uv init` — the ~110 lines of ruff/ty/rumdl
+  config are the entire value, and `uv init` emits a stub with none of it.
 - Parameterise the package name. It is currently `claude` in `src/claude/`, which is wrong for
   every generated project.
-- Decide what is infrastructure and what is example. `publicip`, `whoami` and `geo` are
-  demonstrations, not things a new project wants.
-- Templated files use Jinja; the `.jinja` suffix convention keeps the source repo itself runnable.
+- Decide what is infrastructure and what is example. `cli geo` and `cli currency` are
+  demonstrations. Keeping **one** is probably right — a template with zero example code gives a
+  new project nothing to pattern-match against.
+- Test with [pytest-copie](https://github.com/12rambau/pytest-copie) (22 stars, active): generate
+  into a tmp dir, then run `prek run --all-files` and `pytest` *inside the generated project*.
+  That is the only test that proves anything; `copier-template-tester` checks rendering alone.
+  Prior art worth reading first: [mjun0812/python-copier-template](https://github.com/mjun0812/python-copier-template).
 - Verify the `PreToolUse` branch guard survives generation into a repo whose default branch is not
-  `main`, and into a directory that is not yet a git repository at all — the hook currently assumes
-  both.
+  `main` (it takes `--protected main master`), and into a directory that is not yet a git
+  repository at all.
+- Decide whether `mcp-debugger` moves from user scope into the template. It is currently user-only
+  precisely because project scope would force **Node 22+ onto every generated Python project**.
+  `debugpy` is already a dev dependency, so the Python half travels regardless.
+- `copier update` needs the generated project to be a git repo with a **clean tree**, and depends
+  on the `.copier-answers.yml` written at generation. Do not delete that file.
 
 ## Nice to have
 
