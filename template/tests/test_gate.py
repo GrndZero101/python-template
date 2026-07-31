@@ -40,6 +40,13 @@ def _payload(path: Path) -> str:
     return json.dumps({"tool_input": {"file_path": str(path)}})
 
 
+def _make_repo(root: Path) -> Path:
+    """Create a repository root the gate will act on: a `.git` entry and a prek config."""
+    (root / ".git").mkdir(parents=True)
+    (root / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
+    return root
+
+
 # --- command construction ---------------------------------------------------------------
 
 
@@ -78,7 +85,7 @@ def test_check_forwards_command_and_cwd(tmp_path: Path) -> None:
 def test_passing_gate_allows_the_edit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (tmp_path / ".git").mkdir()
+    _make_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
@@ -91,7 +98,7 @@ def test_failing_gate_blocks_with_exit_2_and_reports_on_stderr(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Exit 2 is what makes a PostToolUse hook blocking; stderr is what Claude reads."""
-    (tmp_path / ".git").mkdir()
+    _make_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
@@ -105,16 +112,41 @@ def test_failing_gate_blocks_with_exit_2_and_reports_on_stderr(
 def test_file_outside_the_repository_is_not_gated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = tmp_path / "repo"
-    (root / ".git").mkdir(parents=True)
+    root = _make_repo(tmp_path / "repo")
     monkeypatch.chdir(root)
     outside = _payload(tmp_path / "elsewhere" / "note.md")
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, outside))
     assert main([], runner=functools.partial(_runner, FAIL)) == 0
 
 
-def test_missing_file_path_is_not_gated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_file_governed_by_no_config_is_not_gated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This repo's own root holds markdown and no project; editing it must not block."""
     (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "TODO.md"))
+    )
+    assert main([], runner=functools.partial(_runner, FAIL)) == 0
+
+
+def test_gate_runs_from_the_directory_holding_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The template lives one level down, so prek must run there, not at the repo root."""
+    (tmp_path / ".git").mkdir()
+    project = _make_repo(tmp_path / "template")
+    monkeypatch.chdir(tmp_path)
+    target = project / "src" / "x.py"
+    monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, _payload(target)))
+    seen: list[tuple[Sequence[str], Path]] = []
+    assert main([], runner=functools.partial(_recording, seen)) == 0
+    assert seen[0][1] == project.resolve()
+
+
+def test_missing_file_path_is_not_gated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _make_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, "{}"))
     assert main([], runner=functools.partial(_runner, FAIL)) == 0

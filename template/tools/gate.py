@@ -25,7 +25,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from hook_payload import find_repo_root, inside_repo, target_path
+from hook_payload import find_gate_root, find_repo_root, inside_repo, target_path
 
 BLOCK = 2
 # The branch guard owns branch protection; running it here would fail every edit made on main.
@@ -94,7 +94,10 @@ def main(argv: list[str] | None = None, runner: Runner = run_subprocess) -> int:
     root = find_repo_root()
     if target is None or root is None or not inside_repo(target, root):
         return 0
-    result = check(target, root, args.skip, runner)
+    gate_root = find_gate_root(target, root)
+    if gate_root is None:
+        return 0
+    result = check(target, gate_root, args.skip, runner)
     if result.code == 0:
         return 0
     sys.stderr.write(f"{result.output}\n")
