@@ -13,41 +13,65 @@ it is held to exactly the standard it preaches. What follows is only what differ
 
 | Path | What it is |
 |---|---|
-| `template/` | Becomes the generated project. Ordinary, runnable, fully tested. |
+| `template/` | Becomes the generated project. Holds Jinja; not runnable in place. |
+| `copier.yml` | The questions, the exclusions and the generation tasks. |
+| `tests/test_template.py` | Generates a project per type and runs its gate. The only check on `template/`. |
 | `.pre-commit-config.yaml` | Governs **this** repo. `.git` is here, so this is what the git hooks read. |
-| `pyproject.toml` | `rumdl` settings for the repo's own markdown. No `[project]`, no venv. |
+| `pyproject.toml` | Dev deps and lint config for the root. Not published, not importable. |
 | `TODO.md` | Outstanding work on the template itself. Not shipped. |
+
+Only five files under `template/` carry a `.jinja` suffix: `pyproject.toml`, `README.md`,
+`.pre-commit-config.yaml`, `.copier-answers.yml` and the two example test modules. Everything else —
+`CLAUDE.md`, all of `tools/`, every skill, and all six source modules — ships literally. The source
+modules manage it because their internal imports are **relative**, so nothing inside `src/` names the
+package and copier only has to render the directory name. Keep it that way: an absolute import there
+would force another file to become a template.
 
 ## The two gates
 
 `.git` sits at the root, so `prek install` wires the git hooks to the **root** config. That config
-owns the commit-level rules — the message check and `no-commit-to-branch` — and lints the repo's own
-markdown. It contains no code checks at all.
+owns the commit-level rules — the message check and `no-commit-to-branch` — lints the repo's own
+markdown, and lints the one Python module the root holds.
 
-Code is covered because prek treats a nested `.pre-commit-config.yaml` as a **workspace member**: a
-file under `template/` is routed to that config and run with `template/` as the working directory.
-The lint list therefore exists once, in the file a generated project receives. A copy at this level
-would have to duplicate the dependency list and build a second venv, because `ty` resolves imports
-through the project environment.
+**`template/` is not checked in place, and cannot be.** It contains Jinja and has no
+`pyproject.toml` — only `pyproject.toml.jinja` — so `ruff` would fall back to default rules and `ty`
+would find no environment to resolve `httpx` or `typer` through. Its `.pre-commit-config.yaml` is
+suffixed `.jinja` for the same reason: that keeps prek from picking the directory up as a workspace
+member and running a gate there that is guaranteed to fail.
 
-Workspace discovery is a prek extension. Plain `pre-commit` does not have it and would leave
-`template/` unchecked — the same trade already made for `repo: builtin`.
+What covers it instead is `tests/test_template.py`. It generates a project for each of the five
+project types and runs **that project's** gate and test suite inside it. This is the stronger check
+of the two — it verifies the thing that actually ships rather than the thing it is made from — but
+it costs about a minute, which is why the gate is slow. To skip it deliberately:
 
-The edit-time `PostToolUse` gate resolves the same way from the other end — `find_gate_root` in
-`template/tools/hook_payload.py` walks up from the edited file to the nearest `.pre-commit-config.yaml`,
-bounded by the repo root. Inside a generated project that lands on the root and behaves exactly as a
-hard-coded root would; here it lands on `template/`. Editing a root file that no config governs, such
-as `TODO.md`, leaves the gate standing down rather than blocking.
+```bash
+SKIP=generation-tests git commit -m "docs: ..."
+```
+
+Copier includes uncommitted working-tree changes when the template is a local path (it warns
+`DirtyLocalWarning`), so the tests validate what you are about to commit, not the last commit.
+
+The edit-time `PostToolUse` gate uses `find_gate_root` in `template/tools/hook_payload.py`, which
+walks up from the edited file to the nearest `.pre-commit-config.yaml`, bounded by the repo root.
+Inside a generated project that lands on the root, which is the case it exists to serve. In *this*
+repo every file resolves to the root config, and that config excludes `^template/` — so editing
+something under `template/` is not gated as you type. The generation tests catch it at commit
+instead. Editing a root file the config does not match, such as `TODO.md`, likewise leaves the gate
+standing down rather than blocking.
 
 ## Commands
 
 Run from the repo root:
 
 ```bash
-prek run --all-files                    # root gate; delegates into template/
-uv run --directory template pytest      # the generated project's test suite
-uv run --directory template prek run --all-files    # that project's gate alone
+prek run --all-files            # the whole gate, generation tests included (~1 min)
+uv run pytest                   # generation tests only
+uv run pytest -k cli-modern     # one project type, when iterating
+copier copy --trust . /tmp/scratch    # generate by hand to poke at the result
 ```
+
+`template/` has no venv and nothing to run — `uv run --directory template` no longer works, because
+there is no `pyproject.toml` there to run against.
 
 **Never `cd template`.** Use `uv run --directory template`. Claude Code's hooks inherit the shell's
 working directory, and a leftover `cd` makes them resolve `template/template/tools/...` and fail.
