@@ -1,23 +1,35 @@
 [project]
-name = "python-template"
+name = "{{ package_name | replace('_', '-') }}"
 version = "0.1.0"
-description = "Add your description here"
+description = "{{ project_description }}"
 readme = "README.md"
 authors = [
-    { name = "Timothy Longbottom", email = "tim.longbottom@gmail.com" }
+    { name = "{{ author_name }}", email = "{{ author_email }}" }
 ]
-requires-python = ">=3.14"
+requires-python = ">={{ python_version }}"
 dependencies = [
+{%- if project_type == "cli-modern" %}
     "httpx>=0.28.1",
     "loguru>=0.7.3",
     "pydantic>=2.13.4",
     "rich>=15.0.0",
     "typer>=0.27.0",
+{%- elif project_type == "fastapi" %}
+    "fastapi>=0.121.0",
+    "pydantic>=2.13.4",
+    "uvicorn[standard]>=0.40.0",
+{%- elif project_type == "tui" %}
+    "textual>=7.2.0",
+{%- elif project_type == "data" %}
+    "duckdb>=1.4.2",
+    "polars>=1.35.1",
+    "pyarrow>=22.0.0",
+{%- endif %}
 ]
-
+{% if project_type == "cli-modern" %}
 [project.scripts]
-cli = "python_template.cli:main"
-
+cli = "{{ package_name }}.cli:main"
+{% endif %}
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]
 build-backend = "uv_build"
@@ -34,7 +46,7 @@ dev = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py{{ python_version | replace('.', '') }}"
 preview = true  # required: PLR1702 and PLR0914 are preview rules
 
 [tool.ruff.lint]
@@ -48,6 +60,9 @@ select = [
     "LOG", "G", "T20",                 # logging correctness; T20 bans print
     "PTH", "DTZ", "ARG", "SLF", "FBT", "PT", "S",
     "PL", "C90",                       # the complexity dials below
+{%- if project_type == "fastapi" %}
+    "FAST",                            # FastAPI-specific: redundant response_model, raw Depends
+{%- endif %}
 ]
 # ruff 0.16 wants rule names rather than codes here, which reads better anyway.
 ignore = [

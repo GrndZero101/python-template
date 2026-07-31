@@ -22,8 +22,8 @@ from loguru import logger
 from pydantic import BaseModel
 from rich.table import Table
 
-from python_template.logging_setup import configure_logging
-from python_template.output import OutputFormat, OutputOption, out
+from .logging_setup import configure_logging
+from .output import OutputFormat, OutputOption, out
 
 FRANKFURTER_URL = "https://api.frankfurter.dev/v1/latest"
 DEFAULT_TIMEOUT_SECONDS = 10.0

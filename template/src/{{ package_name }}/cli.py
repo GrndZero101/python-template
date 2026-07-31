@@ -21,9 +21,9 @@ import sys
 
 import typer
 
-from python_template.currency import currency
-from python_template.geo import geo
-from python_template.typer_entrypoint import run_app
+from .currency import currency
+from .geo import geo
+from .typer_entrypoint import run_app
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 app.command("geo")(geo)
