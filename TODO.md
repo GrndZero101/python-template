@@ -33,22 +33,7 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Do next
 
-### 1. Document the merge-message convention
-
-The only rule in this repo written down **nowhere** — not in CLAUDE.md, not in the enforcement
-table — and predictably the only one that has already drifted: `ea8131f` used git's default
-`Merge branch 'feat/geo-get-coordinates'` instead of a descriptive conventional subject.
-
-Add a short subsection to `## Merging` covering:
-
-- Squash path (one commit): merge subject repeats the conventional summary; body carries anything
-  the branch commit does not say. Do not manufacture prose when there is nothing to add.
-- Rebase path (several commits): merge subject summarises the branch, and `git merge --no-ff --log`
-  populates the body with what arrived.
-- `Refs: #N` trailer once there is a remote and PRs exist. Footers are part of the Conventional
-  Commits spec; branch names are not, and git stores them nowhere.
-
-### 2. Convert this repo into a project template
+### 1. Convert this repo into a project template
 
 **Decided: template, not global promotion.** Promoting `CLAUDE.md`, settings and skills to
 `~/.claude` was the earlier plan and has been dropped. The two are competing designs, and
