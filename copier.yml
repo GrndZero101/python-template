@@ -1,6 +1,6 @@
 # copier template metadata. The generated project is everything under `template/`.
 #
-# Run with:  copier copy gh:tboss-dev/python-template <destination>
+# Run with:  copier copy gh:GrndZero101/python-template <destination>
 # Update an already-generated project with:  copier update
 _subdirectory: template
 
