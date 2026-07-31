@@ -198,6 +198,10 @@ def test_generated_project_passes_its_own_tests(copie: Copie, project_type: str)
 # The reason copier was chosen over cookiecutter: an improvement to CLAUDE.md or a skill can be
 # pulled into projects that already exist. These tests are what make that claim true rather than
 # assumed. Each clones the repo so the template can be moved forward without touching the real one.
+#
+# UNLIKE EVERY OTHER TEST HERE, these see only COMMITTED state. `copier update` needs two real
+# commits to diff between, so the clone cannot include the working tree the way `copie.copy()`
+# does. A change to copier.yml that is not yet committed will not be under test.
 
 MARKER = "A line added by the template after this project was generated."
 
