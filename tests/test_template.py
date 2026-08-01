@@ -30,9 +30,18 @@ SKILLS_BY_TYPE = {
     "data": {"python-data"},
 }
 
+# DELIBERATELY LONGER than the template's own `python_template`. A shorter name cannot overflow
+# a line that was formatted against the template's name, so it silently proves nothing: the
+# suite passed for months against `weather_tools` (13 chars) while generation with a longer name
+# produced a project that failed its own `ruff format` check on two files.
+PACKAGE_NAME = "a_deliberately_long_package_name"
+DIST_NAME = PACKAGE_NAME.replace("_", "-")
+SCRIPT_NAME = "weather-tools"
+
 BASE_ANSWERS = {
     "project_name": "Weather Tools",
-    "package_name": "weather_tools",
+    "package_name": PACKAGE_NAME,
+    "script_name": SCRIPT_NAME,
     "project_description": "Look things up",
     "author_name": "A Dev",
     "author_email": "dev@example.com",
@@ -101,7 +110,7 @@ def _commit_all(repo: Path, message: str) -> None:
 def test_package_directory_is_named_from_the_answer(copie: Copie, project_type: str) -> None:
     """`src/python_template/` was the template's own name and must not survive generation."""
     project = _generate(copie, project_type)
-    assert (project / "src" / "weather_tools" / "__init__.py").is_file()
+    assert (project / "src" / PACKAGE_NAME / "__init__.py").is_file()
     assert not (project / "src" / "python_template").exists()
 
 
@@ -113,7 +122,7 @@ def test_no_jinja_suffix_or_placeholder_survives(copie: Copie, project_type: str
     assert leftovers == []
     pyproject = (project / "pyproject.toml").read_text(encoding="utf-8")
     assert "{{" not in pyproject
-    assert 'name = "weather-tools"' in pyproject
+    assert f'name = "{DIST_NAME}"' in pyproject
 
 
 @pytest.mark.parametrize("project_type", PROJECT_TYPES)
@@ -128,11 +137,24 @@ def test_example_cli_travels_only_with_cli_modern(copie: Copie, project_type: st
     """Shipping the demo elsewhere would drag typer, httpx and rich into an unrelated stack."""
     project = _generate(copie, project_type)
     expected = project_type == "cli-modern"
-    assert (project / "src" / "weather_tools" / "geo.py").is_file() is expected
+    assert (project / "src" / PACKAGE_NAME / "geo.py").is_file() is expected
     assert (project / "tests" / "test_geo.py").is_file() is expected
     assert (
-        'cli = "weather_tools.cli:main"' in (project / "pyproject.toml").read_text(encoding="utf-8")
+        f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"'
+        in (project / "pyproject.toml").read_text(encoding="utf-8")
     ) is expected
+
+
+def test_console_script_is_never_named_cli(copie: Copie) -> None:
+    """`cli` is a read-only PowerShell alias for `Clear-Item`, and an alias beats PATH.
+
+    A script installed under that name is unreachable from the shell most Windows users are in,
+    and every generated project would claim the same name in a shared environment.
+    """
+    project = _generate(copie, "cli-modern")
+    pyproject = (project / "pyproject.toml").read_text(encoding="utf-8")
+    assert "\ncli = " not in pyproject
+    assert f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"' in pyproject
 
 
 def test_fastapi_gets_its_lint_rules(copie: Copie) -> None:
@@ -165,7 +187,7 @@ def test_generation_leaves_a_committed_repo_on_main(copie: Copie) -> None:
 def test_answers_file_is_written_for_copier_update(copie: Copie) -> None:
     project = _generate(copie, "cli-modern")
     answers = (project / ".copier-answers.yml").read_text(encoding="utf-8")
-    assert "package_name: weather_tools" in answers
+    assert f"package_name: {PACKAGE_NAME}" in answers
     assert "project_type: cli-modern" in answers
 
 

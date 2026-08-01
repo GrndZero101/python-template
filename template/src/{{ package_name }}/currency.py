@@ -109,7 +109,10 @@ def _request_rate(client: httpx.Client, base: str, quote: str, timeout: float) -
     payload = json.loads(response.text, parse_float=Decimal)
     rates = payload["rates"]
     if quote not in rates:
-        msg = f"{quote} is not quoted against {base}; try `cli currency --help` for the format"
+        # Deliberately does not name the executable. A library module has no reliable way to
+        # know what the script was installed as, and hardcoding it means a rename has to be
+        # chased through error strings. `--help` is unambiguous from wherever this is read.
+        msg = f"{quote} is not quoted against {base}; run with --help for the expected format"
         raise ValueError(msg)
     return RateQuote(
         base=payload["base"],

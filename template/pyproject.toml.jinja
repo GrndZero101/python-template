@@ -28,7 +28,7 @@ dependencies = [
 ]
 {% if project_type == "cli-modern" %}
 [project.scripts]
-cli = "{{ package_name }}.cli:main"
+{{ script_name }} = "{{ package_name }}.cli:main"
 {% endif %}
 [build-system]
 requires = ["uv_build>=0.11.28,<0.12.0"]

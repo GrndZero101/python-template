@@ -1,0 +1,46 @@
+"""Single entry point mounting every subcommand.
+
+    {{ script_name }} geo cleve
+    {{ script_name }} currency 1000 GBP/AUD --margin 2.5
+
+The script is deliberately not called `cli`. On Windows, `cli` is a read-only PowerShell alias
+for `Clear-Item`, and an alias beats an executable on PATH — so a command by that name is
+unreachable from the shell most Windows users are in. It is also not unique: every project
+installing a `cli` into the same environment would fight over the name.
+
+Each subcommand lives in its own module and is registered here as a plain function, not with
+its own nested `typer.Typer`. Registration by reference keeps `{{ script_name }} geo …` two
+words instead of three, and keeps `geo` importable and callable on its own — from a test, from
+pdb, or from a debugger's evaluate-expression prompt with literal arguments.
+
+`add_completion=False` is deliberate. Typer's `--install-completion` rewrites `~/.zshrc` with
+no backup, never consults `$ZDOTDIR`, and appends an unconditional `compinit`. Emit the script
+instead and let the user or packager place it:
+
+    {{ completion_env_var }}=source_zsh {{ script_name }} > "${ZDOTDIR:-$HOME}/completions/_{{ script_name }}"
+
+Note `source_zsh`, not `zsh_source` — typer inverts Click 8's order for backwards compatibility.
+Typer derives that variable name by upper-casing `prog_name` and replacing `-` with `_`, so a
+hyphen in the script name is fine.
+"""
+
+import sys
+
+import typer
+
+from .currency import currency
+from .geo import geo
+from .typer_entrypoint import run_app
+
+app = typer.Typer(add_completion=False, no_args_is_help=True)
+app.command("geo")(geo)
+app.command("currency")(currency)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point. Returns an exit code; never calls sys.exit itself."""
+    return run_app(app, argv, prog_name="{{ script_name }}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
