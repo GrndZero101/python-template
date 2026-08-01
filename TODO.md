@@ -5,10 +5,20 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Status snapshot
 
-- The repo **is** a working copier template. `copier.yml` at the root, everything that becomes a
-  generated project under `template/` via `_subdirectory`. All five project types
-  (`cli-modern`, `cli-stdlib`, `fastapi`, `tui`, `data`) generate, pass their own gate and pass
-  their own tests.
+- The repo **is** a working copier template, and it is **published** at
+  [GrndZero101/python-template](https://github.com/GrndZero101/python-template). `copier.yml` at the
+  root, everything that becomes a generated project under `template/` via `_subdirectory`. All five
+  project types (`cli-modern`, `cli-stdlib`, `fastapi`, `tui`, `data`) generate, pass their own gate
+  and pass their own tests.
+- The remote route is verified end to end: `copier copy gh:GrndZero101/python-template <dest>`
+  generates, and `_src_path` records the `gh:` reference rather than a local path.
+- `copier update` works and is covered by tests — a later template change reaches an existing
+  project, a file the project edited survives the merge, and the project still passes its gate
+  afterwards. Getting there required guarding every `_task` with
+  `when: "{{ _copier_operation == 'copy' }}"`; unguarded, the tasks re-ran on update and the
+  `git commit` task failed against the project's own `no-commit-to-branch` hook, so **every update
+  exited non-zero**. Note the variable is `_copier_operation`, not `_copier_conf.operation` — the
+  latter renders undefined, which is falsy, which silently disables every task including on copy.
 - Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Four modules under
   `template/tools/`: `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and
   `gate` (the two hooks), and `hook_payload` (shared parsing so they cannot diverge).
@@ -21,13 +31,29 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   source modules ship literally because their internal imports are **relative** — nothing inside
   `src/` names the package, so copier renders only the directory name.
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py` is
-  the only thing that verifies it: 25 tests that generate a project per type and run that
-  project's gate and suite inside it. It is wired into the gate and costs about a minute.
+  the only thing that verifies it: 38 tests that generate a project per type and run that project's
+  gate and suite inside it. Wired into the gate; costs about a minute.
 - `mcp-debugger` is installed and **proven** against `geo`. Node LTS 24.18.0 via winget,
   `@debugmcp/mcp-debugger` 0.23.0 global, `debugpy` a dev dependency, server registered at
-  **user scope** so nothing ships yet. It confirmed CLAUDE.md's central claim empirically: a
-  module-level helper was called from a breakpoint with invented literal arguments
-  (`render_places_json([Place.model_validate({...})])`), which a nested `def` makes impossible.
+  **user scope** so nothing ships yet.
+
+## In flight
+
+### Dogfood in `GrndZero101/template-dogfood`
+
+A private consumer repo, generated from the published template as `cli-modern`, pushed, gate green
+and 91 tests passing. The plan is to add a `cli weather <city>` subcommand alongside `geo` and
+`currency` and see what the experience is actually like.
+
+**This cannot be driven from a session rooted in `python-template`.** Claude Code loads
+`.claude/settings.json` and skills from the session's own project root, so the dogfood project's
+branch guard, gate and `python-cli-modern` skill are all inert from here — and `branch_guard` would
+*silently allow* the edit, because it resolves the repo root from the session's cwd and correctly
+stands down for a file outside it. Start a session in that directory instead.
+
+What the dogfood is meant to test, none of which any test here can reach: the guard blocking the
+first edit on `main`, the gate firing on save with actionable stderr, whether the skill steers, and
+whether `CLAUDE.md` reads correctly mid-task rather than mid-review.
 
 ## Do next
 
@@ -46,23 +72,20 @@ Note `logging_setup.py` is currently excluded from those types because it import
 stdlib `logging` equivalent is probably the right shared default, with the loguru one shipping only
 where a skill calls for it.
 
-### 2. Publish and test the remote path
+### 2. Decide on tagging, which changes update semantics
 
-Everything so far is verified against a **local** template path. Untested:
+The template has **no git tags**, so `.copier-answers.yml` records a bare commit hash and the
+`--vcs-ref v1.3.0` examples in the README refer to tags that do not exist yet.
 
-- `copier copy gh:GrndZero101/python-template <dest>` from an actual remote.
-- `copier update` on a generated project — the machinery is in place (`.copier-answers.yml` ships,
-  the generation tasks leave a clean tree and an initial commit) but no update has been run.
-  `pytest-copie` exposes `.update()` for this.
-- `_src_path` currently records the local filesystem path in generated projects.
-
-Copier resolves a local template from the **working tree**, warning `DirtyLocalWarning`, which is
-why the generation tests validate uncommitted work. A remote template resolves from a tag or
-branch instead, so version pinning only starts mattering once this is published.
+This is not just a labelling gap. **Once any tag exists, `copier update` pulls to the latest tag
+rather than `HEAD`.** That is correct for stable releases and wrong while the template is being
+iterated on, because fixes stop propagating to the dogfood until they are tagged. Current decision:
+stay untagged until the dogfood settles, then cut `v0.1.0` and fix the README examples to match
+whatever scheme is chosen.
 
 ### 3. Verify generation into unusual git states
 
-Listed earlier and still unverified:
+Still unverified:
 
 - A destination directory that is already a git repo, and one whose default branch is not `main`
   (`branch_guard` takes `--protected main master`).
@@ -75,6 +98,9 @@ Python project**. `debugpy` is already a dev dependency, so the Python half trav
 
 ## Nice to have
 
+- **The generation-tests hook is `always_run`.** Even `prek run --files README.md` triggers the full
+  minute-long suite; `--skip generation-tests` is the workaround. A `files:` pattern limiting it to
+  changes under `template/`, `copier.yml` and `tests/` would be better.
 - **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
   72-character rule. A custom `commit-msg` check could close it, but the bar is still "prove no
   native tool does it first".
