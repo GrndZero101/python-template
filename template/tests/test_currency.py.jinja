@@ -26,6 +26,10 @@ from {{ package_name }}.currency import (
     render_conversion_json,
 )
 
+# The module under test, named once. Every monkeypatch target below is built from it, which
+# keeps those lines short regardless of how long the generated package name turns out to be.
+CURRENCY = "{{ package_name }}.currency"
+
 GBP_AUD = {"amount": 1.0, "base": "GBP", "date": "2026-07-30", "rates": {"AUD": 1.9179}}
 QUOTE = RateQuote(base="GBP", quote="AUD", rate=Decimal("1.9179"), on="2026-07-30")
 
@@ -162,7 +166,7 @@ def test_render_conversion_json_keeps_decimals_as_strings() -> None:
 def test_main_prints_a_table_to_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("{{ package_name }}.currency.fetch_rate", functools.partial(_always, QUOTE))
+    monkeypatch.setattr(f"{CURRENCY}.fetch_rate", functools.partial(_always, QUOTE))
     assert main(["currency", "1000", "GBP/AUD", "--margin", "2.5"]) == 0
     assert "Cost of margin" in capsys.readouterr().out
 
@@ -170,7 +174,7 @@ def test_main_prints_a_table_to_stdout(
 def test_main_output_json_emits_parseable_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("{{ package_name }}.currency.fetch_rate", functools.partial(_always, QUOTE))
+    monkeypatch.setattr(f"{CURRENCY}.fetch_rate", functools.partial(_always, QUOTE))
     assert main(["currency", "1000", "GBP/AUD", "-m", "2.5", "-o", "json"]) == 0
     assert json.loads(capsys.readouterr().out)["margin_cost"] == "47.95"
 
@@ -178,7 +182,7 @@ def test_main_output_json_emits_parseable_stdout(
 def test_main_rejects_a_bad_pair_as_a_usage_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("{{ package_name }}.currency.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr(f"{CURRENCY}.configure_logging", _no_op_configure_logging)
     assert main(["currency", "1000", "GBPAUD"]) == 2
     assert not capsys.readouterr().out
 
@@ -186,8 +190,8 @@ def test_main_rejects_a_bad_pair_as_a_usage_error(
 def test_main_reports_unreachable_service_without_polluting_stdout(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("{{ package_name }}.currency.fetch_rate", _unreachable)
-    monkeypatch.setattr("{{ package_name }}.currency.configure_logging", _no_op_configure_logging)
+    monkeypatch.setattr(f"{CURRENCY}.fetch_rate", _unreachable)
+    monkeypatch.setattr(f"{CURRENCY}.configure_logging", _no_op_configure_logging)
     messages: list[str] = []
     sink_id = logger.add(functools.partial(_collect, messages), format="{message}")
     try:

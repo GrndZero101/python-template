@@ -28,6 +28,44 @@ package_name:
     and underscores; got "{{ package_name }}"
     {% endif %}
 
+# Asked early: `script_name` below is conditional on it, and copier resolves questions in the
+# order they appear here. A `when:` that refers to a later answer sees it undefined.
+project_type:
+  type: str
+  help: What kind of project is this? Selects dependencies, lint rules and the skill that ships.
+  default: cli-modern
+  choices:
+    "CLI on typer/httpx/pydantic/rich/loguru (ships the geo example)": cli-modern
+    "CLI on the standard library, minimal dependencies": cli-stdlib
+    "FastAPI service": fastapi
+    "Textual TUI": tui
+    "Local data processing with polars/duckdb": data
+
+script_name:
+  type: str
+  help: Console script name, the command typed in a terminal
+  default: "{{ package_name | replace('_', '-') }}"
+  when: "{{ project_type == 'cli-modern' }}"
+  # Never default to `cli`. On Windows `cli` is a read-only PowerShell alias for `Clear-Item`,
+  # and an alias wins over an executable on PATH, so the command would be unreachable from the
+  # shell most Windows users are in. It is not unique either — every generated project would
+  # install the same name into the same environment.
+  validator: >-
+    {% if not script_name %}script_name is required
+    {% elif script_name == 'cli' %}
+    `cli` is a read-only PowerShell alias for Clear-Item on Windows and would be shadowed;
+    pick something specific to this project
+    {% elif not (script_name | regex_search('^[a-z][a-z0-9-]*$')) %}
+    must be lower case and contain only letters, digits and hyphens; got "{{ script_name }}"
+    {% endif %}
+
+# Typer derives the shell-completion variable by upper-casing prog_name and replacing hyphens
+# with underscores. Computed rather than asked — it is not a decision, just a consequence.
+completion_env_var:
+  type: str
+  default: "_{{ script_name | upper | replace('-', '_') }}_COMPLETE"
+  when: false
+
 project_description:
   type: str
   help: One-line description
@@ -45,17 +83,6 @@ python_version:
   type: str
   help: Minimum Python version
   default: "3.14"
-
-project_type:
-  type: str
-  help: What kind of project is this? Selects dependencies, lint rules and the skill that ships.
-  default: cli-modern
-  choices:
-    "CLI on typer/httpx/pydantic/rich/loguru (ships the geo example)": cli-modern
-    "CLI on the standard library, minimal dependencies": cli-stdlib
-    "FastAPI service": fastapi
-    "Textual TUI": tui
-    "Local data processing with polars/duckdb": data
 
 # ---------------------------------------------------------------------------
 # What not to copy

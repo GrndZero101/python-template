@@ -10,7 +10,7 @@ by lint config and a `prek` gate — not just documented and hoped for.
 ## What's here
 
 - **`src/{{ package_name }}/`** — the package.{% if project_type == "cli-modern" %} It ships a demo
-  CLI (`cli`) with two subcommands, `geo` and `currency`, on the typer/httpx/pydantic/rich/loguru
+  CLI (`{{ script_name }}`) with two subcommands, `geo` and `currency`, on the typer/httpx/pydantic/rich/loguru
   stack, offline-tested via `httpx.MockTransport`. That is example code: pattern-match against it,
   then delete it.{% endif %}
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
@@ -41,7 +41,7 @@ rumdl fmt . && rumdl check .                     # markdown
 uv run pytest                                    # tests
 uv run python tools/check_nested_defs.py src tests tools
 prek run --all-files                             # everything above, as one gate
-{% if project_type == "cli-modern" %}uv run cli --help                                # the demo CLI
+{% if project_type == "cli-modern" %}uv run {{ script_name }} --help                                # the demo CLI
 {% endif %}```
 
 ## Updating from the template
