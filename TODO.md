@@ -33,9 +33,12 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py` is
   the only thing that verifies it: 38 tests that generate a project per type and run that project's
   gate and suite inside it. Wired into the gate; costs about a minute.
-- `mcp-debugger` is installed and **proven** against `geo`. Node LTS 24.18.0 via winget,
-  `@debugmcp/mcp-debugger` 0.23.0 global, `debugpy` a dev dependency, server registered at
-  **user scope** so nothing ships yet.
+- Agent debugging is the **standalone DebugMCP CLI** (`debugmcp` on npm, Microsoft), which
+  replaced `mcp-debugger`. Projects ship `.debugmcp.json` (a `python` and a `pytest` adapter, both
+  `uv run python -m debugpy.adapter`), `tools/debug_pytest.py` and the `python-debug` skill; the
+  server itself is registered per user, so no generated project needs Node. Proven headless in
+  WSL against 0.1.3: breakpoints, conditional breakpoints on one parametrized case, stepping and
+  evaluation, for a script and for a pytest file.
 
 ## In flight
 
@@ -91,10 +94,23 @@ Still unverified:
   (`branch_guard` takes `--protected main master`).
 - The generation tasks assume `git init -b main` succeeds, i.e. that nothing is there yet.
 
-### 4. Decide whether `mcp-debugger` ships
+### 4. Prove the DebugMCP CLI on Windows native and from a real agent session
 
-Still user-scope only, deliberately: project scope would force **Node 22+ onto every generated
-Python project**. `debugpy` is already a dev dependency, so the Python half travels regardless.
+Every check so far ran in WSL, driven by a hand-written MCP client rather than by Claude Code.
+Still unverified: the `cmd /c` registration on Windows, `uv` resolving as the adapter command
+there, and an agent actually following the `python-debug` skill mid-task in `template-dogfood`.
+
+Known CLI gaps, all worked around in the skill rather than fixed: it ignores `launch.json`; it
+always sets `program`, so pytest needs the shim; complex values render as dunder trees unless
+wrapped in `repr()`; the debuggee's output is not captured.
+
+### 5. The DebugMCP VS Code extension, later
+
+Deferred by choice. It drives VS Code's own debugger over HTTP on `localhost:3001` and reuses
+`launch.json`, but it uses the interpreter selected for the *open window*: from a
+`python-template` window it launched the system Python and failed to import the package. Open
+questions: two windows contending for one port, and coexisting with the CLI, since
+`debugmcp configure` keeps a single `debugmcp` entry and replaces whichever is there.
 
 ## Nice to have
 

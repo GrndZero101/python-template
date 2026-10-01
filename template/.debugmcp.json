@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "adapters": {
+    "python": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "debugpy.adapter"],
+      "type": "python",
+      "extensions": [".py"],
+      "transport": "stdio",
+      "launch": {
+        "justMyCode": false
+      }
+    },
+    "pytest": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "debugpy.adapter"],
+      "type": "python",
+      "extensions": [".py"],
+      "transport": "stdio",
+      "launch": {
+        "program": "${workspaceFolder}/tools/debug_pytest.py",
+        "args": ["${file}", "-q", "--no-header", "-p", "no:cacheprovider"],
+        "cwd": "${workspaceFolder}",
+        "justMyCode": false
+      }
+    }
+  }
+}

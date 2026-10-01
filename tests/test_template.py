@@ -21,13 +21,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_TYPES = ["cli-modern", "cli-stdlib", "fastapi", "tui", "data"]
 
 # The example CLI travels only with cli-modern; every other type gets infrastructure and its
-# own skill. Keep this table in step with `_exclude` in copier.yml.
+# own skill. The debugging skill is infrastructure, so every type gets it. Keep this table in
+# step with `_exclude` in copier.yml.
 SKILLS_BY_TYPE = {
-    "cli-modern": {"python-cli", "python-cli-modern"},
-    "cli-stdlib": {"python-cli", "python-cli-stdlib"},
-    "fastapi": {"python-fastapi"},
-    "tui": {"python-tui"},
-    "data": {"python-data"},
+    "cli-modern": {"python-cli", "python-cli-modern", "python-debug"},
+    "cli-stdlib": {"python-cli", "python-cli-stdlib", "python-debug"},
+    "fastapi": {"python-fastapi", "python-debug"},
+    "tui": {"python-tui", "python-debug"},
+    "data": {"python-data", "python-debug"},
 }
 
 # DELIBERATELY LONGER than the template's own `python_template`. A shorter name cannot overflow
@@ -130,6 +131,21 @@ def test_only_the_matching_skills_ship(copie: Copie, project_type: str) -> None:
     project = _generate(copie, project_type)
     shipped = {path.name for path in (project / ".claude" / "skills").iterdir()}
     assert shipped == SKILLS_BY_TYPE[project_type]
+
+
+@pytest.mark.parametrize("project_type", PROJECT_TYPES)
+def test_debugmcp_pytest_adapter_points_at_a_shipped_program(
+    copie: Copie, project_type: str
+) -> None:
+    """The DebugMCP CLI resolves `program` only when a session starts, so a renamed shim fails late.
+
+    `${workspaceFolder}` is the session's working directory, which the skill says is the root.
+    """
+    project = _generate(copie, project_type)
+    config = json.loads((project / ".debugmcp.json").read_text(encoding="utf-8"))
+    program = config["adapters"]["pytest"]["launch"]["program"]
+    relative = program.removeprefix("${workspaceFolder}/")
+    assert (project / relative).is_file(), f"{program} does not exist in the generated project"
 
 
 @pytest.mark.parametrize("project_type", PROJECT_TYPES)
