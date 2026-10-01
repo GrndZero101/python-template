@@ -2,10 +2,11 @@
 name: python-cli-modern
 description: >-
   Conventions for modern devops CLI tools that call APIs — typer with Annotated, httpx clients,
-  pydantic models, rich output with a mandatory --output json path, loguru on stderr, shell
-  completion, interactive prompts, and a switchable sequential/concurrent execution path. Use when
-  the project depends on typer, httpx, rich, pydantic or loguru, when adding a command or an
-  --output format, or when writing asyncio fan-out. Defers to python-cli for interface conventions.
+  pydantic models, pydantic-settings configuration (flag, then env var, then default), rich output
+  with a mandatory --output json path, loguru on stderr, shell completion, interactive prompts, and
+  a switchable sequential/concurrent execution path. Use when the project depends on typer, httpx,
+  rich, pydantic or loguru, when adding a command, a setting or an --output format, or when writing
+  asyncio fan-out. Defers to python-cli for interface conventions.
 ---
 
 # Modern CLI conventions
@@ -25,11 +26,15 @@ less to read.
 | API calls | `httpx` |
 | Argument processing | `typer` |
 | Data structures | `pydantic` |
+| Configuration | `pydantic-settings` |
 | Output and formatting | `rich` |
 | Logging | `loguru` |
 | Interactive prompts | `prompt_toolkit` |
 | SQL Server / ORM | `SQLModel` |
 | Concurrency | `asyncio`, `concurrent.futures` |
+
+The scaffold depends on `typer`, `pydantic`, `pydantic-settings`, `rich` and `loguru` only. Add the
+rest when the first command needs them — `uv add httpx`, never by editing `pyproject.toml`.
 
 **Use a trusted vendor SDK before rolling your own client.** If `boto3`, `google-cloud-*`,
 `azure-*`, `PyGithub`, `kubernetes` or similar covers the service, use it — it already handles auth
@@ -84,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 ```
 
+The scaffold's `typer_entrypoint.run_app` is the full version of this, and `cli.main` wraps it.
 Point `[project.scripts]` at this `main`, not at `app`. Now `main(["deploy", "dev"])` works from a
 test, from pdb, and from the debug console. `typer.testing.CliRunner` is fine for asserting on
 rendered output, but it captures streams and swallows tracebacks — prefer calling `main` for logic.
@@ -101,6 +107,10 @@ it silently runs with all defaults, which for a deploy tool is a live incident.
 translate it to **0** in `main`; keep 2 for an unknown flag or subcommand. Also set
 `no_args_is_help=True` on every sub-group.
 
+A command missing a required argument is different: that **is** a usage error. `run_app` prints the
+command's full help rather than click's terse one-liner, but to **stderr** and with exit **2**, so
+`tool cmd && next` still stops and nothing lands in a pipe.
+
 ## The `--output` contract
 
 Every command that emits data takes `--output`/`-o`. Minimum set: `table` (human) and `json`
@@ -114,17 +124,20 @@ class OutputFormat(str, Enum):
     json = "json"
 ```
 
-Declare a reusable annotated alias once, then put it on **each command**:
+Declare a reusable annotated alias once, in `options.py`, then put it on **each command**. Its
+default is `None`, not `table` — see **Configuration** below for why:
 
 ```python
 OutputOption = Annotated[
-    OutputFormat, typer.Option("--output", "-o", envvar="TOOL_OUTPUT", help="output format")
+    OutputFormat | None,
+    typer.Option("--output", "-o", help=f"Output format. (env: {env_var('output')})"),
 ]
 
 
-@app.command()
-def ls(output: OutputOption = OutputFormat.table) -> None:
+def ls(ctx: typer.Context, output: OutputOption = None) -> None:
     """List records."""
+    settings = load_settings(verbose=global_options(ctx).verbose, output=output)
+    emit(fetch_records(), settings.output)
 ```
 
 **Do not declare `--output` only on `@app.callback()`.** A callback option is parsed at the *group*
@@ -138,9 +151,10 @@ explicit precedence — usually not worth the ambiguity.
 
 **The default never changes on its own.** `table` on a terminal, `table` in a pipe. Colour and
 spinners auto-suppress when stdout is not a tty, but the *data format* only changes when the caller
-asks — via `-o json` or `TOOL_OUTPUT=json`. This is deliberate: a tool that silently emits JSON when
-redirected behaves differently in CI than in the terminal where you tested it, and the failure is
-invisible. rich already honours `NO_COLOR` and `TERM=dumb`, so that half is free.
+asks — via `-o json` or the `<PREFIX>_OUTPUT=json` variable. This is deliberate: a tool that
+silently emits JSON when redirected behaves differently in CI than in the terminal where you tested
+it, and the failure is invisible. rich already honours `NO_COLOR` and `TERM=dumb`, so that half is
+free.
 
 For `json`, write it directly rather than through rich — no console configuration can then break it:
 
@@ -154,6 +168,52 @@ def emit(rows: list[Record], fmt: OutputFormat, console: Console) -> None:
 ```
 
 One JSON object or array per invocation. On the error path stdout stays **empty**.
+
+## Configuration: flag, then environment variable, then default
+
+Every setting resolves in that order, and `pydantic-settings` does the merge — never hand-roll it.
+The scaffold's `config.py` is the worked instance:
+
+```python
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, frozen=True, extra="forbid")
+
+    verbose: bool = False
+    output: OutputFormat = OutputFormat.table
+```
+
+The mechanism rests on one fact: **a value passed to the `Settings` constructor beats the
+environment**, which beats the field default. So a flag wins simply by arriving as a constructor
+argument — and an absent flag must not arrive at all. Hence:
+
+- **Every option that maps to a setting defaults to `None`**, meaning "not given". A typer default of
+  `False` or `table` is indistinguishable from the user typing it, and the environment variable
+  could then never win.
+- **`load_settings` drops the `None`s** before constructing. It builds the overrides in a
+  `TypedDict`, not a `dict`: ty checks `Settings(**overrides)` against pydantic-settings' own
+  typed `_env_prefix`-style parameters and rejects a loosely typed dict.
+- **A boolean flag needs both halves**, `--verbose/--no-verbose`, typed `bool | None`. Without
+  `--no-verbose` there is no way to override `VERBOSE=1` from the command line.
+- **The prefix is the script name**, upper-cased: `my-tool` reads `MY_TOOL_OUTPUT`. A generic
+  `CLI_OUTPUT` would be shared by every tool on the machine.
+- **Do not also pass typer's `envvar=`.** click would parse the variable with its rules and
+  pydantic with its own, and they disagree at the edges (`"yes"`, `"on"`). Name the variable in the
+  help text instead, built from `env_var(field)` so it cannot drift. Write it `(env: NAME)`: typer
+  renders help as rich markup, and `[env var: NAME]` is taken for a style tag and vanishes.
+- **A validation failure exits 2** with a message naming the value, the flag *and* the variable,
+  because the caller may have set either. `cli.main` maps `SettingsError` to that.
+- **No `.env` file by default.** A stray `.env` in the working directory would change a test's
+  outcome. Opt in with `env_file=".env"` when the tool genuinely needs it.
+- **Tests clear the prefix.** The scaffold's `conftest.py` deletes every `<PREFIX>_*` variable
+  before each test, so a developer's shell cannot make a test pass or fail.
+
+Global options live on `@app.callback()`, which stores what it was given in a frozen
+`GlobalOptions` on `ctx.obj`. Each command reads it back with `global_options(ctx)` and calls
+`load_settings` once with its own flags added, so settings are validated in one place and the
+command body sees a single typed `Settings`, never a raw `ctx.obj`.
+
+Do not merge a command's overrides into existing settings with `model_copy(update=...)` — it skips
+validation entirely. Construct a new `Settings`.
 
 ## Two rich consoles — the sharpest edge in this stack
 
@@ -193,6 +253,26 @@ async def fetch_records(
 - **`AsyncHTTPTransport(retries=N)` retries connection failures only — not 429 or 5xx.** Nearly
   everyone assumes otherwise. Status-code retry needs `tenacity` or an explicit loop, and must
   honour `Retry-After`.
+- **Test through `httpx.MockTransport`**, never the network. A handler is a plain module-level
+  function, bound with `functools.partial` rather than a lambda or a nested `def`:
+
+  ```python
+  def _respond(status: int, body: str, _request: httpx.Request) -> httpx.Response:
+      return httpx.Response(status, text=body)
+
+
+  def client_returning(body: str, status: int = 200) -> httpx.Client:
+      handler = functools.partial(_respond, status, body)
+      return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+  def test_parses_the_body() -> None:
+      with client_returning('[{"id": 1}]') as client:
+          assert fetch_records(client) == [Record(id=1)]
+  ```
+
+  Also assert that a caller-supplied client is **not** closed by the function — it does not own it.
+
 - Pagination is a generator that yields records, not a function returning an accumulated list. The
   caller then streams and a `--limit` can stop early.
 - `response.raise_for_status()` at the boundary; let the domain function raise and let `main` decide
@@ -211,6 +291,12 @@ mandatory.
 2. **`caplog` does not work.** loguru does not propagate to pytest's handlers, so log assertions
    silently pass against empty text. Add the documented `propagate_logs` autouse fixture to
    `conftest.py`, or assert through a `logger.add(records.append)` sink.
+
+   **Through `main`, assert on captured stderr instead.** The app callback calls
+   `configure_logging`, which removes every sink — including one a test added beforehand — and
+   then adds one on `sys.stderr`, which by then is pytest's capture. So
+   `assert "could not reach" in capsys.readouterr().err` works, and a pre-added sink silently
+   receives nothing. Keep the sink approach for calling a plain function directly.
 3. **`logger.catch(reraise=True)`, always.** A bare `logger.catch` swallows the exception — the same
    defect as `except: pass`.
 
@@ -310,15 +396,15 @@ the *parent process*, so it cannot cross-generate another shell's script.
   the way in, then pass the validated object around; do not re-validate in every function.
 - **`dataclass`** for everything internal, per CLAUDE.md. Cheaper, and its `repr` is just as
   readable in the debugger.
-- **`pydantic-settings`** for configuration precedence (flag > env > file > default) rather than a
-  hand-rolled merge. Inject the settings object as a parameter with a default.
+- **`pydantic-settings`** for configuration precedence — see **Configuration** above. Pass the
+  resolved `Settings` down as a parameter; never read it from a module-level global.
 - **SQLModel**: create the session at the command boundary and pass it down; never open one in a
   leaf function. Tests bind an in-memory SQLite engine.
 
 ### When the API shape is not the model shape
 
-`Place.model_validate(raw)` in `geo.py` works because Nominatim happens to return the field names
-the model wants. Plenty of APIs do not — they nest the payload under a single-element list, or
+`Model.model_validate(raw)` works directly only when the API happens to return the field names the
+model wants. Plenty of APIs do not — they nest the payload under a single-element list, or
 name things `temp_C`, or return numbers as strings. The tempting response is to reshape a
 `dict[str, Any]` by hand and hand the result to the model, which puts an `Any` in the signature and
 gives up validation on the way in.

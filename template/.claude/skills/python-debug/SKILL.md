@@ -68,8 +68,8 @@ platform without naming an OS-specific interpreter path.
 methods, cut off before the actual elements:
 
 ```text
-evaluate_expression  expression="parts"          # a 200-line tree of __add__, __class__, ...
-evaluate_expression  expression="repr(parts)"    # "['GBP', '']"
+evaluate_expression  expression="settings"         # a 200-line tree of __class__, __dict__, ...
+evaluate_expression  expression="repr(settings)"   # "Settings(verbose=True, output=<...>)"
 ```
 
 Strings, numbers and booleans render directly. `list_variable_names` is cheap and shows what is in
@@ -78,12 +78,13 @@ scope; use it before asking for values.
 ## Narrowing to one test
 
 `testName` does nothing under the CLI; it needs the VS Code extension's Test Explorer. The `pytest`
-adapter runs the whole file. To stop in one case, use a **conditional breakpoint** on the code under
-test:
+adapter runs the whole file. To stop in one case, use a **conditional breakpoint** keyed on that
+case's values — in the test itself, or in the code under test. For example, in the `cli-modern`
+scaffold:
 
 ```text
-add_breakpoint   fileFullPath=<root>/src/<pkg>/currency.py  line=69  condition="raw == 'GBP/'"
-start_debugging  fileFullPath=<root>/tests/test_currency.py  workingDirectory=<root>
+add_breakpoint   fileFullPath=<root>/tests/test_config.py  line=<n>  condition="raw == 'on'"
+start_debugging  fileFullPath=<root>/tests/test_config.py  workingDirectory=<root>
                  configurationName=pytest
 ```
 

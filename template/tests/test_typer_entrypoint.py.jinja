@@ -1,0 +1,68 @@
+"""How `run_app` turns each typer outcome into an exit code.
+
+Runs against a small app declared here rather than the real one, so every path — success, an
+explicit exit code, a missing argument, an unknown option — exists regardless of which commands
+the project currently has.
+"""
+
+from typing import Annotated
+
+import pytest
+import typer
+
+from {{ package_name }}.typer_entrypoint import run_app
+
+EXIT_CODE = 3
+
+
+def greet(name: Annotated[str, typer.Argument(help="who to greet")]) -> None:
+    """Greet someone."""
+    typer.echo(f"hello {name}")
+
+
+def fail() -> None:
+    """Exit with a specific code."""
+    raise typer.Exit(EXIT_CODE)
+
+
+app = typer.Typer(no_args_is_help=True)
+app.command("greet")(greet)
+app.command("fail")(fail)
+
+
+def _run(argv: list[str]) -> int:
+    return run_app(app, argv, prog_name="probe")
+
+
+def test_success_is_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    assert _run(["greet", "world"]) == 0
+    assert capsys.readouterr().out == "hello world\n"
+
+
+def test_an_explicit_exit_code_is_returned() -> None:
+    assert _run(["fail"]) == EXIT_CODE
+
+
+def test_bare_invocation_is_a_request_for_help_not_an_error() -> None:
+    assert _run([]) == 0
+
+
+def test_unknown_option_is_a_usage_error() -> None:
+    assert _run(["greet", "--bogus"]) == 2
+
+
+def test_missing_argument_shows_full_help_and_the_error_on_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _run(["greet"]) == 2
+    captured = capsys.readouterr()
+    assert not captured.out, "help on stdout would land in a pipe"
+    assert "who to greet" in captured.err
+    assert "Missing argument" in captured.err
+
+
+def test_missing_argument_help_matches_explicit_help(capsys: pytest.CaptureFixture[str]) -> None:
+    _run(["greet", "--help"])
+    explicit = capsys.readouterr().out
+    _run(["greet"])
+    assert explicit.strip() in capsys.readouterr().err

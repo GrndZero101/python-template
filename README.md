@@ -38,8 +38,10 @@ git switch -c feat/first-thing                    # never work on main
 
 You will be asked for: project name, package name, description, author name and email, minimum
 Python version, and **project type** — one of `cli-modern`, `cli-stdlib`, `fastapi`, `tui`, `data`.
-The type selects dependencies, lint rules and which skill ships. Only `cli-modern` includes the
-example CLI; the others get the infrastructure and a bare package.
+The type selects dependencies, lint rules and which skill ships. Only `cli-modern` includes a
+scaffold CLI: one placeholder `about` command, with global and command flags that each resolve
+flag, then environment variable, then default through `pydantic-settings`. The others get the
+infrastructure and a bare package.
 
 ### Keeping it in sync with the template
 

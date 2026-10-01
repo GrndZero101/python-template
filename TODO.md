@@ -26,12 +26,15 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
   message, `SessionStart` reports branch and tree state. Every hook is a single executable
   invocation, no shell operators.
-- Only five files under `template/` are `.jinja`: `pyproject.toml`, `README.md`,
-  `.pre-commit-config.yaml`, `.copier-answers.yml`, and the two example test modules. The six
-  source modules ship literally because their internal imports are **relative** — nothing inside
-  `src/` names the package, so copier renders only the directory name.
+- `cli-modern` ships a **scaffold**, not a demo: one placeholder `about` command, a global
+  `--verbose`/`--version` and a per-command `--output`, each resolving flag, then environment
+  variable (`<SCRIPT>_*`), then default through `pydantic-settings`. The old `geo`/`currency`
+  demo became specs under `examples/` — see item 3 for how they are meant to be used.
+- A file under `template/` is `.jinja` only when it names something an answer decides; root
+  `CLAUDE.md` lists them. The remaining source modules ship literally because their internal
+  imports are **relative** — nothing inside `src/` names the package.
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py` is
-  the only thing that verifies it: 38 tests that generate a project per type and run that project's
+  the only thing that verifies it: tests that generate a project per type and run that project's
   gate and suite inside it. Wired into the gate; costs about a minute.
 - Agent debugging is the **standalone DebugMCP CLI** (`debugmcp` on npm, Microsoft), which
   replaced `mcp-debugger`. Projects ship `.debugmcp.json` (a `python` and a `pytest` adapter, both
@@ -55,6 +58,31 @@ debugging session produced items 1 and 2 below.
 branch guard, gate and `python-cli-modern` skill are all inert from here — and `branch_guard` would
 *silently allow* the edit, because it resolves the repo root from the session's cwd and correctly
 stands down for a file outside it. Start a session in that directory instead.
+
+**The next update will remove code the dogfood still uses.** The scaffold change deletes
+`geo.py`, `currency.py` and their tests, drops `httpx` from the dependencies and changes
+`OutputOption`'s default to `None` — while the dogfood's own `weather.py` imports `httpx` and
+`OutputOption`. That is a deliberate test of two things nothing here covers: what `copier update`
+does with deleted files (deleted when untouched? conflicted when edited — `currency.py` and
+`cli.py` both were?), and whether the gate catches the breakage. Expected fix in the dogfood:
+`uv add httpx`, and `weather.py` resolving its settings the way `about.py` does.
+
+Rehearsed on a scratch clone of the dogfood, pointed at the local branch
+(`_src_path` edited, `copier update --trust --defaults --vcs-ref refactor/cli-minimal`):
+
+- The three files the dogfood never edited were **deleted**, cleanly. Untested: a removed file the
+  project *had* edited — the dogfood's `currency.py` turned out identical to the template's.
+- Four conflicts, all inline markers: `README.md`, `cli.py`, `typer_entrypoint.py`, and
+  `tests/test_typer_entrypoint.py`. The last is a file the **dogfood added itself** that the
+  template now also ships — a same-name collision, merged as a conflict rather than overwritten.
+- `httpx` was dropped from `pyproject.toml` **without** a conflict, though `weather.py` imports it.
+  The gate caught it — `ty` reported the unresolved import, and the moved `OutputOption` — but
+  **only after `uv sync`**. Until then the venv still holds `httpx` and `ty` passes. The README's
+  update section should say: `copier update`, resolve, `uv sync`, then `prek run --all-files`.
+- The documented migration (`uv add httpx`, `OutputOption = None` resolved through
+  `load_settings`) was sufficient, except for two log-assertion tests using the old geo pattern:
+  a pre-added loguru sink is removed by the callback's `configure_logging`. Switching them to
+  `capsys` stderr fixed it; the skill now says so. After that: 104 tests, gate clean.
 
 What the dogfood is meant to test, none of which any test here can reach: the guard blocking the
 first edit on `main`, the gate firing on save with actionable stderr, whether the skill steers, and
@@ -124,22 +152,53 @@ broken or misleading.
   guarded to `copy`. Worth a line in the README, since it is also the flag an agent's permission
   classifier refuses.
 
-### 3. Non-`cli-modern` types generate an empty package
+### 3. Run the `examples/` specs as dogfood exercises
+
+`examples/geo.md` and `examples/currency.md` describe the removed demo commands as specs: flags,
+service, output, failure modes and the tests that should exist, but no structure. Hand one to an
+agent in a session rooted in a generated project and record what the template steered and what it
+missed. The original code is at `d8e26b0` for comparison.
+
+### 4. Non-`cli-modern` types generate an empty package
 
 `fastapi`, `tui`, `data` and `cli-stdlib` receive the infrastructure — `tools/`, `CLAUDE.md`, the
 gate, the hooks, their one skill — but `src/<package>/` contains only `__init__.py` and `py.typed`.
 That is honest (the `geo`/`currency` demo is a typer demonstration and would drag typer, httpx and
 rich into an unrelated stack) but it gives those projects nothing to pattern-match against.
 
-Each needs a small example in its own idiom: a FastAPI app with one router and an `ASGITransport`
-test, a Textual app with a Pilot test, a polars/duckdb pipeline, an argparse CLI. The skills already
-describe the conventions; this is about shipping one worked instance of each.
+Each needs a small placeholder in its own idiom, on the pattern `cli-modern` now sets — the
+smallest runnable, tested thing that exercises the plumbing, not a demo to delete: an argparse
+`about` for `cli-stdlib`, a FastAPI `/health` route with an `ASGITransport` test, a single-screen
+Textual app with a Pilot test, a single polars/duckdb pipeline function. Each should resolve its
+settings the same way (flag, env var, default), so the configuration story is uniform across types.
 
 Note `logging_setup.py` is currently excluded from those types because it imports `loguru`. A
 stdlib `logging` equivalent is probably the right shared default, with the loguru one shipping only
 where a skill calls for it.
 
-### 4. Decide on tagging, which changes update semantics
+### 5. A config-file layer for settings
+
+Today settings resolve flag, then environment variable, then default. The missing layer is a
+**user config file** between the environment and the defaults. Proposed shape:
+
+- **Location by platform convention.** `$XDG_CONFIG_HOME/<script>/config.toml` (falling back to
+  `~/.config`) on Linux and other Unix-alikes; `%APPDATA%\<script>\config.toml` on Windows — the
+  roaming profile, since settings should follow the user, unlike caches, which belong in
+  `%LOCALAPPDATA%`. `platformdirs.user_config_dir(appname, appauthor=False)` gives exactly this
+  mapping; without `appauthor=False` it inserts an extra author directory on Windows.
+- **Open question: macOS.** `platformdirs` says `~/Library/Application Support/<app>`, but most
+  CLI users expect `~/.config` there too. Probably honour `XDG_CONFIG_HOME` when set on any
+  platform, and decide the macOS default deliberately.
+- **Override the location** with a global `--config PATH` and `<SCRIPT>_CONFIG`, so tests and CI
+  never read a real user file.
+- **TOML**, read through pydantic-settings' own TOML source via `settings_customise_sources`
+  (check the current docs for the class name and signature), so one validation pass still covers
+  every layer and error messages can name the file.
+- **Tests** point the location at `tmp_path`; nothing may read the developer's real config.
+- Decide whether a project-local file (`./<script>.toml`) is also wanted. It is a second source
+  of surprise; leave it out unless a real need appears.
+
+### 6. Decide on tagging, which changes update semantics
 
 The template has **no git tags**, so `.copier-answers.yml` records a bare commit hash and the
 `--vcs-ref v1.3.0` examples in the README refer to tags that do not exist yet.
@@ -150,7 +209,7 @@ iterated on, because fixes stop propagating to the dogfood until they are tagged
 stay untagged until the dogfood settles, then cut `v0.1.0` and fix the README examples to match
 whatever scheme is chosen.
 
-### 5. Verify generation into unusual git states
+### 7. Verify generation into unusual git states
 
 Still unverified:
 
@@ -158,7 +217,7 @@ Still unverified:
   (`branch_guard` takes `--protected main master`).
 - The generation tasks assume `git init -b main` succeeds, i.e. that nothing is there yet.
 
-### 6. Prove the DebugMCP CLI on Windows native, later
+### 8. Prove the DebugMCP CLI on Windows native, later
 
 The agent-session half is done (item 1) — in WSL. Still unverified, and needing a session started
 on Windows itself: the `cmd /c` registration, `uv` resolving as the adapter command, and both
@@ -170,7 +229,7 @@ always sets `program`, so pytest needs the shim (and, per item 1, so does every 
 complex values render as dunder trees unless wrapped in `repr()`; the debuggee's output is not
 captured, and neither is logpoint output.
 
-### 7. The DebugMCP VS Code extension, later
+### 9. The DebugMCP VS Code extension, later
 
 Deferred by choice. It drives VS Code's own debugger over HTTP on `localhost:3001` and reuses
 `launch.json`, but it uses the interpreter selected for the *open window*: from a

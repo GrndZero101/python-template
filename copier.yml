@@ -35,7 +35,7 @@ project_type:
   help: What kind of project is this? Selects dependencies, lint rules and the skill that ships.
   default: cli-modern
   choices:
-    "CLI on typer/httpx/pydantic/rich/loguru (ships the geo example)": cli-modern
+    "CLI on typer/pydantic/rich/loguru (ships a placeholder `about` command)": cli-modern
     "CLI on the standard library, minimal dependencies": cli-stdlib
     "FastAPI service": fastapi
     "Textual TUI": tui
@@ -87,10 +87,13 @@ python_version:
 # ---------------------------------------------------------------------------
 # What not to copy
 # ---------------------------------------------------------------------------
-# The example CLI is the typer stack's demonstration. Shipping it into a FastAPI or Textual
-# project would drag typer, httpx and rich in with it, so it travels with cli-modern only.
-# Every other project type receives the infrastructure — tools/, CLAUDE.md, the gate, the
+# The scaffold CLI is the typer stack's starting point. Shipping it into a FastAPI or Textual
+# project would drag typer, rich and pydantic-settings in with it, so it travels with cli-modern
+# only. Every other project type receives the infrastructure — tools/, CLAUDE.md, the gate, the
 # hooks — plus the one skill that matches the stack it is actually built on.
+#
+# Paths are matched AFTER rendering, so `cli.py` here excludes `cli.py.jinja`. Keep this list in
+# step with CLI_MODULES and CLI_TESTS in tests/test_template.py.
 _exclude:
   - "copier.yml"
   - "~*"
@@ -98,14 +101,17 @@ _exclude:
   - "__pycache__"
   - ".git"
   - ".venv"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/about.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/cli.py{% endif %}"
-  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/geo.py{% endif %}"
-  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/currency.py{% endif %}"
-  - "{% if project_type != 'cli-modern' %}tests/test_currency.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/config.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/logging_setup.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/options.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/output.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/typer_entrypoint.py{% endif %}"
-  - "{% if project_type != 'cli-modern' %}src/{{ package_name }}/logging_setup.py{% endif %}"
-  - "{% if project_type != 'cli-modern' %}tests/test_geo.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/conftest.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_about.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_config.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_typer_entrypoint.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}.claude/skills/python-cli-modern{% endif %}"
   - "{% if project_type != 'cli-stdlib' %}.claude/skills/python-cli-stdlib{% endif %}"
   - "{% if project_type != 'fastapi' %}.claude/skills/python-fastapi{% endif %}"
