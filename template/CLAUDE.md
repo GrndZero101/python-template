@@ -196,6 +196,9 @@ does not use — and also the one form nothing will catch. `commit-msg` *does* f
 the default sails through while `adds a probe file` is correctly rejected. The convention below is
 therefore review-only in practice, however enforced the rest of the commit rules look.
 
+That is deliberate. The checker's `--strict` flag would close the gap, but it also rejects every
+`fixup!` commit, which the rebase path above depends on. Both merges and fixups stay allowed.
+
 It matters because the merge commit is the only place the work is described. Git records the branch
 name nowhere in the commit — only in the reflog, which is local and expires — so once
 `feat/geo-get-coordinates` is deleted, the merge subject is all that is left.
