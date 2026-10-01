@@ -20,12 +20,19 @@ it is held to exactly the standard it preaches. What follows is only what differ
 | `pyproject.toml` | Dev deps and lint config for the root. Not published, not importable. |
 | `TODO.md` | Outstanding work on the template itself. Not shipped. |
 
-Only five files under `template/` carry a `.jinja` suffix: `pyproject.toml`, `README.md`,
-`.pre-commit-config.yaml`, `.copier-answers.yml` and the two example test modules. Everything else —
-`CLAUDE.md`, all of `tools/`, every skill, and all six source modules — ships literally. The source
-modules manage it because their internal imports are **relative**, so nothing inside `src/` names the
-package and copier only has to render the directory name. Keep it that way: an absolute import there
-would force another file to become a template.
+A file under `template/` carries a `.jinja` suffix only when it must name something the answers
+decide:
+
+- the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml` and
+  `.copier-answers.yml`;
+- `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
+- `conftest.py` and the three test modules, which import the package by name.
+
+Everything else — `CLAUDE.md`, all of `tools/`, every skill, and the other source modules — ships
+literally. The source modules manage it because their internal imports are **relative**, so
+nothing inside `src/` names the package and copier only has to render the directory name. Keep it
+that way: an absolute import there would force another file to become a template. Anything that
+needs the script name should import it from `config.py` rather than render it again.
 
 ## The two gates
 

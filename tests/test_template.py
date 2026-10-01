@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 PROJECT_TYPES = ["cli-modern", "cli-stdlib", "fastapi", "tui", "data"]
 
-# The example CLI travels only with cli-modern; every other type gets infrastructure and its
+# The scaffold CLI travels only with cli-modern; every other type gets infrastructure and its
 # own skill. The debugging skill is infrastructure, so every type gets it. Keep this table in
 # step with `_exclude` in copier.yml.
 SKILLS_BY_TYPE = {
@@ -30,6 +30,26 @@ SKILLS_BY_TYPE = {
     "tui": {"python-tui", "python-debug"},
     "data": {"python-data", "python-debug"},
 }
+
+# What each project type's src/ and tests/ hold. Keep in step with `_exclude` in copier.yml.
+BASE_MODULES = {"__init__.py"}
+CLI_MODULES = {
+    "about.py",
+    "cli.py",
+    "config.py",
+    "logging_setup.py",
+    "options.py",
+    "output.py",
+    "typer_entrypoint.py",
+}
+BASE_TESTS = {
+    "test_branch_guard.py",
+    "test_check_nested_defs.py",
+    "test_debug_pytest.py",
+    "test_gate.py",
+    "test_hook_payload.py",
+}
+CLI_TESTS = {"conftest.py", "test_about.py", "test_config.py", "test_typer_entrypoint.py"}
 
 # DELIBERATELY LONGER than the template's own `python_template`. A shorter name cannot overflow
 # a line that was formatted against the template's name, so it silently proves nothing: the
@@ -149,16 +169,29 @@ def test_debugmcp_pytest_adapter_points_at_a_shipped_program(
 
 
 @pytest.mark.parametrize("project_type", PROJECT_TYPES)
-def test_example_cli_travels_only_with_cli_modern(copie: Copie, project_type: str) -> None:
-    """Shipping the demo elsewhere would drag typer, httpx and rich into an unrelated stack."""
+def test_scaffold_cli_travels_only_with_cli_modern(copie: Copie, project_type: str) -> None:
+    """Shipping it elsewhere would drag typer, rich and pydantic-settings into an unrelated stack.
+
+    Compared as whole sets, so a module added to the template but missed in `_exclude` fails here
+    rather than turning up unannounced in a FastAPI project.
+    """
     project = _generate(copie, project_type)
-    expected = project_type == "cli-modern"
-    assert (project / "src" / PACKAGE_NAME / "geo.py").is_file() is expected
-    assert (project / "tests" / "test_geo.py").is_file() is expected
+    is_cli = project_type == "cli-modern"
+    modules = {path.name for path in (project / "src" / PACKAGE_NAME).glob("*.py")}
+    assert modules == (BASE_MODULES | CLI_MODULES if is_cli else BASE_MODULES)
+    tests = {path.name for path in (project / "tests").glob("*.py")}
+    assert tests == (BASE_TESTS | CLI_TESTS if is_cli else BASE_TESTS)
     assert (
         f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"'
         in (project / "pyproject.toml").read_text(encoding="utf-8")
-    ) is expected
+    ) is is_cli
+
+
+def test_environment_prefix_follows_the_script_name(copie: Copie) -> None:
+    """`weather-tools` must read `WEATHER_TOOLS_*`, not a prefix every generated project shares."""
+    project = _generate(copie, "cli-modern")
+    config = (project / "src" / PACKAGE_NAME / "config.py").read_text(encoding="utf-8")
+    assert 'ENV_PREFIX = "WEATHER_TOOLS_"' in config
 
 
 def test_console_script_is_never_named_cli(copie: Copie) -> None:

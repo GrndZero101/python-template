@@ -1,0 +1,68 @@
+"""Settings precedence: command-line flag, then environment variable, then default."""
+
+import pytest
+
+from {{ package_name }}.config import (
+    ENV_PREFIX,
+    Settings,
+    SettingsError,
+    env_var,
+    load_settings,
+)
+from {{ package_name }}.output import OutputFormat
+
+OUTPUT_VAR = env_var("output")
+VERBOSE_VAR = env_var("verbose")
+
+
+def test_defaults_apply_when_nothing_is_set() -> None:
+    assert load_settings() == Settings(verbose=False, output=OutputFormat.table)
+
+
+def test_environment_overrides_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "json")
+    assert load_settings().output is OutputFormat.json
+
+
+def test_flag_overrides_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "json")
+    assert load_settings(output=OutputFormat.table).output is OutputFormat.table
+
+
+def test_explicit_false_flag_overrides_a_true_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--no-verbose` must beat the variable: `False` is a value, only `None` means absent."""
+    monkeypatch.setenv(VERBOSE_VAR, "1")
+    assert load_settings(verbose=False).verbose is False
+
+
+def test_absent_flag_does_not_mask_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(VERBOSE_VAR, "1")
+    assert load_settings(verbose=None).verbose is True
+
+
+@pytest.mark.parametrize("raw", ["1", "true", "yes", "on", "TRUE"])
+def test_boolean_variables_accept_common_spellings(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    monkeypatch.setenv(VERBOSE_VAR, raw)
+    assert load_settings().verbose is True
+
+
+def test_invalid_variable_names_the_value_the_flag_and_the_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "xml")
+    with pytest.raises(SettingsError, match=OUTPUT_VAR) as raised:
+        load_settings()
+    message = str(raised.value)
+    assert "'xml'" in message
+    assert "--output" in message
+
+
+def test_unrelated_prefixed_variable_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(f"{ENV_PREFIX}NOT_A_SETTING", "x")
+    assert load_settings() == Settings()
+
+
+def test_env_var_is_the_prefix_plus_the_upper_case_field() -> None:
+    assert env_var("output") == f"{ENV_PREFIX}OUTPUT"

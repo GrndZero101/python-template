@@ -9,10 +9,10 @@ by lint config and a `prek` gate — not just documented and hoped for.
 
 ## What's here
 
-- **`src/{{ package_name }}/`** — the package.{% if project_type == "cli-modern" %} It ships a demo
-  CLI (`{{ script_name }}`) with two subcommands, `geo` and `currency`, on the typer/httpx/pydantic/rich/loguru
-  stack, offline-tested via `httpx.MockTransport`. That is example code: pattern-match against it,
-  then delete it.{% endif %}
+- **`src/{{ package_name }}/`** — the package.{% if project_type == "cli-modern" %} It ships a
+  scaffold CLI, `{{ script_name }}`, on typer, pydantic-settings, rich and loguru, with one
+  placeholder command, `about`. Replace it or build beside it; the plumbing around it — settings,
+  output, logging, the entry point — is meant to stay.{% endif %}
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
   `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
   block edits to `main` and run the lint gate on save), `hook_payload.py` (shared parsing), and
@@ -58,10 +58,34 @@ rumdl fmt . && rumdl check .                     # markdown
 uv run pytest                                    # tests
 uv run python tools/check_nested_defs.py src tests tools
 prek run --all-files                             # everything above, as one gate
-{% if project_type == "cli-modern" %}uv run {{ script_name }} --help                                # the demo CLI
-{% endif %}```
+```
 
-## Updating from the template
+{% if project_type == "cli-modern" %}## Using the CLI
+
+```bash
+uv run {{ script_name }} --help
+uv run {{ script_name }} about                  # table on stdout
+uv run {{ script_name }} about --output json    # one JSON object on stdout
+uv run {{ script_name }} --verbose about        # global options go before the command
+```
+
+Every setting resolves **flag, then environment variable, then default**:
+
+| Setting | Flag | Environment variable | Default |
+|---|---|---|---|
+| Debug logging to stderr | `--verbose` / `--no-verbose` (global) | `{{ script_name | upper | replace('-', '_') }}_VERBOSE` | off |
+| Output format | `--output` / `-o` (per command) | `{{ script_name | upper | replace('-', '_') }}_OUTPUT` | `table` |
+
+The docstring of `config.py` says how to add a setting. An invalid value from either source exits
+2 with a message naming both the flag and the variable.
+
+Shell completion is emitted rather than installed:
+
+```bash
+{{ completion_env_var }}=source_zsh {{ script_name }} > "${ZDOTDIR:-$HOME}/completions/_{{ script_name }}"
+```
+
+{% endif %}## Updating from the template
 
 ```bash
 copier update

@@ -67,6 +67,17 @@ def test_command_skips_the_branch_hook() -> None:
     assert "no-commit-to-branch" in command
 
 
+def test_each_skipped_hook_gets_its_own_flag() -> None:
+    """prek's --skip takes one id; `a,b` passed whole matches no hook and skips nothing."""
+    command = build_command(Path("src/x.py"), skip="no-commit-to-branch, generation-tests")
+    skips = command[command.index("--skip") :]
+    assert skips == ["--skip", "no-commit-to-branch", "--skip", "generation-tests"]
+
+
+def test_an_empty_skip_list_adds_no_flag() -> None:
+    assert "--skip" not in build_command(Path("src/x.py"), skip="")
+
+
 def test_check_forwards_command_and_cwd(tmp_path: Path) -> None:
     seen: list[tuple[Sequence[str], Path]] = []
     check(

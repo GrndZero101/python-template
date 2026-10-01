@@ -1,0 +1,28 @@
+"""Fixtures every test gets: isolation from the developer's shell and from loguru's global state."""
+
+import os
+from collections.abc import Iterator
+
+import pytest
+from loguru import logger
+
+from {{ package_name }}.config import ENV_PREFIX
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear every variable `Settings` would read, so a developer's shell cannot steer a test."""
+    for name in list(os.environ):
+        if name.upper().startswith(ENV_PREFIX):
+            monkeypatch.delenv(name)
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging() -> Iterator[None]:
+    """Drop any sink a test added through `configure_logging`.
+
+    Such a sink holds the stream pytest captured for that test, which is closed afterwards, so a
+    later log call would otherwise write to a closed file.
+    """
+    yield
+    logger.remove()

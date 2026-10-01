@@ -1,0 +1,146 @@
+"""The `about` command, piece by piece and end to end through `main`."""
+
+import json
+
+import pytest
+
+from {{ package_name }}.about import About, build_about_table, collect_about
+from {{ package_name }}.cli import main
+from {{ package_name }}.config import PROG_NAME, Settings, env_var, load_settings
+
+OUTPUT_VAR = env_var("output")
+VERBOSE_VAR = env_var("verbose")
+
+
+def _fixed_version(_dist_name: str) -> str:
+    return "1.2.3"
+
+
+def _fixed_python() -> str:
+    return "3.14.0"
+
+
+def _fixed_platform() -> str:
+    return "TestOS-1.0"
+
+
+def _pinned(settings: Settings) -> About:
+    """Collect with every runtime fact pinned, so the result is the same on any machine."""
+    return collect_about(
+        settings,
+        version_of=_fixed_version,
+        python_version=_fixed_python,
+        platform_name=_fixed_platform,
+    )
+
+
+# --- the pieces ---------------------------------------------------------------------------
+
+
+def test_collect_about_reports_the_injected_facts() -> None:
+    about = _pinned(load_settings())
+    assert (about.name, about.version, about.python, about.platform) == (
+        PROG_NAME,
+        "1.2.3",
+        "3.14.0",
+        "TestOS-1.0",
+    )
+
+
+def test_table_names_the_variable_behind_each_setting() -> None:
+    table = build_about_table(_pinned(load_settings()))
+    keys = [str(cell) for cell in table.columns[0].cells]
+    assert f"output ({OUTPUT_VAR})" in keys
+    assert f"verbose ({VERBOSE_VAR})" in keys
+
+
+# --- through main -------------------------------------------------------------------------
+
+
+def test_json_output_is_one_parseable_object(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["about", "--output", "json"]) == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert decoded["name"] == PROG_NAME
+    assert decoded["settings"] == {"verbose": False, "output": "json"}
+
+
+def test_environment_selects_the_output_format(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "json")
+    assert main(["about"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["output"] == "json"
+
+
+def test_flag_beats_the_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "json")
+    assert main(["about", "-o", "table"]) == 0
+    stdout = capsys.readouterr().out
+    assert "Version" in stdout
+    assert not stdout.lstrip().startswith("{")
+
+
+def test_quiet_by_default(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["about", "-o", "json"]) == 0
+    assert not capsys.readouterr().err
+
+
+def test_verbose_logs_to_stderr_and_leaves_stdout_parseable(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["-v", "about", "-o", "json"]) == 0
+    captured = capsys.readouterr()
+    assert "resolved" in captured.err
+    assert json.loads(captured.out)["settings"]["verbose"] is True
+
+
+def test_verbose_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(VERBOSE_VAR, "1")
+    assert main(["about", "-o", "json"]) == 0
+    assert "resolved" in capsys.readouterr().err
+
+
+def test_no_verbose_flag_beats_the_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(VERBOSE_VAR, "1")
+    assert main(["--no-verbose", "about", "-o", "json"]) == 0
+    assert not capsys.readouterr().err
+
+
+def test_invalid_environment_is_a_usage_error_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(OUTPUT_VAR, "xml")
+    assert main(["about"]) == 2
+    captured = capsys.readouterr()
+    assert OUTPUT_VAR in captured.err
+    assert not captured.out
+
+
+def test_version_prints_the_name_and_version(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out.startswith(f"{PROG_NAME} ")
+
+
+@pytest.mark.parametrize(
+    ("argv", "variable"),
+    [(["--help"], VERBOSE_VAR), (["about", "--help"], OUTPUT_VAR)],
+)
+def test_help_names_the_environment_variable(
+    argv: list[str], variable: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(argv) == 0
+    assert variable in capsys.readouterr().out
+
+
+def test_bare_invocation_shows_help() -> None:
+    assert main([]) == 0
+
+
+def test_unknown_command_is_a_usage_error() -> None:
+    assert main(["bogus"]) == 2
