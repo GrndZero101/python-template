@@ -49,9 +49,9 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 ### Dogfood in `GrndZero101/template-dogfood`
 
 A private consumer repo, generated from the published template as `cli-modern`. It has since grown a
-`weather` subcommand, renamed its script to `tdf-cli`, and taken its first `copier update` (to
-`ba78c6d`): gate green, 109 tests passing, merged and pushed. That update and the first agent-driven
-debugging session produced items 1 and 2 below.
+`weather` subcommand, renamed its script to `tdf-cli`, and taken two `copier update`s: to `ba78c6d`,
+then to `31e9fa8` (the scaffold). Both merged and pushed, gate green, now 104 tests. Those updates
+and the first agent-driven debugging session produced items 1 and 2 below.
 
 **This cannot be driven from a session rooted in `python-template`.** Claude Code loads
 `.claude/settings.json` and skills from the session's own project root, so the dogfood project's
@@ -59,16 +59,13 @@ branch guard, gate and `python-cli-modern` skill are all inert from here — and
 *silently allow* the edit, because it resolves the repo root from the session's cwd and correctly
 stands down for a file outside it. Start a session in that directory instead.
 
-**The next update will remove code the dogfood still uses.** The scaffold change deletes
-`geo.py`, `currency.py` and their tests, drops `httpx` from the dependencies and changes
-`OutputOption`'s default to `None` — while the dogfood's own `weather.py` imports `httpx` and
-`OutputOption`. That is a deliberate test of two things nothing here covers: what `copier update`
-does with deleted files (deleted when untouched? conflicted when edited — `currency.py` and
-`cli.py` both were?), and whether the gate catches the breakage. Expected fix in the dogfood:
-`uv add httpx`, and `weather.py` resolving its settings the way `about.py` does.
-
-Rehearsed on a scratch clone of the dogfood, pointed at the local branch
-(`_src_path` edited, `copier update --trust --defaults --vcs-ref refactor/cli-minimal`):
+**The scaffold update removed code the dogfood still used**, deliberately: it deleted `geo.py`,
+`currency.py` and their tests, dropped `httpx` and moved `OutputOption` (now defaulting to `None`)
+into `options.py`, while the dogfood's own `weather.py` imports both. It was rehearsed on a scratch
+clone first (`_src_path` edited, `copier update --trust --defaults --vcs-ref refactor/cli-minimal`),
+then run for real from a session rooted in the dogfood. **The rehearsal predicted the real run
+exactly** — same four conflicts, same silent `httpx` drop, same fix, same 104 tests — so a scratch
+rehearsal is a trustworthy dry run. What the rehearsal found:
 
 - The three files the dogfood never edited were **deleted**, cleanly. Untested: a removed file the
   project *had* edited — the dogfood's `currency.py` turned out identical to the template's.
@@ -83,6 +80,9 @@ Rehearsed on a scratch clone of the dogfood, pointed at the local branch
   `load_settings`) was sufficient, except for two log-assertion tests using the old geo pattern:
   a pre-added loguru sink is removed by the callback's `configure_logging`. Switching them to
   `capsys` stderr fixed it; the skill now says so. After that: 104 tests, gate clean.
+
+What only the real run showed — how the conflicts read to an agent meeting them cold — is under
+item 2.
 
 What the dogfood is meant to test, none of which any test here can reach: the guard blocking the
 first edit on `main`, the gate firing on save with actionable stderr, whether the skill steers, and
@@ -139,10 +139,39 @@ broken or misleading.
 - **Hook commands use relative paths** (`tools/branch_guard.py`). They resolve against the
   shell's current directory, so after any `cd` elsewhere every hook fails. Also fails closed, but
   the error (`can't open file`) does not say why. `$CLAUDE_PROJECT_DIR` would fix it but needs
-  expanding, which runs into the one-executable rule; needs a decision.
+  expanding, which runs into the one-executable rule; needs a decision. Hit again while recording
+  these notes: one `cd` into `python-template` for a `git` command, and every later `Edit` from the
+  dogfood session failed until the shell was moved back. `git -C <dir>` avoids it.
 - **`check-merge-conflict` does not see copier's conflict markers.** It only inspects files while a
   git merge is in progress, which a copier update is not. `ruff` and `ty` caught the markers in
-  Python; nothing would catch them in Markdown or YAML.
+  Python; nothing would catch them in Markdown or YAML. Confirmed on the real `31e9fa8` update: the
+  hook printed `Passed` with markers in four files.
+- **The edit gate floods during conflict resolution.** `ty` checks the whole project on every save,
+  so each edit to one conflicted file reprinted 60–80 syntax diagnostics from the *other* three —
+  thousands of lines per edit, burying the one result that mattered. It pushed the agent from
+  hunk-by-hunk edits to whole-file resolution (`git checkout --theirs`). Options: have `gate.py`
+  stand down while any tracked file holds a conflict marker and say so in one line, or scope `ty`'s
+  output to the edited file.
+- **The gate's autofix deletes an import added ahead of its use.** Adding `load_settings` and
+  `global_options` to `weather.py`'s imports in one edit, then the call site in the next, let
+  `ruff check --fix` strip both imports as unused (`F401`) in between; the call site then failed as
+  undefined names. Every refactor an agent does in more than one edit hits this. Either mark `F401`
+  `unfixable` in the edit-time gate (still reported, never removed — `prek run` at commit can keep
+  fixing it), or tell agents in `CLAUDE.md` to land the use before or with the import.
+- **Conflict labels do not say which side is newer work.** copier labels the sides
+  `before updating` (the project) and `after updating` (the new template render). In
+  `typer_entrypoint.py` the project side was the dogfood's own missing-argument help (`27c9ad8`),
+  and the template side was that same feature upstreamed with changed semantics — help to stderr,
+  exit 2 instead of 0. Telling "the template superseded this" from "the project customised this"
+  took reading both sides and the dogfood's history. A line in the update notes for each release
+  naming features absorbed from consumers would settle it. Worth knowing for the README: index
+  stage 3 is the new template render, so `git checkout --theirs <file>` takes it whole — which also
+  drops project-only lines sitting *outside* the markers (here, a now-dead private `echo` import
+  that a hunk-by-hunk resolution would have kept until `F401` caught it).
+- **A moved option is a silent interface break for consumer commands.** `weather` had its own
+  `-v/--verbose`; on the scaffold that flag is global, so `tdf-cli weather -v cleve` became
+  `tdf-cli -v weather cleve`. The template's `!` commit covers its own commands, but nothing warns a
+  consumer that commands *it* wrote need the same change. The update notes should say so.
 - **A new question takes its default on update.** `script_name` was added after the dogfood was
   generated, and `copier update --defaults` recorded `template-dogfood`, re-proposing the rename in
   every file carrying the name. Fixed in the dogfood by recording `tdf-cli` in
