@@ -63,8 +63,18 @@ def run_subprocess(command: Sequence[str], cwd: Path) -> GateResult:
 
 
 def build_command(path: Path, skip: str = SKIP_HOOKS) -> list[str]:
-    """Return the prek invocation that checks exactly `path`."""
-    return ["prek", "run", "--files", str(path), "--skip", skip]
+    """Return the prek invocation that checks exactly `path`.
+
+    `skip` is comma-separated, but prek's `--skip` flag takes exactly one hook id and is
+    repeated for more — only the `SKIP` environment variable splits on commas. Passed whole,
+    `a,b` names a hook that does not exist, and prek skips nothing.
+    """
+    command = ["prek", "run", "--files", str(path)]
+    for hook_id in skip.split(","):
+        stripped = hook_id.strip()
+        if stripped:
+            command.extend(["--skip", stripped])
+    return command
 
 
 def check(target: Path, root: Path, skip: str, runner: Runner) -> GateResult:
