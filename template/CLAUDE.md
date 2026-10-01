@@ -60,8 +60,10 @@ and containers, which are Linux. This is a template; a generated project may lan
   Linux and macOS and locale-dependent on Windows, so omitting it is a latent decoding bug.
 - **No POSIX-only modules** — `pwd`, `grp`, `fcntl`, `termios` — outside a guarded import.
 - **No `shell=True`, no shell string.** Build a subprocess command as a list.
-- **Hook commands are a single executable invocation, never a shell pipeline.** No `&&`, `||`,
-  `|`, `;`, `{ }`, `1>&2`, `if`/`fi`, or `$( )`.
+- **Hooks are exec form: one executable in `command`, its arguments in `args`.** Claude Code then
+  spawns it directly, with no shell, so `&&`, `|`, `$( )` and the rest are not merely discouraged
+  but inert. Name scripts as `${CLAUDE_PROJECT_DIR}`-relative paths, which exec form substitutes
+  as plain strings, so a hook still finds its script after the agent has run `cd`.
   *Why: a hook that needs `sh` fails where `sh` is absent, and it fails **open** — the check
   silently stops running while still looking healthy. Logic beyond one command belongs in a
   script under `tools/`, which is also then testable.*
@@ -88,7 +90,7 @@ which rest on your own discipline.
 | `pathlib` over `os.path` | `PTH` |
 | Explicit `encoding=` on reads and writes | `unspecified-encoding` |
 | No `shell=True`, no shell string | `S602` `S604` `S605` |
-| Hook commands are one executable, not a shell pipeline | *convention — review only* |
+| Hooks are exec form: `command` plus `args`, no shell | *convention — review only* |
 | No literal path separators asserted in tests | *convention — review only* |
 | No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |
 | No direct commits to `main` (merges allowed) | `no-commit-to-branch` at `pre-commit` stage only |

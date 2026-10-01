@@ -23,7 +23,9 @@ repos:
         exclude: ^template/
       - id: end-of-file-fixer
         exclude: ^template/
+      # --assume-in-merge: see template/.pre-commit-config.yaml.jinja.
       - id: check-merge-conflict
+        args: [--assume-in-merge]
         exclude: ^template/
       - id: check-added-large-files
       - id: check-yaml

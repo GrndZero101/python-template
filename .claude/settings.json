@@ -21,7 +21,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "git status --short --branch",
+            "command": "git",
+            "args": [
+              "-C",
+              "${CLAUDE_PROJECT_DIR}",
+              "status",
+              "--short",
+              "--branch"
+            ],
             "timeout": 15
           }
         ]
@@ -33,7 +40,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-sync python template/tools/branch_guard.py --protected main master",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
+              "${CLAUDE_PROJECT_DIR}",
+              "python",
+              "template/tools/branch_guard.py",
+              "--protected",
+              "main",
+              "master"
+            ],
             "timeout": 15,
             "statusMessage": "Checking branch..."
           }
@@ -46,7 +65,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --no-sync python template/tools/gate.py --skip no-commit-to-branch,generation-tests",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
+              "${CLAUDE_PROJECT_DIR}",
+              "python",
+              "template/tools/gate.py",
+              "--skip",
+              "no-commit-to-branch,generation-tests"
+            ],
             "timeout": 120,
             "statusMessage": "Formatting and checking..."
           }
