@@ -15,8 +15,10 @@ by lint config and a `prek` gate — not just documented and hoped for.
   then delete it.{% endif %}
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
   `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
-  block edits to `main` and run the lint gate on save), and `hook_payload.py` (shared parsing).
+  block edits to `main` and run the lint gate on save), `hook_payload.py` (shared parsing), and
+  `debug_pytest.py` (lets the DebugMCP CLI debug a test file; see below).
 - **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply.
+- **`.debugmcp.json`** — debugger adapters for an agent driving [DebugMCP](https://github.com/microsoft/DebugMCP).
 - **`CLAUDE.md`** — the full rule set: structure, debuggability, agent-friendliness, portability,
   branching, and commit conventions, plus a table of exactly what is enforced by what.
 
@@ -31,6 +33,21 @@ prek install && prek install -t commit-msg && prek install -t pre-merge-commit
 
 All three shims are required — `prek install` alone wires only `pre-commit`, which silently skips
 the commit-message check and breaks `--no-ff` merges into `main`.
+
+### Live debugging for an agent (optional, once per machine)
+
+`.debugmcp.json` lets Claude Code set breakpoints, step and inspect values through the standalone
+DebugMCP CLI, with no IDE involved. The server is installed per user, so the project itself never
+needs Node. It needs Node 20+:
+
+```bash
+npm install --global debugmcp
+claude mcp add --scope user debugmcp -- debugmcp serve --stdio
+```
+
+On native Windows, use `-- cmd /c debugmcp serve --stdio`. Prefer this to `debugmcp configure`,
+which also installs a skill written for the VS Code extension. The `python-debug` skill covers
+using it.
 
 ## Commands
 
