@@ -114,15 +114,6 @@ questions: two windows contending for one port, and coexisting with the CLI, sin
 
 ## Nice to have
 
-- **The generation-tests hook is `always_run`.** Even `prek run --files README.md` triggers the full
-  minute-long suite; `--skip generation-tests` is the workaround. A `files:` pattern limiting it to
-  changes under `template/`, `copier.yml` and `tests/` would be better.
-- **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
-  72-character rule. A custom `commit-msg` check could close it, but the bar is still "prove no
-  native tool does it first".
-- **The merge-subject convention is unenforceable by the current checker.**
-  `conventional-pre-commit` exempts any message beginning with `Merge`, so git's default subject
-  passes. Documented in `template/CLAUDE.md`; only `/code-review` catches a violation.
 - **Gate instrumentation.** Append pass/fail from the `PostToolUse` hook to a gitignored
   `.gate.log` for a hard count of how often the gate catches something.
 - **The generation tests are not offline.** `uv sync` runs during generation and reaches the

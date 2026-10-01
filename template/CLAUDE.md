@@ -87,6 +87,7 @@ which rest on your own discipline.
 | No unused args, no private-member access | `ARG` `SLF` |
 | `pathlib` over `os.path` | `PTH` |
 | Explicit `encoding=` on reads and writes | `unspecified-encoding` |
+| No `shell=True`, no shell string | `S602` `S604` `S605` |
 | Hook commands are one executable, not a shell pipeline | *convention — review only* |
 | No literal path separators asserted in tests | *convention — review only* |
 | No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |
@@ -194,6 +195,9 @@ does not use — and also the one form nothing will catch. `commit-msg` *does* f
 `git merge --no-ff`, but `conventional-pre-commit` exempts any message beginning with `Merge`, so
 the default sails through while `adds a probe file` is correctly rejected. The convention below is
 therefore review-only in practice, however enforced the rest of the commit rules look.
+
+That is deliberate. The checker's `--strict` flag would close the gap, but it also rejects every
+`fixup!` commit, which the rebase path above depends on. Both merges and fixups stay allowed.
 
 It matters because the merge commit is the only place the work is described. Git records the branch
 name nowhere in the commit — only in the reflog, which is local and expires — so once
