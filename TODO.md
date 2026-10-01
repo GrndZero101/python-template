@@ -19,13 +19,21 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   `git commit` task failed against the project's own `no-commit-to-branch` hook, so **every update
   exited non-zero**. Note the variable is `_copier_operation`, not `_copier_conf.operation` — the
   latter renders undefined, which is falsy, which silently disables every task including on copy.
-- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Four modules under
+- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Five modules under
   `template/tools/`: `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and
-  `gate` (the two hooks), and `hook_payload` (shared parsing so they cannot diverge).
+  `gate` (the two hooks), `hook_payload` (shared parsing so they cannot diverge), and
+  `debug_pytest` (the DebugMCP pytest shim).
 - Guards live: `PreToolUse` blocks edits to *repo* files on `main`, `no-commit-to-branch` blocks
   direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
-  message, `SessionStart` reports branch and tree state. Every hook is a single executable
-  invocation, no shell operators.
+  message, `SessionStart` reports branch and tree state.
+- Hooks are **exec form** (`command` + `args`, no shell) with `${CLAUDE_PROJECT_DIR}` paths, so a
+  `cd` cannot break them, and launch through `uv run --no-project --no-config`, so a conflicted
+  `pyproject.toml` cannot either. Both hooks find the repository by walking up from the *edited
+  file*, bounded by the session's project, so a nested worktree is judged by its own branch.
+- `copier update` is guarded at both gates. The edit-time gate **pauses** while any file holds
+  conflict markers, listing them instead of reprinting every file's syntax errors;
+  `check-merge-conflict` runs with `--assume-in-merge`, so it sees copier's markers at commit; and
+  `unused-import` is `unfixable`, so an import added an edit ahead of its use survives.
 - `cli-modern` ships a **scaffold**, not a demo: one placeholder `about` command, a global
   `--verbose`/`--version` and a per-command `--output`, each resolving flag, then environment
   variable (`<SCRIPT>_*`), then default through `pydantic-settings`. The old `geo`/`currency`
@@ -43,50 +51,14 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   WSL against 0.1.3: breakpoints, conditional breakpoints on one parametrized case, stepping and
   evaluation, for a script and for a pytest file. "A script" there meant a standalone file: any
   module under `src/` fails under the `python` adapter (item 1).
-
-## In flight
-
-### Dogfood in `GrndZero101/template-dogfood`
-
-A private consumer repo, generated from the published template as `cli-modern`. It has since grown a
-`weather` subcommand, renamed its script to `tdf-cli`, and taken two `copier update`s: to `ba78c6d`,
-then to `31e9fa8` (the scaffold). Both merged and pushed, gate green, now 104 tests. Those updates
-and the first agent-driven debugging session produced items 1 and 2 below.
-
-**This cannot be driven from a session rooted in `python-template`.** Claude Code loads
-`.claude/settings.json` and skills from the session's own project root, so the dogfood project's
-branch guard, gate and `python-cli-modern` skill are all inert from here — and `branch_guard` would
-*silently allow* the edit, because it resolves the repo root from the session's cwd and correctly
-stands down for a file outside it. Start a session in that directory instead.
-
-**The scaffold update removed code the dogfood still used**, deliberately: it deleted `geo.py`,
-`currency.py` and their tests, dropped `httpx` and moved `OutputOption` (now defaulting to `None`)
-into `options.py`, while the dogfood's own `weather.py` imports both. It was rehearsed on a scratch
-clone first (`_src_path` edited, `copier update --trust --defaults --vcs-ref refactor/cli-minimal`),
-then run for real from a session rooted in the dogfood. **The rehearsal predicted the real run
-exactly** — same four conflicts, same silent `httpx` drop, same fix, same 104 tests — so a scratch
-rehearsal is a trustworthy dry run. What the rehearsal found:
-
-- The three files the dogfood never edited were **deleted**, cleanly. Untested: a removed file the
-  project *had* edited — the dogfood's `currency.py` turned out identical to the template's.
-- Four conflicts, all inline markers: `README.md`, `cli.py`, `typer_entrypoint.py`, and
-  `tests/test_typer_entrypoint.py`. The last is a file the **dogfood added itself** that the
-  template now also ships — a same-name collision, merged as a conflict rather than overwritten.
-- `httpx` was dropped from `pyproject.toml` **without** a conflict, though `weather.py` imports it.
-  The gate caught it — `ty` reported the unresolved import, and the moved `OutputOption` — but
-  **only after `uv sync`**. Until then the venv still holds `httpx` and `ty` passes. The README's
-  update section should say: `copier update`, resolve, `uv sync`, then `prek run --all-files`.
-- The documented migration (`uv add httpx`, `OutputOption = None` resolved through
-  `load_settings`) was sufficient, except for two log-assertion tests using the old geo pattern:
-  a pre-added loguru sink is removed by the callback's `configure_logging`. Switching them to
-  `capsys` stderr fixed it; the skill now says so. After that: 104 tests, gate clean.
-
-What only the real run showed — how the conflicts read to an agent meeting them cold — is under
-item 2.
-
-What the dogfood is meant to test, none of which any test here can reach: the guard blocking the
-first edit on `main`, the gate firing on save with actionable stderr, whether the skill steers, and
-whether `CLAUDE.md` reads correctly mid-task rather than mid-review.
+- **Dogfood:** `GrndZero101/template-dogfood`, a private `cli-modern` consumer with its own
+  `weather` command and script `tdf-cli`. It has taken two `copier update`s, to `ba78c6d` and
+  `31e9fa8`; gate green, 104 tests. A rehearsal on a scratch clone (`_src_path` edited,
+  `copier update --trust --defaults --vcs-ref <branch>`) predicted the real `31e9fa8` run exactly,
+  so it is a trustworthy dry run. **Drive it from a session started in its own directory** —
+  Claude Code loads hooks and skills from the session's project, so from here its guard, gate and
+  skills are all inert. It exists to test what no test here can: the guard on the first edit,
+  the gate's stderr on save, whether the skills steer, and how `CLAUDE.md` reads mid-task.
 
 ## Do next
 
@@ -126,60 +98,30 @@ broken or misleading.
 - **The registration name collides.** The skill registers the CLI as `debugmcp`, but that is also
   the name the VS Code extension's HTTP server takes. On a machine with both, the CLI ends up as
   something else (here `debugmcp-cli`). The skill should name one and say tool names follow it.
-- Minor, upstream: `stop_debugging` always appends a "root cause analysis checkpoint" lecture, and
-  the `start_debugging` description tells the agent to load a `debug-live` skill that is not
-  installed when the server is registered by hand.
 
-### 2. Hook and update robustness, found during the first `copier update`
+### 2. Document the update path in the README
 
-- **A conflicted `pyproject.toml` locks every edit.** The `PreToolUse` guard runs through `uv run`,
-  which parses `pyproject.toml` before anything else, so a conflict marker in it fails the guard —
-  blocking the very edit that would resolve the conflict. Fails closed, which is right, but the only
-  way out was a shell edit. The guard should be launchable without `uv` parsing the project.
-- **Hook commands use relative paths** (`tools/branch_guard.py`). They resolve against the
-  shell's current directory, so after any `cd` elsewhere every hook fails. Also fails closed, but
-  the error (`can't open file`) does not say why. `$CLAUDE_PROJECT_DIR` would fix it but needs
-  expanding, which runs into the one-executable rule; needs a decision. Hit again while recording
-  these notes: one `cd` into `python-template` for a `git` command, and every later `Edit` from the
-  dogfood session failed until the shell was moved back. `git -C <dir>` avoids it.
-- **`check-merge-conflict` does not see copier's conflict markers.** It only inspects files while a
-  git merge is in progress, which a copier update is not. `ruff` and `ty` caught the markers in
-  Python; nothing would catch them in Markdown or YAML. Confirmed on the real `31e9fa8` update: the
-  hook printed `Passed` with markers in four files.
-- **The edit gate floods during conflict resolution.** `ty` checks the whole project on every save,
-  so each edit to one conflicted file reprinted 60–80 syntax diagnostics from the *other* three —
-  thousands of lines per edit, burying the one result that mattered. It pushed the agent from
-  hunk-by-hunk edits to whole-file resolution (`git checkout --theirs`). Options: have `gate.py`
-  stand down while any tracked file holds a conflict marker and say so in one line, or scope `ty`'s
-  output to the edited file.
-- **The gate's autofix deletes an import added ahead of its use.** Adding `load_settings` and
-  `global_options` to `weather.py`'s imports in one edit, then the call site in the next, let
-  `ruff check --fix` strip both imports as unused (`F401`) in between; the call site then failed as
-  undefined names. Every refactor an agent does in more than one edit hits this. Either mark `F401`
-  `unfixable` in the edit-time gate (still reported, never removed — `prek run` at commit can keep
-  fixing it), or tell agents in `CLAUDE.md` to land the use before or with the import.
-- **Conflict labels do not say which side is newer work.** copier labels the sides
-  `before updating` (the project) and `after updating` (the new template render). In
-  `typer_entrypoint.py` the project side was the dogfood's own missing-argument help (`27c9ad8`),
-  and the template side was that same feature upstreamed with changed semantics — help to stderr,
-  exit 2 instead of 0. Telling "the template superseded this" from "the project customised this"
-  took reading both sides and the dogfood's history. A line in the update notes for each release
-  naming features absorbed from consumers would settle it. Worth knowing for the README: index
-  stage 3 is the new template render, so `git checkout --theirs <file>` takes it whole — which also
-  drops project-only lines sitting *outside* the markers (here, a now-dead private `echo` import
-  that a hunk-by-hunk resolution would have kept until `F401` caught it).
-- **A moved option is a silent interface break for consumer commands.** `weather` had its own
-  `-v/--verbose`; on the scaffold that flag is global, so `tdf-cli weather -v cleve` became
-  `tdf-cli -v weather cleve`. The template's `!` commit covers its own commands, but nothing warns a
-  consumer that commands *it* wrote need the same change. The update notes should say so.
-- **A new question takes its default on update.** `script_name` was added after the dogfood was
-  generated, and `copier update --defaults` recorded `template-dogfood`, re-proposing the rename in
-  every file carrying the name. Fixed in the dogfood by recording `tdf-cli` in
-  `.copier-answers.yml`. The README's update section should say to run without `--defaults`, or
-  with `--data <question>=<value>`, whenever the template has added questions.
-- **`copier update` needs `--trust`** because the template has `_tasks`, even though every task is
-  guarded to `copy`. Worth a line in the README, since it is also the flag an agent's permission
-  classifier refuses.
+The README's "Updating from the template" section is one command. What both dogfood updates
+showed a consumer needs:
+
+- **The sequence:** `copier update --trust`, resolve, `uv sync`, then `prek run --all-files`.
+  `--trust` is needed because the template has `_tasks`, even though every task is guarded to
+  `copy`, and it is also the flag an agent's permission classifier refuses. `uv sync` matters
+  because a dependency the template dropped stays in the venv until then, so `ty` passes an
+  import that `pyproject.toml` no longer provides — `httpx` did exactly that.
+- **New questions take their default under `--defaults`.** `script_name` arrived after the
+  dogfood was generated, and `--defaults` recorded `template-dogfood`, re-proposing the rename in
+  every file carrying the name. Run without `--defaults`, or pass `--data <question>=<value>`,
+  whenever the template has added a question.
+- **Reading conflicts.** copier labels the sides `before updating` (the project) and
+  `after updating` (the new template render). Index stage 3 is the new render, so
+  `git checkout --theirs <file>` takes it whole — which also drops project-only lines *outside*
+  the markers, unlike a hunk-by-hunk resolution.
+- **Per-release update notes** — depends on item 6. Two things a release should say that a
+  conflict never will: which features were absorbed from consumers (in `typer_entrypoint.py` the
+  "project" side was the dogfood's own feature, superseded upstream with changed semantics), and
+  which interface moves a consumer's *own* commands must follow (`-v/--verbose` went global, so
+  `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
 
 ### 3. Run the `examples/` specs as dogfood exercises
 
@@ -187,6 +129,10 @@ broken or misleading.
 service, output, failure modes and the tests that should exist, but no structure. Hand one to an
 agent in a session rooted in a generated project and record what the template steered and what it
 missed. The original code is at `d8e26b0` for comparison.
+
+Update the dogfood first. That update is itself the first real test of the hook changes above —
+the pause, the exec-form hooks, the conflicted-`pyproject.toml` guard — on a consumer rather than
+in the generation tests.
 
 ### 4. Non-`cli-modern` types generate an empty package
 
@@ -250,13 +196,17 @@ Still unverified:
 
 The agent-session half is done (item 1) — in WSL. Still unverified, and needing a session started
 on Windows itself: the `cmd /c` registration, `uv` resolving as the adapter command, and both
-adapters launching through it. Worth doing after item 1, so the `python` adapter's launcher is
+adapters launching through it. The same session should confirm the exec-form hooks: exec form on
+Windows needs `command` to be a real `.exe`, which `uv` and `git` are, but nothing has run them
+there yet. Worth doing after item 1, so the `python` adapter's launcher is
 proven on both platforms at once.
 
 Known CLI gaps, all worked around in the skill rather than fixed: it ignores `launch.json`; it
 always sets `program`, so pytest needs the shim (and, per item 1, so does every `src/` module);
 complex values render as dunder trees unless wrapped in `repr()`; the debuggee's output is not
-captured, and neither is logpoint output.
+captured, and neither is logpoint output. Upstream and minor: `stop_debugging` always appends a
+"root cause analysis checkpoint" lecture, and the `start_debugging` description tells the agent to
+load a `debug-live` skill that is not installed when the server is registered by hand.
 
 ### 9. The DebugMCP VS Code extension, later
 
