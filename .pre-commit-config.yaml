@@ -5,18 +5,17 @@
 #
 # The division of labour is deliberate:
 #
-# - Everything here EXCLUDES `template/`, and covers only the repo's own markdown and the
-#   commit-level rules that need a `.git` to act on.
-# - No code checking appears here at all. prek treats a nested `.pre-commit-config.yaml` as a
-#   workspace member, so files under `template/` are routed to that config and run with
-#   `template/` as the working directory. The lint list therefore exists exactly once, in the
-#   file a generated project actually receives.
+# - Every file check here EXCLUDES `template/`. It holds Jinja and no `pyproject.toml`, so ruff
+#   would fall back to default rules and ty would have no environment to resolve imports through.
+#   Its own config is suffixed `.jinja` for the same reason: prek would otherwise adopt it as a
+#   workspace member and run a gate there that is guaranteed to fail.
+# - What checks `template/` instead is `generation-tests` below: it generates a project per type
+#   and runs THAT project's gate inside it, so the lint list exists exactly once, in the file a
+#   generated project actually receives.
+# - The rest covers the repo's own markdown, its one Python test module, and the commit-level
+#   rules that need a `.git` to act on.
 #
-# A second copy at this level would have to duplicate the dependency list and build a second venv
-# as well, because `ty` resolves imports through the project environment.
-#
-# NOTE: workspace discovery is a prek extension; plain `pre-commit` does not have it and would
-# leave `template/` unchecked. That is the same trade already made for `repo: builtin` below.
+# NOTE: `repo: builtin` is a prek extension and is NOT understood by plain `pre-commit`.
 repos:
   - repo: builtin
     hooks:
@@ -73,7 +72,12 @@ repos:
 
       # The only thing that verifies template/. It generates a project for each project type
       # and runs that project's gate and test suite inside it, so it is slow — around a minute.
-      # That is the price of template/ not being lintable in place. To skip it deliberately:
+      # That is the price of template/ not being lintable in place.
+      #
+      # `files:` scopes it to what can change a generated project: the template, the copier
+      # config, the tests themselves, and the dependencies that run them. A commit touching only
+      # TODO.md or this repo's own docs skips it. The PostToolUse hook in .claude/settings.json
+      # skips it too, so a minute-long suite never runs on save. To skip it at commit as well:
       #   SKIP=generation-tests git commit ...
       # `stages: [pre-commit]` is load-bearing. Without it the hook also fires at the commit-msg
       # stage, running the whole minute-long suite a second time for a message check.
@@ -82,5 +86,5 @@ repos:
         entry: uv run pytest tests
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^(template/|tests/|copier\.yml$|pyproject\.toml$|uv\.lock$)
         stages: [pre-commit]

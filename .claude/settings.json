@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project template --no-sync python template/tools/branch_guard.py --protected main master",
+            "command": "uv run --no-sync python template/tools/branch_guard.py --protected main master",
             "timeout": 15,
             "statusMessage": "Checking branch..."
           }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run --project template --no-sync python template/tools/gate.py",
+            "command": "uv run --no-sync python template/tools/gate.py --skip no-commit-to-branch,generation-tests",
             "timeout": 120,
             "statusMessage": "Formatting and checking..."
           }

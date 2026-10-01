@@ -42,10 +42,12 @@ member and running a gate there that is guaranteed to fail.
 What covers it instead is `tests/test_template.py`. It generates a project for each of the five
 project types and runs **that project's** gate and test suite inside it. This is the stronger check
 of the two — it verifies the thing that actually ships rather than the thing it is made from — but
-it costs about a minute, which is why the gate is slow. To skip it deliberately:
+it costs about a minute. It therefore runs only at commit, and only when the commit touches
+something that can change a generated project: `template/`, `tests/`, `copier.yml`, `pyproject.toml`
+or `uv.lock`. A commit of `TODO.md` alone skips it. To skip it deliberately anyway:
 
 ```bash
-SKIP=generation-tests git commit -m "docs: ..."
+SKIP=generation-tests git commit -m "..."
 ```
 
 Copier includes uncommitted working-tree changes when the template is a local path (it warns
@@ -55,9 +57,11 @@ The edit-time `PostToolUse` gate uses `find_gate_root` in `template/tools/hook_p
 walks up from the edited file to the nearest `.pre-commit-config.yaml`, bounded by the repo root.
 Inside a generated project that lands on the root, which is the case it exists to serve. In *this*
 repo every file resolves to the root config, and that config excludes `^template/` — so editing
-something under `template/` is not gated as you type. The generation tests catch it at commit
-instead. Editing a root file the config does not match, such as `TODO.md`, likewise leaves the gate
-standing down rather than blocking.
+something under `template/` is not gated as you type. The root's hook passes
+`--skip no-commit-to-branch,generation-tests` explicitly, so a save never pays for the generation
+suite either; the generation tests catch template edits at commit instead. Editing a root file the
+config does not match, such as `TODO.md`, likewise leaves the gate standing down rather than
+blocking.
 
 ## Commands
 

@@ -114,9 +114,6 @@ questions: two windows contending for one port, and coexisting with the CLI, sin
 
 ## Nice to have
 
-- **The generation-tests hook is `always_run`.** Even `prek run --files README.md` triggers the full
-  minute-long suite; `--skip generation-tests` is the workaround. A `files:` pattern limiting it to
-  changes under `template/`, `copier.yml` and `tests/` would be better.
 - **Commit summary length is unenforced.** `conventional-pre-commit` validates format but not the
   72-character rule. A custom `commit-msg` check could close it, but the bar is still "prove no
   native tool does it first".
