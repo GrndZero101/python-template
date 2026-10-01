@@ -87,6 +87,7 @@ which rest on your own discipline.
 | No unused args, no private-member access | `ARG` `SLF` |
 | `pathlib` over `os.path` | `PTH` |
 | Explicit `encoding=` on reads and writes | `unspecified-encoding` |
+| No `shell=True`, no shell string | `S602` `S604` `S605` |
 | Hook commands are one executable, not a shell pipeline | *convention — review only* |
 | No literal path separators asserted in tests | *convention — review only* |
 | No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |

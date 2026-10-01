@@ -52,6 +52,8 @@ ignore = [
     "line-too-long",
     "missing-trailing-comma",
     "raise-vanilla-args",
+    # flags the import itself, which is no risk; S602-S607 still cover how it is called
+    "suspicious-subprocess-import",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -62,7 +64,6 @@ ignore = [
     "D",
     "ANN",
     "magic-value-comparison",
-    "suspicious-subprocess-import",
     "subprocess-without-shell-equals-true",
     "start-process-with-partial-path",
 ]

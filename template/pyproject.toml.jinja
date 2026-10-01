@@ -81,6 +81,10 @@ ignore = [
     "single-line-implicit-string-concatenation",
     # redundant with EM (which already forces messages out of the raise)
     "raise-vanilla-args",
+    # flags the `import subprocess` line itself, which is no risk. The rules that are stay on:
+    # shell=True (S602, S604), a shell string (S605), a non-literal command (S603), and a bare
+    # executable name (S607).
+    "suspicious-subprocess-import",
 ]
 
 # The maintainability dials. These are what indirectly penalise nested helpers:
@@ -105,7 +109,6 @@ max-returns = 6
 # designed away. The command is built from a literal list, never a shell string, and `prek`
 # is resolved from PATH deliberately so the hook follows whatever uv installed.
 "tools/gate.py" = [
-    "suspicious-subprocess-import",
     "subprocess-without-shell-equals-true",
     "start-process-with-partial-path",
 ]
