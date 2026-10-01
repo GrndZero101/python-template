@@ -17,6 +17,9 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
       - id: check-toml
+      # .vscode/ holds JSONC — comments are legal there and check-json would reject them.
+      - id: check-json
+        exclude: ^\.vscode/
       - id: check-yaml
       - id: detect-private-key
       # Work happens on a branch; main only ever receives merge commits.

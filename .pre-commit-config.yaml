@@ -28,6 +28,11 @@ repos:
       - id: check-added-large-files
       - id: check-yaml
         exclude: ^template/
+      - id: check-toml
+      # template/ ships JSONC under .vscode/, which check-json would reject; a generated
+      # project's own gate checks the strict-JSON files it receives.
+      - id: check-json
+        exclude: ^template/
       - id: detect-private-key
       # Work happens on a branch; main only ever receives merge commits. See the note in
       # template/.pre-commit-config.yaml — `stages: [pre-commit]` is what lets `--no-ff` through.
