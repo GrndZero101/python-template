@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest_copie.plugin import Copie
@@ -334,18 +335,106 @@ def test_a_project_still_passes_its_gate_after_updating(copie: Copie, tmp_path: 
     assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
 
 
+def _hooks(project: Path) -> list[dict[str, Any]]:
+    """Return every command hook declared in a generated project's `.claude/settings.json`."""
+    settings = json.loads((project / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    found: list[dict[str, Any]] = []
+    for groups in settings["hooks"].values():
+        for group in groups:
+            found.extend(group["hooks"])
+    return found
+
+
+def _hook_argv(project: Path, script: str) -> list[str]:
+    """Return the argv Claude Code would spawn for the hook running `script`.
+
+    Exec form substitutes `${CLAUDE_PROJECT_DIR}` as a plain string; doing the same here is what
+    lets these tests run the shipped hook exactly as written rather than a copy of it.
+    """
+    for hook in _hooks(project):
+        args = [str(arg) for arg in hook.get("args", [])]
+        if script in args:
+            resolved = [arg.replace("${CLAUDE_PROJECT_DIR}", str(project)) for arg in args]
+            return [str(hook["command"]), *resolved]
+    pytest.fail(f"no hook runs {script}")
+
+
+def test_every_hook_is_exec_form(copie: Copie) -> None:
+    """Exec form spawns the executable directly, so no hook can depend on a shell existing."""
+    project = _generate(copie, "cli-modern")
+    for hook in _hooks(project):
+        assert isinstance(hook.get("args"), list), f"shell-form hook: {hook['command']}"
+        assert " " not in str(hook["command"]), f"command is more than one word: {hook['command']}"
+
+
 @requires_uv
-def test_branch_guard_blocks_edits_on_main_in_a_generated_project(copie: Copie) -> None:
-    """The guard ships as a literal file, so generation must not have broken its imports."""
+def test_branch_guard_blocks_edits_on_main_in_a_generated_project(
+    copie: Copie, tmp_path: Path
+) -> None:
+    """Run from elsewhere: an agent's `cd` must not stop the guard finding its script."""
     project = _generate(copie, "cli-modern")
     payload = json.dumps({"tool_input": {"file_path": str(project / "src" / "x.py")}})
     guard = subprocess.run(
-        ["uv", "run", "python", "tools/branch_guard.py", "--protected", "main"],
+        _hook_argv(project, "tools/branch_guard.py"),
+        cwd=tmp_path,
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert guard.returncode == 2, guard.stderr
+    assert "Refusing to edit" in guard.stderr
+
+
+@requires_uv
+def test_branch_guard_survives_a_conflicted_pyproject(copie: Copie) -> None:
+    """A copier update can leave markers in pyproject.toml; the guard must still run to allow
+    the edit that resolves them."""
+    project = _generate(copie, "cli-modern")
+    _run(["git", "switch", "--quiet", "-c", "chore/update"], project)
+    pyproject = project / "pyproject.toml"
+    marker = "<" * 7 + " before updating\n"
+    pyproject.write_text(marker + pyproject.read_text(encoding="utf-8"), encoding="utf-8")
+    payload = json.dumps({"tool_input": {"file_path": str(pyproject)}})
+    guard = subprocess.run(
+        _hook_argv(project, "tools/branch_guard.py"),
         cwd=project,
         input=payload,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert guard.returncode == 2
-    assert "Refusing to edit" in guard.stderr
+    assert guard.returncode == 0, guard.stderr
+
+
+@requires_uv
+@requires_prek
+def test_gate_pauses_while_conflict_markers_remain(copie: Copie) -> None:
+    project = _generate(copie, "cli-modern")
+    _run(["git", "switch", "--quiet", "-c", "chore/update"], project)
+    readme = project / "README.md"
+    conflict = "<" * 7 + " before updating\nold\n=======\nnew\n" + ">" * 7 + " after updating\n"
+    readme.write_text(readme.read_text(encoding="utf-8") + conflict, encoding="utf-8")
+    payload = json.dumps({"tool_input": {"file_path": str(project / "src" / "x.py")}})
+    gate = subprocess.run(
+        _hook_argv(project, "tools/gate.py"),
+        cwd=project,
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert gate.returncode == 2, gate.stderr
+    assert "gate paused" in gate.stderr
+    assert "README.md" in gate.stderr
+
+
+@requires_prek
+def test_commit_gate_catches_conflict_markers_outside_a_merge(copie: Copie) -> None:
+    """check-merge-conflict only looks mid-merge by default, and a copier update is not one."""
+    project = _generate(copie, "cli-modern")
+    readme = project / "README.md"
+    conflict = "<" * 7 + " before updating\nold\n=======\nnew\n" + ">" * 7 + " after updating\n"
+    readme.write_text(readme.read_text(encoding="utf-8") + conflict, encoding="utf-8")
+    hook = _run(["prek", "run", "check-merge-conflict", "--files", "README.md"], project)
+    assert hook.returncode != 0, hook.stdout

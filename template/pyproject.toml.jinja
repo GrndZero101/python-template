@@ -86,6 +86,9 @@ ignore = [
     # executable name (S607).
     "suspicious-subprocess-import",
 ]
+# Reported, never auto-removed. The edit-time gate runs `--fix` after every save, so an import
+# added one edit ahead of its first use would be deleted before that use lands.
+unfixable = ["unused-import"]
 
 # The maintainability dials. These are what indirectly penalise nested helpers:
 # a nested def consumes a local slot and its body inflates the parent.

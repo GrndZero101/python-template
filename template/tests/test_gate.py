@@ -5,14 +5,37 @@ The gate's own subprocess is injected, so nothing here shells out to prek.
 
 import functools
 import json
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
-from gate import GateResult, build_command, check, main, run_subprocess
+from gate import (
+    GateResult,
+    build_command,
+    check,
+    find_conflicted,
+    main,
+    paused_message,
+    run_subprocess,
+)
 
 PASS = GateResult(code=0, output="all hooks passed")
 FAIL = GateResult(code=1, output="ruff check....Failed\n  unsorted-imports")
+# Built rather than written out, so this file never trips check-merge-conflict itself.
+OPENING_MARKER = "<" * 7 + " before updating"
+
+
+def _no_conflicts(root: Path) -> list[str]:
+    """Stand in for the conflict scan, finding nothing."""
+    del root
+    return []
+
+
+def _conflicts(names: list[str], root: Path) -> list[str]:
+    """Stand in for the conflict scan, finding `names`."""
+    del root
+    return names
 
 
 def _runner(result: GateResult, command: Sequence[str], cwd: Path) -> GateResult:
@@ -101,7 +124,7 @@ def test_passing_gate_allows_the_edit(
     monkeypatch.setattr(
         "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
     )
-    assert main([], runner=functools.partial(_runner, PASS)) == 0
+    assert main([], runner=functools.partial(_runner, PASS), scanner=_no_conflicts) == 0
     assert not capsys.readouterr().err
 
 
@@ -114,7 +137,7 @@ def test_failing_gate_blocks_with_exit_2_and_reports_on_stderr(
     monkeypatch.setattr(
         "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
     )
-    assert main([], runner=functools.partial(_runner, FAIL)) == 2
+    assert main([], runner=functools.partial(_runner, FAIL), scanner=_no_conflicts) == 2
     captured = capsys.readouterr()
     assert "unsorted-imports" in captured.err
     assert not captured.out
@@ -127,7 +150,7 @@ def test_file_outside_the_repository_is_not_gated(
     monkeypatch.chdir(root)
     outside = _payload(tmp_path / "elsewhere" / "note.md")
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, outside))
-    assert main([], runner=functools.partial(_runner, FAIL)) == 0
+    assert main([], runner=functools.partial(_runner, FAIL), scanner=_no_conflicts) == 0
 
 
 def test_file_governed_by_no_config_is_not_gated(
@@ -139,7 +162,7 @@ def test_file_governed_by_no_config_is_not_gated(
     monkeypatch.setattr(
         "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "TODO.md"))
     )
-    assert main([], runner=functools.partial(_runner, FAIL)) == 0
+    assert main([], runner=functools.partial(_runner, FAIL), scanner=_no_conflicts) == 0
 
 
 def test_gate_runs_from_the_directory_holding_the_config(
@@ -152,7 +175,7 @@ def test_gate_runs_from_the_directory_holding_the_config(
     target = project / "src" / "x.py"
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, _payload(target)))
     seen: list[tuple[Sequence[str], Path]] = []
-    assert main([], runner=functools.partial(_recording, seen)) == 0
+    assert main([], runner=functools.partial(_recording, seen), scanner=_no_conflicts) == 0
     assert seen[0][1] == project.resolve()
 
 
@@ -160,7 +183,45 @@ def test_missing_file_path_is_not_gated(tmp_path: Path, monkeypatch: pytest.Monk
     _make_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, "{}"))
-    assert main([], runner=functools.partial(_runner, FAIL)) == 0
+    assert main([], runner=functools.partial(_runner, FAIL), scanner=_no_conflicts) == 0
+
+
+def test_conflict_markers_pause_the_gate_and_name_the_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Mid-update, prek would only reprint every conflicted file's syntax errors."""
+    _make_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
+    )
+    seen: list[tuple[Sequence[str], Path]] = []
+    scanner = functools.partial(_conflicts, ["README.md", "src/x.py"])
+    assert main([], runner=functools.partial(_recording, seen), scanner=scanner) == 2
+    assert not seen
+    err = capsys.readouterr().err
+    assert "gate paused" in err
+    assert "README.md" in err
+    assert "src/x.py" in err
+
+
+def test_paused_message_lists_one_file_per_line() -> None:
+    lines = paused_message(["a.md", "b.py"]).splitlines()
+    assert lines[-2:] == ["  a.md", "  b.py"]
+
+
+def test_scan_keeps_only_paths_that_name_files(tmp_path: Path) -> None:
+    """A diagnostic in git's output must not be mistaken for a conflicted file."""
+    (tmp_path / "README.md").write_text("x\n", encoding="utf-8")
+    output = "README.md\ngate skipped: cannot run git"
+    found = find_conflicted(tmp_path, functools.partial(_runner, GateResult(0, output)))
+    assert found == ["README.md"]
+
+
+def test_scan_finds_nothing_when_git_reports_no_match(tmp_path: Path) -> None:
+    """`git grep` exits 1 for no match, and anything else is an error; both mean no pause."""
+    (tmp_path / "README.md").write_text("x\n", encoding="utf-8")
+    assert not find_conflicted(tmp_path, functools.partial(_runner, GateResult(1, "README.md")))
 
 
 # --- the real runner ---------------------------------------------------------------------
@@ -171,3 +232,13 @@ def test_missing_executable_fails_open(tmp_path: Path) -> None:
     result = run_subprocess(["definitely-not-a-real-binary-xyz"], tmp_path)
     assert result.code == 0
     assert "cannot run" in result.output
+
+
+def test_scan_finds_markers_in_tracked_and_untracked_files(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    assert run_subprocess(["git", "init", "--quiet"], tmp_path).code == 0
+    conflicted = f"{OPENING_MARKER}\nold\n=======\nnew\n" + ">" * 7 + " after updating\n"
+    (tmp_path / "notes.md").write_text(conflicted, encoding="utf-8")
+    (tmp_path / "clean.md").write_text(f"quoted: {OPENING_MARKER}\n", encoding="utf-8")
+    assert find_conflicted(tmp_path) == ["notes.md"]

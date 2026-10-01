@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
-from hook_payload import find_gate_root, find_repo_root, inside_repo, target_path
+from hook_payload import find_gate_root, find_repo_root, inside_repo, owning_repo, target_path
 
 
 def test_extracts_file_path_from_payload() -> None:
@@ -58,6 +58,38 @@ def test_inside_repo_rejects_a_sibling_directory(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     assert inside_repo(tmp_path / "elsewhere" / "note.md", root) is False
+
+
+# --- which repository an edited file belongs to --------------------------------------------
+
+
+def test_owning_repo_is_the_session_root_for_a_project_file(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    assert owning_repo(tmp_path / "src" / "x.py", tmp_path) == tmp_path.resolve()
+
+
+def test_owning_repo_is_a_worktree_nested_under_the_session(tmp_path: Path) -> None:
+    """A linked worktree's `.git` is a pointer file, and it is nearer than the main checkout's."""
+    (tmp_path / ".git").mkdir()
+    tree = tmp_path / ".claude" / "worktrees" / "wt"
+    tree.mkdir(parents=True)
+    (tree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    assert owning_repo(tree / "src" / "x.py", tmp_path) == tree.resolve()
+
+
+def test_owning_repo_ignores_a_repository_outside_the_session(tmp_path: Path) -> None:
+    """Editing a sibling repository is not this session's business."""
+    session = tmp_path / "project"
+    (session / ".git").mkdir(parents=True)
+    sibling = tmp_path / "other"
+    (sibling / ".git").mkdir(parents=True)
+    assert owning_repo(sibling / "x.py", session) is None
+
+
+def test_owning_repo_is_none_for_a_file_in_no_repository(tmp_path: Path) -> None:
+    session = tmp_path / "project"
+    (session / ".git").mkdir(parents=True)
+    assert owning_repo(tmp_path / "scratch" / "note.md", session) is None
 
 
 # --- locating the config that governs an edited file --------------------------------------

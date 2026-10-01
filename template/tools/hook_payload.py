@@ -43,6 +43,21 @@ def inside_repo(target: Path, root: Path) -> bool:
     return target.resolve().is_relative_to(root.resolve())
 
 
+def owning_repo(target: Path, session_root: Path) -> Path | None:
+    """Return the repository holding `target`, or None if it is not within `session_root`.
+
+    The hooks run from the session's project root, so `session_root` says which files are this
+    session's business — a scratchpad, memory, or a sibling repository are not. Walking up from
+    the *file* to find its repository, rather than taking `session_root` as the answer, is what
+    keeps a linked worktree under the project correct: its `.git` pointer is nearer than the
+    main checkout's, and its branch is the one being edited.
+    """
+    repo = find_repo_root(target.parent)
+    if repo is None or not inside_repo(repo, session_root):
+        return None
+    return repo
+
+
 GATE_CONFIG_NAMES = ("prek.toml", ".pre-commit-config.yaml")
 
 

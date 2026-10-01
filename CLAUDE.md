@@ -84,8 +84,9 @@ copier copy --trust . /tmp/scratch    # generate by hand to poke at the result
 `template/` has no venv and nothing to run — `uv run --directory template` no longer works, because
 there is no `pyproject.toml` there to run against.
 
-**Never `cd template`.** Use `uv run --directory template`. Claude Code's hooks inherit the shell's
-working directory, and a leftover `cd` makes them resolve `template/template/tools/...` and fail.
+The hooks no longer care where the shell is. They are exec form, launched with
+`--directory ${CLAUDE_PROJECT_DIR}`, so a `cd` into `template/` or another repo cannot make them
+resolve the wrong script. Prefer `git -C <dir>` anyway: it keeps every command's context explicit.
 
 ## Branching
 

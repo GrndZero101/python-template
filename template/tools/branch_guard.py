@@ -15,6 +15,10 @@ Two deliberate implementation choices:
 - **No `subprocess`.** This runs before every single edit, so two `git` spawns per keystroke
   is real latency. Reading `.git` directly is faster and keeps the module free of security
   lint suppressions.
+
+It imports only the standard library, which is what lets `settings.json` launch it with
+`uv run --no-project --no-config`. uv then never parses `pyproject.toml`, so a conflict marker
+left there by `copier update` cannot stop the guard — and with it, the edit that resolves it.
 """
 
 import argparse
@@ -22,7 +26,7 @@ import dataclasses
 import sys
 from pathlib import Path
 
-from hook_payload import find_repo_root, inside_repo, target_path
+from hook_payload import find_repo_root, inside_repo, owning_repo, target_path
 
 SENTINEL = ".allow-main-edit"
 HEAD_PREFIX = "ref: refs/heads/"
@@ -123,10 +127,12 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Entry point. Returns an exit code; never calls sys.exit itself."""
     args = _build_parser().parse_args(argv)
-    root = find_repo_root()
+    target = target_path(sys.stdin.read())
+    session_root = find_repo_root()
+    root = owning_repo(target, session_root) if target and session_root else None
     branch = read_branch(root) if root else None
     decision = decide(
-        target=target_path(sys.stdin.read()),
+        target=target,
         root=root,
         branch=branch,
         protected=frozenset(args.protected),

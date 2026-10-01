@@ -143,3 +143,34 @@ def test_main_allows_outside_file_with_exit_0(
     monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, payload))
     assert main([]) == 0
     assert not capsys.readouterr().err
+
+
+def test_main_judges_a_nested_worktree_by_its_own_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hook runs from the main checkout, which is on main; the worktree is not."""
+    root = _work_tree(tmp_path)
+    real = root / ".git" / "worktrees" / "wt"
+    real.mkdir(parents=True)
+    (real / "HEAD").write_text("ref: refs/heads/feat/wt\n", encoding="utf-8")
+    tree = root / ".claude" / "worktrees" / "wt"
+    tree.mkdir(parents=True)
+    (tree / ".git").write_text(f"gitdir: {real}\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    payload = json.dumps({"tool_input": {"file_path": str(tree / "x.py")}})
+    monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, payload))
+    assert main([]) == 0
+
+
+def test_main_allows_a_file_in_a_sibling_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another repository on main is guarded by its own session, not this one."""
+    root = _work_tree(tmp_path / "project", branch="feat/x")
+    sibling = _work_tree(tmp_path / "other")
+    monkeypatch.chdir(root)
+    payload = json.dumps({"tool_input": {"file_path": str(sibling / "x.py")}})
+    monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, payload))
+    assert main([]) == 0
