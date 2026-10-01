@@ -1,6 +1,8 @@
 {
   // Make the editor report exactly what the hooks report.
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  // No python.defaultInterpreterPath: the venv is .venv/Scripts on Windows and .venv/bin
+  // everywhere else, and no single value covers both. The Python extension finds
+  // ${workspaceFolder}/.venv by itself on every platform.
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "[python]": {
