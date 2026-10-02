@@ -126,7 +126,7 @@ git status --short --branch
 - If the tree is dirty, resolve it first — commit it, stash it, or ask. Never start new work on top
   of someone else's uncommitted changes, because the next commit cannot then be split cleanly.
 - If on `main`, branch before the first edit: `git switch -c <type>/<short-name>`, using the same
-  types as the commit list below (`feat/publicip-retry`, `fix/hook-stderr`, `chore/bump-ruff`).
+  types as the commit list below (`feat/fetch-retry`, `fix/hook-stderr`, `chore/bump-ruff`).
 
 This is enforced twice, deliberately, because the two catch different mistakes:
 
@@ -253,7 +253,7 @@ git config alias.wip '!SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-
 
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `revert`.
 - Summary in the imperative, lower case, no trailing period, ≤72 characters.
-- Scope is optional and is a module or area, e.g. `feat(cli): add --json output`.
+- Scope is optional and is a module or area, e.g. `feat(cli): add --output csv`.
 - Breaking changes get a `!` before the colon *and* a `BREAKING CHANGE:` footer.
 - Body explains **why**, not what — the diff already says what.
 - One logical change per commit. If the summary needs "and", split it.

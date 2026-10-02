@@ -35,8 +35,7 @@ reimplementing something genuinely hard — not when it would merely mean writin
 
 **HTTP is the honest exception.** `urllib.request` has no connection reuse, no per-phase timeouts,
 a clumsy error hierarchy, and no HTTP/2. For a single unauthenticated GET it is fine. Past that,
-`httpx` is justified — which is why `src/claude/publicip.py` in this repo uses it. State the reason
-in the commit body when you add one.
+`httpx` is justified. State the reason in the commit body when you add one.
 
 ## argparse patterns
 
@@ -101,9 +100,27 @@ def handle_sync(args: argparse.Namespace) -> int:
 literal arguments. The `Namespace` stops at the boundary. This is what makes the tool testable
 without constructing fake namespaces.
 
+## Logging
+
+Configure it once, in `main`, on stderr:
+
+```python
+logging.basicConfig(
+    level=logging.DEBUG if args.verbose else logging.WARNING,
+    stream=sys.stderr,
+    format="%(levelname)s %(name)s: %(message)s",
+)
+```
+
+Library modules call `logger = logging.getLogger(__name__)` and log with `%s` placeholders and
+arguments, never an f-string — `LOG` and `G` check that.
+
 ## Testing
 
 No subprocess, no network — call `main(argv)` directly, as **python-cli** describes.
+
+Assert on log output with `caplog`, not `capsys`. pytest installs its own handler on the root
+logger before the test runs, so `basicConfig` in `main` is a no-op and nothing reaches stderr.
 
 For HTTP under `urllib.request`, inject the opener rather than patching the module:
 
