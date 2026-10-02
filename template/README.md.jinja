@@ -89,10 +89,13 @@ Shell completion is emitted rather than installed:
 {% endif %}## Updating from the template
 
 ```bash
-copier update
+copier update --trust
 ```
 
 Requires a clean tree and the `.copier-answers.yml` written at generation. Do not delete that file.
+`--trust` is required because the template declares `_tasks`. They run on the first copy only, but
+copier asks for the flag anyway and exits 4 without it. Run it in your own terminal, not through
+an agent: it is the flag an agent's permission classifier refuses.
 
 ## License
 

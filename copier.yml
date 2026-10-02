@@ -1,7 +1,8 @@
 # copier template metadata. The generated project is everything under `template/`.
 #
-# Run with:  copier copy gh:GrndZero101/python-template <destination>
-# Update an already-generated project with:  copier update
+# Run with:  copier copy --trust gh:GrndZero101/python-template <destination>
+# Update an already-generated project with:  copier update --trust
+# --trust is required because of `_tasks` below; copier exits 4 without it.
 _subdirectory: template
 
 _message_after_copy: |

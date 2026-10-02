@@ -23,9 +23,13 @@ uv tool install prek
 ## Path A — start a new project from this template
 
 ```bash
-copier copy gh:GrndZero101/python-template my-project     # answer the prompts
+copier copy --trust gh:GrndZero101/python-template my-project     # answer the prompts
 cd my-project
 ```
+
+`--trust` is required because the template declares `_tasks` — the ones that run `git init`,
+`uv sync` and install the shims. Without it copier exits 4 with "Template uses potentially unsafe
+feature: tasks".
 
 That is the whole setup. Generation already ran `git init -b main`, `uv sync`, the initial commit,
 and all three `prek` shims. Verify and start work:
@@ -99,7 +103,7 @@ markers remain.
 To pin a version, or to move deliberately:
 
 ```bash
-copier copy --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
+copier copy --trust --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
 copier update --trust --vcs-ref v1.3.0
 ```
 
