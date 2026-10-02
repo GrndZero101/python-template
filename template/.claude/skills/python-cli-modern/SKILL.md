@@ -73,23 +73,24 @@ plain annotated function you can call with literal arguments.
 
 ### Reconciling typer with `main(argv) -> int`
 
-`app()` calls `sys.exit` itself, which breaks the contract in **python-cli**. Pass
-`standalone_mode=False` and typer **returns** instead:
+`app()` calls `sys.exit` itself, which breaks the contract in **python-cli**. The scaffold's
+`typer_entrypoint.run_app` calls it with `standalone_mode=False`, so typer **returns** instead, and
+translates usage errors into exit codes. `cli.main` wraps it — use it as it is:
 
 ```python
 def main(argv: list[str] | None = None) -> int:
     """Entry point. Returns an exit code; never calls sys.exit itself."""
     try:
-        app(args=argv, standalone_mode=False, prog_name="tool")
-    except click.ClickException as exc:
-        exc.show()
-        return 2
-    except click.exceptions.Exit as exc:
-        return int(exc.exit_code)
-    return 0
+        return run_app(app, argv, prog_name=PROG_NAME)
+    except SettingsError as exc:
+        sys.stderr.write(f"Error: {exc}\n")
+        return USAGE_ERROR
 ```
 
-The scaffold's `typer_entrypoint.run_app` is the full version of this, and `cli.main` wraps it.
+Do not `import click` to catch its exceptions yourself. typer 0.27 vendors its own fork as
+`typer._click`, the `click` package is not installed, and ty rejects the import. `run_app` is the
+one place that private import lives.
+
 Point `[project.scripts]` at this `main`, not at `app`. Now `main(["deploy", "dev"])` works from a
 test, from pdb, and from the debug console. `typer.testing.CliRunner` is fine for asserting on
 rendered output, but it captures streams and swallows tracebacks — prefer calling `main` for logic.
@@ -117,8 +118,8 @@ Every command that emits data takes `--output`/`-o`. Minimum set: `table` (human
 (machine). Add `ndjson` for streams and `csv` where consumers want it.
 
 ```python
-class OutputFormat(str, Enum):
-    """How to render command results."""
+class OutputFormat(StrEnum):
+    """How to render a command result."""
 
     table = "table"
     json = "json"
@@ -238,19 +239,18 @@ If you find yourself passing `out` to anything other than the final result rende
 ## httpx
 
 ```python
-async def fetch_records(
-    client: httpx.AsyncClient,
-    *,
-    page_size: int = 100,
-) -> AsyncIterator[Record]:
+def fetch_records(client: httpx.Client, *, page_size: int = 100) -> Iterator[Record]:
     """Yield records, following pagination."""
 ```
+
+Sequential and synchronous by default. Reach for `httpx.AsyncClient` only for fan-out, under
+**Concurrency** below.
 
 - **Inject the client.** Build it once at the command boundary, pass it down. Tests substitute
   `httpx.MockTransport`; nothing touches the network.
 - **Timeouts are per-phase.** `httpx.Timeout(5.0, connect=2.0, read=30.0)` — a single float applies
   one value to all phases, which is rarely what a long-polling API needs.
-- **`AsyncHTTPTransport(retries=N)` retries connection failures only — not 429 or 5xx.** Nearly
+- **`HTTPTransport(retries=N)` retries connection failures only — not 429 or 5xx.** Nearly
   everyone assumes otherwise. Status-code retry needs `tenacity` or an explicit loop, and must
   honour `Retry-After`.
 - **Test through `httpx.MockTransport`**, never the network. A handler is a plain module-level
@@ -268,7 +268,7 @@ async def fetch_records(
 
   def test_parses_the_body() -> None:
       with client_returning('[{"id": 1}]') as client:
-          assert fetch_records(client) == [Record(id=1)]
+          assert list(fetch_records(client)) == [Record(id=1)]
   ```
 
   Also assert that a caller-supplied client is **not** closed by the function — it does not own it.

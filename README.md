@@ -23,9 +23,13 @@ uv tool install prek
 ## Path A — start a new project from this template
 
 ```bash
-copier copy gh:GrndZero101/python-template my-project     # answer the prompts
+copier copy --trust gh:GrndZero101/python-template my-project     # answer the prompts
 cd my-project
 ```
+
+`--trust` is required because the template declares `_tasks` — the ones that run `git init`,
+`uv sync` and install the shims. Without it copier exits 4 with "Template uses potentially unsafe
+feature: tasks".
 
 That is the whole setup. Generation already ran `git init -b main`, `uv sync`, the initial commit,
 and all three `prek` shims. Verify and start work:
@@ -37,7 +41,8 @@ git switch -c feat/first-thing                    # never work on main
 ```
 
 You will be asked for: project name, package name, description, author name and email, minimum
-Python version, and **project type** — one of `cli-modern`, `cli-stdlib`, `fastapi`, `tui`, `data`.
+Python version (3.12, 3.13 or 3.14), and **project type** — one of `cli-modern`, `cli-stdlib`,
+`fastapi`, `tui`, `data`.
 The type selects dependencies, lint rules and which skill ships. Only `cli-modern` includes a
 scaffold CLI: one placeholder `about` command, with global and command flags that each resolve
 flag, then environment variable, then default through `pydantic-settings`. The others get the
@@ -99,7 +104,7 @@ markers remain.
 To pin a version, or to move deliberately:
 
 ```bash
-copier copy --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
+copier copy --trust --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
 copier update --trust --vcs-ref v1.3.0
 ```
 

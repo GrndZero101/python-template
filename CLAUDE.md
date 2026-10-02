@@ -23,8 +23,8 @@ it is held to exactly the standard it preaches. What follows is only what differ
 A file under `template/` carries a `.jinja` suffix only when it must name something the answers
 decide:
 
-- the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml` and
-  `.copier-answers.yml`;
+- the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
+  `.copier-answers.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
 - `conftest.py` and the three test modules, which import the package by name.
 

@@ -31,10 +31,12 @@ Every rule here exists so a human can stop the program and inspect it.
 - Inject dependencies — clock, rng, HTTP client, paths — as parameters with defaults. Never reach
   for module-level mutable state.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
-- Never swallow an exception. `raise ... from e`, or `logger.exception(...)`.
+- Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
+  `raise ... from None`, which discards the cause just as surely.
   *Why: a bare `except: pass` destroys the traceback that tells you where it started.*
-- A configured logger writing to **stderr**, never `print`, outside a `__main__` block. Stdlib
-  `logging` by default; `loguru` where a stack skill says so.
+- Diagnostics go to a configured logger writing to **stderr**; data goes out with
+  `sys.stdout.write`. Never `print`, not even in a `__main__` block. Stdlib `logging` by default;
+  `loguru` where a stack skill says so.
   *Why: stdout is reserved for a command's data, so it stays pipeable. Diagnostics that land there
   corrupt the output a caller is parsing.*
 - Every module that can run standalone gets `if __name__ == "__main__":`.
@@ -79,9 +81,10 @@ which rest on your own discipline.
 | No `def` inside a function | `tools/check_nested_defs.py` |
 | Guard clauses; ≤3 nested blocks | `PLR1702` |
 | ≤40 statements, complexity ≤8, ≤12 locals, ≤5 args | `PLR0915` `C901` `PLR0914` `PLR0913` |
-| No `print` outside `__main__` | `T20` |
+| No `print`, `__main__` blocks included (`tools/` exempt) | `T20` |
 | Correct logging calls | `LOG` `G` — **stdlib only**; neither sees `loguru` call sites |
 | Never swallow exceptions; `raise ... from e` | `BLE` `B904` `TRY` |
+| Never `raise ... from None` | *convention — `B904` accepts it, and so does everything else* |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |
@@ -126,7 +129,7 @@ git status --short --branch
 - If the tree is dirty, resolve it first — commit it, stash it, or ask. Never start new work on top
   of someone else's uncommitted changes, because the next commit cannot then be split cleanly.
 - If on `main`, branch before the first edit: `git switch -c <type>/<short-name>`, using the same
-  types as the commit list below (`feat/publicip-retry`, `fix/hook-stderr`, `chore/bump-ruff`).
+  types as the commit list below (`feat/fetch-retry`, `fix/hook-stderr`, `chore/bump-ruff`).
 
 This is enforced twice, deliberately, because the two catch different mistakes:
 
@@ -238,13 +241,13 @@ history readable while it exists. But half-written code will not pass `ty`, so s
 without skipping the *message* check:
 
 ```bash
-SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-defs git commit -m "chore(x): wip"
+SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit -m "chore(x): wip"
 ```
 
 `git commit --no-verify` is the wrong tool here — it skips the message check too. Worth an alias:
 
 ```bash
-git config alias.wip '!SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-defs git commit'
+git config alias.wip '!SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit'
 ```
 
 ## Commits
@@ -253,7 +256,7 @@ git config alias.wip '!SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-
 
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `revert`.
 - Summary in the imperative, lower case, no trailing period, ≤72 characters.
-- Scope is optional and is a module or area, e.g. `feat(cli): add --json output`.
+- Scope is optional and is a module or area, e.g. `feat(cli): add --output csv`.
 - Breaking changes get a `!` before the colon *and* a `BREAKING CHANGE:` footer.
 - Body explains **why**, not what — the diff already says what.
 - One logical change per commit. If the summary needs "and", split it.
@@ -264,13 +267,15 @@ the "is this one change?" question at the point where it is cheap to fix.*
 ## Commands
 
 ```bash
-ruff format . && ruff check --fix .              # format, then auto-fix
-ty check                                         # types
-rumdl fmt . && rumdl check .                     # markdown
-uv run pytest                                    # tests
-uv run python tools/check_nested_defs.py src tests tools
-prek run --all-files                             # everything above, as one gate
+prek run --files <path> [<path> ...]    # the whole gate, on the files you touched
+prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, no-nested-defs
+prek run --all-files                    # the whole gate, every tracked file
+uv run pytest                           # tests, which the gate does not run
 ```
+
+Run the linters **through prek, never directly.** `ty` is not installed outside the gate, so
+`ty check` is "command not found", and a `ruff` on PATH can be a different version from the hook's
+pin and disagree with it. prek runs the pinned versions, so what passes here passes at commit.
 
 First-time setup needs **all three** shims. `prek install` alone wires only `pre-commit`, which
 silently disables the commit-message check *and* makes `git merge --no-ff` into `main` fail:

@@ -106,7 +106,7 @@ max-returns = 6
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use bare literals, and poke at internals — all fine there.
 "tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
-# The checker's whole job is printing findings to stdout.
+# The checker's whole job is printing findings, to stderr.
 "tools/**" = ["T20"]
 # Invoking an external tool IS this module's purpose, so the subprocess warnings cannot be
 # designed away. The command is built from a literal list, never a shell string, and `prek`

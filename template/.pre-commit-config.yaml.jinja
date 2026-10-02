@@ -47,9 +47,10 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.0
     hooks:
-      - id: ruff-format
+      # The fixer before the formatter: a fix can leave code that needs reformatting.
       - id: ruff-check  # `ruff` is a legacy alias as of v0.16.0
         args: [--fix]
+      - id: ruff-format
 
   - repo: https://github.com/astral-sh/ty-pre-commit
     rev: v0.0.64
