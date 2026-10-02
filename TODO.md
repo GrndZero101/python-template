@@ -154,17 +154,13 @@ Left for the dogfood update below: a fresh session there should show the doctor'
 
 ### Phase 4 — Stabilise the toolchain
 
-- [ ] **Stop preview rules arriving by prefix.** With `preview = true`, prefix selection enables 120
-  preview rules on ruff 0.16.0, any of which can change, or be joined by new ones, in a ruff bump.
-  One already rewrote a `# noqa: E731` into `# ruff: ignore[lambda-assignment]` during the gate.
-  Set `explicit-preview-rules = true` and select the wanted ones by code: `PLR1702`, `PLR0914` and
-  `PLW1514`. That also drops `no-self-use` (`PLR6301`), which fires on every Textual `compose()`.
-- [ ] **Bump the hook pins** and fix whatever the new versions report: ruff v0.16.0 to v0.16.10,
-  ty v0.0.64 to v0.0.84, rumdl v0.2.45 to v0.2.78, uv-pre-commit 0.12.0 to 0.12.22. Automating
-  this belongs to phase 8.
-- [ ] **pytest strictness.** pytest 9 has `strict = true` (strict config, markers, xfail and
-  parametrization ids). With `filterwarnings = ["error"]`, a typer or pydantic deprecation fails a
-  test the day it appears rather than at the next major version.
+Done on `chore/phase4-toolchain`, 2026-10-02. `explicit-preview-rules = true` in both configs, with
+ten preview rules selected by code (`PLR1702`, `PLR0914`, `PLW1514`, `PLC2701`, and six bug
+detectors), down from 124 by prefix; `no-self-use` is gone. Hook pins bumped to ruff v0.16.10, ty
+v0.0.84, rumdl v0.2.78 and uv-pre-commit 0.12.22, with no new findings in any type. pytest names
+`strict_config`, `strict_markers`, `strict_xfail` and `strict_parametrization_ids` individually
+rather than `strict = true`, which would adopt later options unannounced, and has
+`filterwarnings = ["error"]`. Each was probed in a generated project, not just run green.
 
 ### Phase 5 — Turn conventions into checks
 
@@ -258,7 +254,8 @@ workflows in skills; imports do not reduce the cost.
   `uv run pytest`, so a generated tool is checked away from its author's machine too.
 - [ ] **Pin automation.** Nothing bumps the hook pins or the dependency floors, and they drifted
   10–20 releases in two months. A scheduled `prek update` workflow, or Renovate, gated by the
-  generation suite.
+  generation suite. `prek update` cannot read `template/.pre-commit-config.yaml.jinja`; phase 4 ran
+  it in a generated project and copied the revisions back, which a workflow can do too.
 - [ ] **Tagging** (D5). The template has **no git tags**, so `.copier-answers.yml`
   records a bare commit hash and the `--vcs-ref v1.3.0` examples in the README refer to tags that
   do not exist yet. This is not just a labelling gap. **Once any tag exists, `copier update` pulls
@@ -332,8 +329,8 @@ Verified defects in today's setup and skill:
 - [ ] `textual console` and `textual run --dev`, which the skill's debugging section depends on,
   come from `textual-dev`, which is not installed. Add it to the tui dev group.
 - [ ] Idiomatic Textual fails the gate three ways: `BINDINGS = [...]` trips `mutable-class-default`
-  (annotate it `ClassVar[list[BindingType]]`); `compose()` trips `no-self-use` (gone after phase 4,
-  or add `@override`); and a handler that ignores its event trips `unused-method-argument` (Textual
+  (annotate it `ClassVar[list[BindingType]]`); `compose()` tripped `no-self-use`, which phase 4
+  removed; and a handler that ignores its event trips `unused-method-argument` (Textual
   lets a handler omit the event parameter — teach that).
 - [ ] The floor is `textual>=7.2.0`, but 8.2.8 is current, a major version on. Re-verify the skill
   against 8.x.

@@ -37,6 +37,9 @@ target-version = "py314"
 preview = true  # required to name rules rather than codes in `ignore` below
 
 [tool.ruff.lint]
+# Preview mode is on for the rule names, not the preview rules: without this, every preview rule
+# under a selected prefix would be enabled, and a ruff upgrade could add more. Same as the template.
+explicit-preview-rules = true
 select = [
     "E", "W", "F", "I", "UP", "N",
     "D", "ANN",
@@ -52,8 +55,6 @@ ignore = [
     "line-too-long",
     "missing-trailing-comma",
     "raise-vanilla-args",
-    # flags the import itself, which is no risk; S602-S607 still cover how it is called
-    "suspicious-subprocess-import",
 ]
 
 [tool.ruff.lint.per-file-ignores]
