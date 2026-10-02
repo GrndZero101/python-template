@@ -79,13 +79,17 @@ which rest on your own discipline.
 
 | Rule | Enforced by |
 |---|---|
-| No `def` inside a function | `tools/check_nested_defs.py` |
+| No `def` inside a function, unless it is returned | `tools/check_conventions.py` `nested-def` |
+| No `class` inside a function | `tools/check_conventions.py` `nested-class` |
+| No comprehension with two `for`s, or inside another | `tools/check_conventions.py` `complex-comprehension` |
 | Guard clauses; ≤3 nested blocks | `PLR1702` |
 | ≤40 statements, complexity ≤8, ≤12 locals, ≤5 args | `PLR0915` `C901` `PLR0914` `PLR0913` |
 | No `print`, `__main__` blocks included (`tools/` exempt) | `T20` |
 | Correct logging calls | `LOG` `G` — **stdlib only**; neither sees `loguru` call sites |
 | Never swallow exceptions; `raise ... from e` | `BLE` `B904` `TRY` |
-| Never `raise ... from None` | *convention — `B904` accepts it, and so does everything else* |
+| Never `raise ... from None` | `tools/check_conventions.py` `raise-from-none` — `B904` accepts it |
+| No `getattr`/`setattr`/`delattr` with a computed name | `tools/check_conventions.py` `dynamic-attribute` |
+| A module defining `main` has an `if __name__ == "__main__":` block | `tools/check_conventions.py` `missing-main-guard` |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |
@@ -108,19 +112,19 @@ which rest on your own discipline.
 | `prek` installed and all three git shims present | `tools/session_doctor.py` via `SessionStart` — reports, does not block |
 | Commit summary ≤72 chars, imperative | *convention — review only* |
 | One logical change per commit | *convention — review only* |
-| No `class` inside a function | *convention — review only* |
-| Name intermediates; no multi-`for` comprehensions | *convention — review only* |
+| Name intermediates | *convention — review only* |
 | Dataclass over ad-hoc dict | *convention — review only* |
 | Inject clock/rng/client | *convention — review only* |
-| No `getattr` dispatch or metaclass tricks | *convention — review only* |
-| `if __name__ == "__main__":` on runnable modules | *convention — review only* |
+| No metaclass tricks or runtime-generated attributes | *convention — review only* |
+| `if __name__ == "__main__":` on other runnable modules | *convention — review only* |
 
 The convention rows are checked by `/code-review`, not by a linter. They matter just as much.
 
 ## Escape hatch
 
-A genuinely necessary closure that is not returned can carry `# noqa: nested-def` on its `def`
-line. Use it rarely and say why in a comment.
+Each `check_conventions.py` rule has an id, and a line opts out of one with `# noqa: <id>` —
+`# noqa: nested-def` on the `def` line of a closure that genuinely cannot be returned, say. Name
+several ids with commas. Use it rarely and say why in a comment beside it.
 
 ## Branching
 
@@ -245,13 +249,13 @@ history readable while it exists. But half-written code will not pass `ty`, so s
 without skipping the *message* check:
 
 ```bash
-SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit -m "chore(x): wip"
+SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,conventions git commit -m "chore(x): wip"
 ```
 
 `git commit --no-verify` is the wrong tool here — it skips the message check too. Worth an alias:
 
 ```bash
-git config alias.wip '!SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit'
+git config alias.wip '!SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,conventions git commit'
 ```
 
 ## Commits
@@ -272,7 +276,7 @@ the "is this one change?" question at the point where it is cheap to fix.*
 
 ```bash
 prek run --files <path> [<path> ...]    # the whole gate, on the files you touched
-prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, no-nested-defs
+prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, conventions
 prek run --all-files                    # the whole gate, every tracked file
 uv run pytest                           # tests, which the gate does not run
 ```

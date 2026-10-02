@@ -1,7 +1,20 @@
-"""Settings precedence: command-line flag, then environment variable, then default."""
+"""Settings precedence: command-line flag, then environment variable, then default.
+
+The last section checks the wiring. Adding a setting takes four coordinated edits — `Settings`,
+`_Overrides`, `load_settings` and an option in `options.py` — and a missed one fails silently: the
+flag is accepted and ignored, or the variable is read but never documented. These tests name
+whichever edit is missing.
+"""
+
+import functools
+import inspect
+from typing import Any
 
 import pytest
+import typer
 
+from {{ package_name }} import config
+from {{ package_name }}.cli import app
 from {{ package_name }}.config import (
     ENV_PREFIX,
     Settings,
@@ -66,3 +79,52 @@ def test_unrelated_prefixed_variable_is_ignored(monkeypatch: pytest.MonkeyPatch)
 
 def test_env_var_is_the_prefix_plus_the_upper_case_field() -> None:
     assert env_var("output") == f"{ENV_PREFIX}OUTPUT"
+
+
+# --- wiring: every setting reaches every place it must ------------------------------------
+
+
+def _capture(seen: dict[str, object], **kwargs: object) -> object:
+    """Stand in for `Settings`, recording the keywords `load_settings` passed it."""
+    seen.update(kwargs)
+    return object()
+
+
+def _option_help(command: typer.main.TyperGroup) -> str:
+    """Return the help text of every option on the app and on each of its commands."""
+    params = list(command.params)
+    for subcommand in command.commands.values():
+        params.extend(subcommand.params)
+    texts = [getattr(param, "help", None) or "" for param in params]
+    return "\n".join(texts)
+
+
+SETTINGS_FIELDS = sorted(Settings.model_fields)
+
+
+def test_overrides_declare_every_setting() -> None:
+    """Step 1 of config.py's recipe: a field in `Settings` must also be in `_Overrides`."""
+    assert sorted(config._Overrides.__annotations__) == SETTINGS_FIELDS
+
+
+def test_load_settings_takes_a_keyword_for_every_setting() -> None:
+    """Step 2: without the keyword there is no way for a flag to reach the setting."""
+    keywords = sorted(inspect.signature(load_settings).parameters)
+    assert keywords == SETTINGS_FIELDS
+
+
+def test_load_settings_passes_every_given_flag_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Step 2 again: a keyword accepted but never copied into the overrides is silently ignored."""
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(config, "Settings", functools.partial(_capture, seen))
+    given: dict[str, Any] = {field: f"value of {field}" for field in SETTINGS_FIELDS}
+    load_settings(**given)
+    assert seen == given
+
+
+@pytest.mark.parametrize("field", SETTINGS_FIELDS)
+def test_every_setting_has_a_flag_naming_its_variable(field: str) -> None:
+    """Step 3: a flag on some command must name the variable, or nobody can discover it."""
+    command = typer.main.get_command(app)
+    assert isinstance(command, typer.main.TyperGroup)
+    assert f"(env: {env_var(field)})" in _option_help(command)

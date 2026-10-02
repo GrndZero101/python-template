@@ -13,8 +13,10 @@ by lint config and a `prek` gate — not just documented and hoped for.
   scaffold CLI, `{{ script_name }}`, on typer, pydantic-settings, rich and loguru, with one
   placeholder command, `about`. Replace it or build beside it; the plumbing around it — settings,
   output, logging, the entry point — is meant to stay.{% endif %}
-- **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
-  `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
+- **`tools/`** — the custom checks no off-the-shelf linter covers: `check_conventions.py` and
+  `convention_rules.py` (the CLAUDE.md conventions no linter checks: `def` or `class` inside a
+  function, complex comprehensions, `raise ... from None`, computed `getattr`, an unguarded
+  `main`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
   block edits to `main` and run the lint gate on save), `stop_gate.py` (the `Stop` hook that
   re-checks every changed file and runs the tests before a turn ends), `gate_log.py` (one line per
   gate run in the gitignored `.gate.log`), `session_doctor.py` (the `SessionStart` hook that
@@ -58,7 +60,7 @@ skill written for the VS Code extension. The `python-debug` skill covers using i
 
 ```bash
 prek run --files <path> [<path> ...]    # the whole gate, on the files you touched
-prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, no-nested-defs
+prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, conventions
 prek run --all-files                    # the whole gate, every tracked file
 uv run pytest                           # tests, which the gate does not run
 ```
