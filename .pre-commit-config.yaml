@@ -49,7 +49,7 @@ repos:
         stages: [commit-msg]
 
   - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.2.45
+    rev: v0.2.78
     hooks:
       - id: rumdl-fmt
         exclude: ^template/
@@ -58,7 +58,7 @@ repos:
 
   # The root's own Python is just the generation tests, but they are held to the same rules.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
+    rev: v0.16.10
     hooks:
       # The fixer before the formatter: a fix can leave code that needs reformatting.
       - id: ruff-check
