@@ -7,7 +7,15 @@ import json
 from pathlib import Path
 
 import pytest
-from hook_payload import find_gate_root, find_repo_root, inside_repo, owning_repo, target_path
+from hook_payload import (
+    find_gate_root,
+    find_repo_root,
+    inside_repo,
+    notice,
+    owning_repo,
+    parse_payload,
+    target_path,
+)
 
 
 def test_extracts_file_path_from_payload() -> None:
@@ -19,6 +27,27 @@ def test_backslash_path_survives_json_round_trip() -> None:
     r"""A Windows payload carries C:\repo\x.py; json owns the escaping, not us."""
     payload = json.dumps({"tool_input": {"file_path": r"C:\repo\x.py"}})
     assert target_path(payload) == Path(r"C:\repo\x.py")
+
+
+def test_extracts_notebook_path_from_a_notebook_edit() -> None:
+    """NotebookEdit sends `notebook_path`; reading only `file_path` left notebooks unguarded."""
+    payload = json.dumps({"tool_input": {"notebook_path": "/repo/analysis.ipynb"}})
+    assert target_path(payload) == Path("/repo/analysis.ipynb")
+
+
+def test_parse_payload_is_empty_for_anything_but_an_object() -> None:
+    assert parse_payload("[1, 2]") == {}
+    assert parse_payload("nonsense") == {}
+    assert parse_payload('{"stop_hook_active": true}') == {"stop_hook_active": True}
+
+
+def test_notice_carries_context_for_the_model_and_optionally_a_warning() -> None:
+    quiet = json.loads(notice("PostToolUse", "gate skipped"))
+    assert quiet == {
+        "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "gate skipped"}
+    }
+    loud = json.loads(notice("SessionStart", "status", user_message="prek missing"))
+    assert loud["systemMessage"] == "prek missing"
 
 
 @pytest.mark.parametrize(

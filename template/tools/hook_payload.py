@@ -1,4 +1,4 @@
-"""Shared parsing for Claude Code hook payloads.
+"""Shared parsing for Claude Code hook payloads, and the one shape of reply that does not block.
 
 Both `branch_guard` and `gate` are handed the same JSON on stdin and both need the same two
 answers from it: which file is being touched, and where the repository root is. That logic
@@ -12,16 +12,45 @@ check it was performing.
 import json
 from pathlib import Path
 
+# `Edit` and `Write` send `file_path`; `NotebookEdit` sends `notebook_path`. Reading only the first
+# left every notebook unguarded even though the hook's matcher named the tool.
+PATH_KEYS = ("file_path", "notebook_path")
 
-def target_path(payload: str) -> Path | None:
-    """Extract the edited file path from a hook payload, or None if absent or malformed."""
+
+def parse_payload(payload: str) -> dict[str, object]:
+    """Decode a hook payload, or return an empty mapping if it is not a JSON object."""
     try:
         document = json.loads(payload)
     except json.JSONDecodeError:
+        return {}
+    return document if isinstance(document, dict) else {}
+
+
+def target_path(payload: str) -> Path | None:
+    """Extract the edited file path from a hook payload, or None if absent or malformed."""
+    tool_input = parse_payload(payload).get("tool_input")
+    if not isinstance(tool_input, dict):
         return None
-    tool_input = document.get("tool_input") if isinstance(document, dict) else None
-    raw = tool_input.get("file_path") if isinstance(tool_input, dict) else None
-    return Path(raw) if isinstance(raw, str) and raw else None
+    for key in PATH_KEYS:
+        raw = tool_input.get(key)
+        if isinstance(raw, str) and raw:
+            return Path(raw)
+    return None
+
+
+def notice(event: str, context: str, user_message: str | None = None) -> str:
+    """Return the JSON a hook prints on stdout to tell Claude something without blocking.
+
+    `context` reaches the model as a system reminder; `user_message`, when given, is shown to the
+    person as a warning. Both are capped at 10,000 characters by Claude Code. Exit 0 with this on
+    stdout: exit 2 would turn it into a block.
+    """
+    document: dict[str, object] = {
+        "hookSpecificOutput": {"hookEventName": event, "additionalContext": context},
+    }
+    if user_message is not None:
+        document["systemMessage"] = user_message
+    return json.dumps(document)
 
 
 def find_repo_root(start: Path | None = None) -> Path | None:
