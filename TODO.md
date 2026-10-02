@@ -104,13 +104,15 @@ fixer before its formatter; F5 through `tools/debug_module.py`; `python_version`
 3.12–3.14 rendered into `.python-version`, with every type proven at 3.12; and the `T20` and
 `from None` table rows corrected.
 
-- [ ] **`copier update` the dogfood** to the merge commit, by hand as the README describes. The
-  update touches `.python-version` (now rendered), the prek config (hook order), `launch.json`,
-  CLAUDE.md and three skills. Expect conflicts only where the dogfood edited those files. Its
-  `weather.py` has three `raise ... from None`, which CLAUDE.md now names as a violation: line 69
-  drops a `JSONDecodeError`, and lines 134 and 137 raise `typer.Exit`. All three become `from exc`.
-  For an exit signal that changes nothing at runtime, which is why phase 5's check needs no
-  exemption for it. Fix them in the dogfood, from a session started there.
+- [ ] **`copier update` the dogfood** to the phase 3 merge commit (it covers phase 1 too), by hand
+  as the README describes. Phase 1's part touches `.python-version` (now rendered), the prek config
+  (hook order), `launch.json`, CLAUDE.md and three skills; phase 3 adds four `tools/` modules and
+  their tests, and new `Stop` and `SessionStart` hooks in `.claude/settings.json`. Expect conflicts
+  only where the dogfood edited those files. Its `weather.py` has three `raise ... from None`, which
+  CLAUDE.md now names as a violation: line 69 drops a `JSONDecodeError`, and lines 134 and 137 raise
+  `typer.Exit`. All three become `from exc`. For an exit signal that changes nothing at runtime,
+  which is why phase 5's check needs no exemption for it. Fix them in the dogfood, from a session
+  started there.
 
 ### Phase 2 — A benchmark harness and a baseline
 
@@ -122,9 +124,13 @@ goal three makes.
   `cli-modern` project, cut a branch so the guard does not stop the first edit, run
   `claude -p "<spec>" --model <model> --output-format json` with the project as its working
   directory so its hooks and skills load, then run the project's own `prek run --all-files` and
-  `uv run pytest`. Record `total_cost_usd`, turns, duration, gate blocks (from the `.gate.log` in
-  phase 3) and pass or fail. Check `claude --help` for the flags an unattended run needs: the
-  project's allowlist covers `uv run` and `prek`, not `git`.
+  `uv run pytest`. Record `total_cost_usd`, turns, duration, gate blocks (from `.gate.log`) and
+  pass or fail. Flags checked against Claude Code 2.1.287: `-p "$(cat spec.md)"`, `--model`,
+  `--output-format json` (or `stream-json` for every tool call), `--permission-mode acceptEdits`,
+  `--allowedTools` (the project allowlist covers `uv run` and `prek`, not `git`),
+  `--max-budget-usd`, `--no-session-persistence` and `--strict-mcp-config`. Never `--bare`: it
+  skips the hooks being measured. Open: whether `--setting-sources project,local` also keeps the
+  user's own `~/.claude` rules out of the run, so the baseline measures the template alone.
 - [ ] **Score against the spec, not only the gate.** Each spec in `examples/` lists the tests that
   should exist and a failure table. A short checklist per spec turns that into a score.
 - [ ] **A baseline straight after phase 1**, per D2, so broken documentation does not dominate the
@@ -135,34 +141,16 @@ goal three makes.
 
 ### Phase 3 — Make the gate precise and unavoidable
 
-The guardrails are the template's strongest part. These make their feedback cheaper to read and
-close the one path around them.
+Done on `feat/phase3-gate`, 2026-10-02. The edit-time gate reports failures only, concisely —
+`prek --quiet` plus `RUFF_OUTPUT_FORMAT` and `TY_OUTPUT_FORMAT` set to `concise` (ty honours the
+variable through `uv check`), 266 bytes where it was 3,048 — and re-runs once when prek only
+applied its own fixes. With prek missing it says so to the agent and the user. A `Stop` hook,
+`tools/stop_gate.py`, gates every changed and untracked file and runs the tests, blocking once
+per stop. `tools/session_doctor.py` reports a missing `prek` or git shim at session start.
+Notebook edits are guarded and gated. Every gate and stop-gate run appends a line to `.gate.log`.
 
-- [ ] **Re-run before blocking.** When an existing (tracked) file has only auto-fixable problems,
-  prek fixes it, reports "Failed - files were modified by this hook", and `gate.py` exits 2; a
-  second run passes. The same edit to a new file passes silently. Every slightly-off edit therefore
-  costs a confusing round trip. On a failure, run again and report the second result.
-- [ ] **Report only what failed, concisely.** One lint error currently produces 3,048 bytes,
-  including 15 "Passed" and "Skipped" lines and ruff's full code frame. `prek -q` with
-  `RUFF_OUTPUT_FORMAT=concise` set for the gate's subprocess produced 409 bytes for the same error,
-  with nothing lost. Set both in `gate.py` only, so the commit-time gate keeps full output for a
-  person. ty has `--output-format concise`; check whether `uv check` passes it through.
-- [ ] **A `Stop` hook, so a turn cannot end red.** `PreToolUse` and `PostToolUse` match only
-  `Edit|Write`, but auto mode tells the model it may edit with `sed` or a heredoc, which skips both.
-  Add `tools/stop_gate.py`: gate the changed and untracked files and run the test suite (together
-  under a second in a fresh project), and exit 2 with what failed. Honour `stop_hook_active` so it
-  blocks at most once per stop and never meets the 8-block cap. Exec form like the other hooks,
-  tests with an injected runner, and a generation test that runs it. In this repo, register it
-  with the generation tests skipped.
-- [ ] **Stop failing open silently.** With `prek` missing, `gate.py:69` builds "gate skipped: cannot
-  run prek" and then discards it — exit 0, no output. Return it as `additionalContext` JSON so the
-  model can tell the user. Separately, the guard matches `NotebookEdit`, but that tool sends
-  `notebook_path`, which `hook_payload.target_path` never reads, so notebooks are never guarded.
-- [ ] **A `SessionStart` doctor.** Beside the git status it prints now, report anything that
-  silently disables a guard: `prek` not on PATH, or any of the three shims missing from
-  `.git/hooks`. The README insists on all three shims; nothing checks it.
-- [ ] **Gate instrumentation** (was a nice-to-have). Append the outcome and failing hook ids of each
-  gate and stop-gate run to a gitignored `.gate.log`. The benchmark reads it for blocks per task.
+Left for the dogfood update below: a fresh session there should show the doctor's status line, a
+`sed` edit caught by the stop gate, and a `.gate.log` filling up.
 
 ### Phase 4 — Stabilise the toolchain
 
