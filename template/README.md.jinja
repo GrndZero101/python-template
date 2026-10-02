@@ -15,7 +15,11 @@ by lint config and a `prek` gate — not just documented and hoped for.
   output, logging, the entry point — is meant to stay.{% endif %}
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
   `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
-  block edits to `main` and run the lint gate on save), `hook_payload.py` (shared parsing), and
+  block edits to `main` and run the lint gate on save), `stop_gate.py` (the `Stop` hook that
+  re-checks every changed file and runs the tests before a turn ends), `gate_log.py` (one line per
+  gate run in the gitignored `.gate.log`), `session_doctor.py` (the `SessionStart` hook that
+  reports the branch, and any guard switched off by a missing `prek` or git shim),
+  `hook_payload.py` (shared parsing), and
   `debug_module.py` and `debug_pytest.py` (let the DebugMCP CLI debug a source module and a test
   file; see below).
 - **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply.
@@ -29,7 +33,7 @@ The template's generation tasks already ran these. Repeat them only on a fresh c
 
 ```bash
 uv sync
-prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+prek install -t pre-commit -t commit-msg -t pre-merge-commit
 ```
 
 All three shims are required — `prek install` alone wires only `pre-commit`, which silently skips

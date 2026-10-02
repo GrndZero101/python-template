@@ -21,13 +21,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "git",
+            "command": "uv",
             "args": [
-              "-C",
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
               "${CLAUDE_PROJECT_DIR}",
-              "status",
-              "--short",
-              "--branch"
+              "python",
+              "template/tools/session_doctor.py"
             ],
             "timeout": 15
           }
@@ -61,7 +63,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -79,6 +81,30 @@
             ],
             "timeout": 120,
             "statusMessage": "Formatting and checking..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
+              "${CLAUDE_PROJECT_DIR}",
+              "python",
+              "template/tools/stop_gate.py",
+              "--skip",
+              "no-commit-to-branch,generation-tests",
+              "--no-tests"
+            ],
+            "timeout": 300,
+            "statusMessage": "Checking the changed files before stopping..."
           }
         ]
       }

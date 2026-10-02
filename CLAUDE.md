@@ -70,6 +70,11 @@ suite either; the generation tests catch template edits at commit instead. Editi
 config does not match, such as `TODO.md`, likewise leaves the gate standing down rather than
 blocking.
 
+The `Stop` hook is registered here the same way, with `--skip no-commit-to-branch,generation-tests`
+and `--no-tests`: the root's test suite *is* the generation suite, a minute per stop. It still
+gates every changed root file before a turn ends, and, like the edit-time gate, it cannot see into
+`template/`.
+
 ## Commands
 
 Run from the repo root:

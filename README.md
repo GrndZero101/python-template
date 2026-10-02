@@ -6,8 +6,9 @@ inspect it. Structure, debuggability and portability rules are mechanically enfo
 and a `prek` gate — not just documented and hoped for.
 
 Generated projects get: the rule set, a `PreToolUse` guard that refuses edits to `main`, a
-`PostToolUse` gate that lints on every save, `ruff`/`ty`/`rumdl`/`prek` configured, a custom check
-for `def` inside `def`, and the Claude Code skills matching the stack you pick.
+`PostToolUse` gate that lints on every save, a `Stop` gate that re-checks every changed file and
+runs the tests before a turn can end, `ruff`/`ty`/`rumdl`/`prek` configured, a custom check for
+`def` inside `def`, and the Claude Code skills matching the stack you pick.
 
 ## Prerequisites
 
@@ -118,7 +119,7 @@ Do not delete `.copier-answers.yml` — `copier update` reads it to know what yo
 git clone https://github.com/GrndZero101/python-template
 cd python-template
 uv sync
-prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+prek install -t pre-commit -t commit-msg -t pre-merge-commit
 ```
 
 All three shims are required. `prek install` alone wires only `pre-commit`, which silently skips

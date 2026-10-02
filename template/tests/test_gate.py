@@ -6,22 +6,34 @@ The gate's own subprocess is injected, so nothing here shells out to prek.
 import functools
 import json
 import shutil
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 from gate import (
+    MODIFIED_MARK,
     GateResult,
     build_command,
     check,
+    condense,
     find_conflicted,
     main,
     paused_message,
     run_subprocess,
 )
+from gate_log import LOG_NAME
 
 PASS = GateResult(code=0, output="all hooks passed")
-FAIL = GateResult(code=1, output="ruff check....Failed\n  unsorted-imports")
+FAIL = GateResult(
+    code=1,
+    output=(
+        "ruff check....Failed\n- hook id: ruff-check\n"
+        "- description: Run 'ruff check'\n  unsorted-imports"
+    ),
+)
+FIXED = GateResult(code=1, output=f"ruff check....Failed\n- hook id: ruff-check\n- {MODIFIED_MARK}")
+MISSING = GateResult(code=0, output="cannot run prek: not found", ran=False)
 # Built rather than written out, so this file never trips check-merge-conflict itself.
 OPENING_MARKER = "<" * 7 + " before updating"
 
@@ -42,6 +54,12 @@ def _runner(result: GateResult, command: Sequence[str], cwd: Path) -> GateResult
     """Stand in for the subprocess runner, recording nothing and returning `result`."""
     del command, cwd
     return result
+
+
+def _sequence(results: list[GateResult], command: Sequence[str], cwd: Path) -> GateResult:
+    """Runner that returns `results` in order, one per call."""
+    del command, cwd
+    return results.pop(0)
 
 
 def _stdin_returning(payload: str) -> str:
@@ -76,41 +94,70 @@ def _make_repo(root: Path) -> Path:
 def test_command_names_the_edited_file_explicitly() -> None:
     """--files, not --all-files: prek skips untracked files, which agents create constantly."""
     target = Path("src/x.py")
-    command = build_command(target, skip="no-commit-to-branch")
-    assert command[:3] == ["prek", "run", "--files"]
+    command = build_command([target], skip="no-commit-to-branch")
+    assert command[:2] == ["prek", "run"]
     assert "--all-files" not in command
     # str(Path(...)), not a literal: the separator differs by platform.
-    assert command[3] == str(target)
+    assert command[command.index("--files") + 1] == str(target)
+
+
+def test_command_reports_only_failures() -> None:
+    """Fifteen "Passed" and "Skipped" lines per edit are tokens the agent pays for and ignores."""
+    assert "--quiet" in build_command([Path("src/x.py")])
 
 
 def test_command_skips_the_branch_hook() -> None:
     """Branch protection is the PreToolUse guard's job; running it here fails every edit on main."""
-    command = build_command(Path("src/x.py"))
+    command = build_command([Path("src/x.py")])
     assert "--skip" in command
     assert "no-commit-to-branch" in command
 
 
 def test_each_skipped_hook_gets_its_own_flag() -> None:
     """prek's --skip takes one id; `a,b` passed whole matches no hook and skips nothing."""
-    command = build_command(Path("src/x.py"), skip="no-commit-to-branch, generation-tests")
+    command = build_command([Path("src/x.py")], skip="no-commit-to-branch, generation-tests")
     skips = command[command.index("--skip") :]
     assert skips == ["--skip", "no-commit-to-branch", "--skip", "generation-tests"]
 
 
 def test_an_empty_skip_list_adds_no_flag() -> None:
-    assert "--skip" not in build_command(Path("src/x.py"), skip="")
+    assert "--skip" not in build_command([Path("src/x.py")], skip="")
 
 
 def test_check_forwards_command_and_cwd(tmp_path: Path) -> None:
     seen: list[tuple[Sequence[str], Path]] = []
     check(
-        tmp_path / "x.py",
+        [tmp_path / "x.py"],
         tmp_path,
         "no-commit-to-branch",
         functools.partial(_recording, seen),
     )
     assert len(seen) == 1
     assert seen[0][1] == tmp_path
+
+
+def test_check_runs_again_when_prek_only_applied_fixes(tmp_path: Path) -> None:
+    """A reformat fails the first run although nothing is left to fix; report the second."""
+    results = [FIXED, PASS]
+    result = check([tmp_path / "x.py"], tmp_path, "", functools.partial(_sequence, results))
+    assert result.code == 0
+    assert result.rerun
+    assert not results
+
+
+def test_check_does_not_run_again_on_a_genuine_failure(tmp_path: Path) -> None:
+    results = [FAIL, PASS]
+    result = check([tmp_path / "x.py"], tmp_path, "", functools.partial(_sequence, results))
+    assert result.code == 1
+    assert not result.rerun
+    assert results == [PASS]
+
+
+def test_condense_drops_hook_descriptions() -> None:
+    condensed = condense(FAIL.output)
+    assert "- description:" not in condensed
+    assert "unsorted-imports" in condensed
+    assert "- hook id: ruff-check" in condensed
 
 
 # --- entry point ------------------------------------------------------------------------
@@ -140,7 +187,39 @@ def test_failing_gate_blocks_with_exit_2_and_reports_on_stderr(
     assert main([], runner=functools.partial(_runner, FAIL), scanner=_no_conflicts) == 2
     captured = capsys.readouterr()
     assert "unsorted-imports" in captured.err
+    assert "- description:" not in captured.err
     assert not captured.out
+
+
+def test_missing_prek_lets_the_edit_stand_but_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Failing open is right; failing open *silently* left the agent believing it was checked."""
+    _make_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "sys.stdin.read", functools.partial(_stdin_returning, _payload(tmp_path / "x.py"))
+    )
+    assert main([], runner=functools.partial(_runner, MISSING), scanner=_no_conflicts) == 0
+    reply = json.loads(capsys.readouterr().out)
+    assert "did not run" in reply["hookSpecificOutput"]["additionalContext"]
+    assert "uv tool install prek" in reply["systemMessage"]
+
+
+def test_each_run_is_logged_with_its_outcome_and_failing_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "src" / "x.py"
+    for result in (FAIL, PASS):
+        monkeypatch.setattr("sys.stdin.read", functools.partial(_stdin_returning, _payload(target)))
+        main([], runner=functools.partial(_runner, result), scanner=_no_conflicts)
+    lines = (tmp_path / LOG_NAME).read_text(encoding="utf-8").splitlines()
+    entries = [json.loads(line) for line in lines]
+    assert [entry["outcome"] for entry in entries] == ["block", "pass"]
+    assert entries[0]["failed"] == ["ruff-check"]
+    assert entries[0]["target"] == str(Path("src") / "x.py")
 
 
 def test_file_outside_the_repository_is_not_gated(
@@ -231,7 +310,14 @@ def test_missing_executable_fails_open(tmp_path: Path) -> None:
     """A machine without prek must not have every edit blocked."""
     result = run_subprocess(["definitely-not-a-real-binary-xyz"], tmp_path)
     assert result.code == 0
+    assert not result.ran
     assert "cannot run" in result.output
+
+
+def test_extra_env_reaches_the_subprocess_without_replacing_the_rest(tmp_path: Path) -> None:
+    script = "import os; print(os.environ['GATE_PROBE'], 'PATH' in os.environ)"
+    result = run_subprocess([sys.executable, "-c", script], tmp_path, {"GATE_PROBE": "concise"})
+    assert result.output == "concise True"
 
 
 def test_scan_finds_markers_in_tracked_and_untracked_files(tmp_path: Path) -> None:
