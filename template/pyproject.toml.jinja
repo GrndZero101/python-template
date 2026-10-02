@@ -47,9 +47,13 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py{{ python_version | replace('.', '') }}"
-preview = true  # required: PLR1702 and PLR0914 are preview rules
+preview = true  # required: several rules below are preview rules, and `ignore` names rules
 
 [tool.ruff.lint]
+# Preview rules are opted into one by one, by code. Selected through a prefix, every preview rule a
+# ruff release adds under it arrives with the upgrade — 124 of them on 0.16.10 — so a version bump
+# alone could change what the gate blocks, or rewrite suppression comments mid-gate.
+explicit-preview-rules = true
 select = [
     "E", "W", "F", "I", "UP", "N",     # core, imports, modernization, naming
     "D", "ANN",                        # docstrings + annotations
@@ -60,6 +64,15 @@ select = [
     "LOG", "G", "T20",                 # logging correctness; T20 bans print
     "PTH", "DTZ", "ARG", "SLF", "FBT", "PT", "S",
     "PL", "C90",                       # the complexity dials below
+    # Preview rules, each chosen. The first four back rows of CLAUDE.md's enforcement table:
+    "PLR1702", "PLR0914",              # too-many-nested-blocks, too-many-locals
+    "PLW1514",                         # unspecified-encoding
+    "PLC2701",                         # import-private-name
+    # The rest are bug detectors: mutating the list being looped over, `dict` iterated without
+    # `.items()`, a set modified while iterating it, a mutable dataclass default shared between
+    # instances, eager formatting in a logging call, and a context manager whose cleanup is skipped
+    # when the body raises.
+    "B909", "PLE1141", "PLE4703", "RUF045", "RUF065", "RUF075",
 {%- if project_type == "fastapi" %}
     "FAST",                            # FastAPI-specific: redundant response_model, raw Depends
 {%- endif %}
@@ -81,10 +94,6 @@ ignore = [
     "single-line-implicit-string-concatenation",
     # redundant with EM (which already forces messages out of the raise)
     "raise-vanilla-args",
-    # flags the `import subprocess` line itself, which is no risk. The rules that are stay on:
-    # shell=True (S602, S604), a shell string (S605), a non-literal command (S603), and a bare
-    # executable name (S607).
-    "suspicious-subprocess-import",
 ]
 # Reported, never auto-removed. The edit-time gate runs `--fix` after every save, so an import
 # added one edit ahead of its first use would be deleted before that use lands.
