@@ -93,7 +93,7 @@ async def load_records(self) -> None:
 - Use `thread=True` for blocking (non-awaitable) calls.
 - Only touch widgets from the app's own task. `call_from_thread` when in a threaded worker.
 
-Note that `@work` decorates a **method**, which is not a nested `def` — `check_nested_defs.py`
+Note that `@work` decorates a **method**, which is not a nested `def` — `check_conventions.py`
 resets its enclosing scope at a `class` body, so this is not a violation.
 
 ## Testing with Pilot

@@ -71,9 +71,9 @@ repos:
     hooks:
       # The template's own custom checker, reused on the repo that ships it. It is a literal
       # .py file, so it runs here unchanged.
-      - id: no-nested-defs
-        name: no nested function definitions
-        entry: uv run python template/tools/check_nested_defs.py
+      - id: conventions
+        name: CLAUDE.md conventions (tools/check_conventions.py)
+        entry: uv run python template/tools/check_conventions.py
         language: system
         types: [python]
         exclude: ^template/

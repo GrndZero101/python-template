@@ -68,12 +68,13 @@ repos:
     hooks:
       - id: uv-lock
 
-  # The single custom rule. No native linter covers `def` inside `def`.
+  # The CLAUDE.md conventions no native linter covers: `def` or `class` inside a function, complex
+  # comprehensions, `raise ... from None`, computed `getattr`, a `main` with no guard.
   # language: system so it shares the project interpreter and needs no isolated env.
   - repo: local
     hooks:
-      - id: no-nested-defs
-        name: no nested function definitions
-        entry: uv run python tools/check_nested_defs.py
+      - id: conventions
+        name: CLAUDE.md conventions (tools/check_conventions.py)
+        entry: uv run python tools/check_conventions.py
         language: system
         types: [python]

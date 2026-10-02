@@ -45,7 +45,7 @@ CLI_MODULES = {
 }
 BASE_TESTS = {
     "test_branch_guard.py",
-    "test_check_nested_defs.py",
+    "test_check_conventions.py",
     "test_debug_module.py",
     "test_debug_pytest.py",
     "test_gate.py",

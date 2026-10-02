@@ -7,8 +7,8 @@ and a `prek` gate — not just documented and hoped for.
 
 Generated projects get: the rule set, a `PreToolUse` guard that refuses edits to `main`, a
 `PostToolUse` gate that lints on every save, a `Stop` gate that re-checks every changed file and
-runs the tests before a turn can end, `ruff`/`ty`/`rumdl`/`prek` configured, a custom check for
-`def` inside `def`, and the Claude Code skills matching the stack you pick.
+runs the tests before a turn can end, `ruff`/`ty`/`rumdl`/`prek` configured, a custom checker
+for the conventions no linter covers, and the Claude Code skills matching the stack you pick.
 
 ## Prerequisites
 
