@@ -179,36 +179,25 @@ constructor is documented as resolving sources, so the four edits stay, guarded 
 
 ### Phase 6 — Cut the always-loaded context; make the skills recipes
 
-CLAUDE.md is paid for in every session, and a skill every time its task comes up — in tokens, and
-past a point in adherence. Anthropic's guidance is under 200 lines per CLAUDE.md, with task-specific
-workflows in skills; imports do not reduce the cost.
+Done on `feat/phase6-context`, 2026-10-02 (D3: a script).
 
-- [ ] **Move the git ritual out of CLAUDE.md.** `template/CLAUDE.md` is 283 lines, and lines 118-263
-  — branching, merging, commits — are about half of it. Keep a ten-line summary (never edit on
-  `main`, branch names, Conventional Commits, one change per commit, how to finish a branch) and
-  move the rest into a `git-workflow` skill. Per D3, encode the squash-and-merge procedure in a
-  script the skill calls, so the steps are run rather than remembered. This repo's CLAUDE.md
-  imports the template's, so sessions here load 377 lines; it shrinks with it.
-- [ ] **A recipe-first `python-cli-modern`.** It is 441 lines, mostly rationale, with no step list.
-  Open with two checklists — add a command, add a setting — naming each file to touch and each
-  test to write. Move httpx, concurrency, prompts, completion and the pydantic and SQLModel notes
-  into reference files beside `SKILL.md`, linked from where they apply.
-- [ ] **Copyable reference files.** A command module with its test, shaped like `about.py`; and an
-  httpx client factory with per-phase timeouts, a descriptive User-Agent, retry on 429 and 5xx
-  honouring `Retry-After`, and debug logging of each request. A weak model copying a vetted file
-  beats one synthesising it from prose.
-- [ ] **Skill code is checked code.** Every phase 1 skill defect was an example nobody had run.
-  Either keep examples in reference `.py` files that a generation test lints inside a project that
-  has their dependencies, or have a generation test pull the complete code blocks out of every
-  shipped skill and run them through the gate. Pick one, and apply it to the secondary skills too.
-- [ ] **Move the infrastructure tests out of `tests/`.** In a fresh project, 1,539 of 2,313 Python
-  lines are template machinery, and six of the ten test files test hooks. Move them to
-  `tools/tests/` so `tests/` holds only the product a model pattern-matches against. `testpaths`,
-  `pythonpath` and `BASE_TESTS` in `tests/test_template.py` follow.
-- [ ] **One home for each rationale.** The scaffold's docstrings, the skill and CLAUDE.md repeat the
-  same reasoning (why options default to `None`, why not `envvar=`, why the script is not `cli`,
-  shell completion). The copies have drifted once already. Keep the reasoning in the skill and a
-  one-line pointer in the docstring.
+- `template/CLAUDE.md` is 165 lines, from 296: the git ritual is a ten-line summary, and the detail
+  is a `git-workflow` skill every type ships. `tools/finish_branch.py` runs the procedure —
+  squash onto a branch cut from `main`, commit through the full gate, `--no-ff` merge, delete —
+  or with `--keep-commits` autosquashes, runs the full gate and merges with `--log`. Tested
+  against real git, and end to end under a generated project's real hooks.
+- `python-cli-modern` is recipe-first — add a command, call an HTTP API, add a setting — at 116
+  lines, with the rationale moved unchanged into nine topic files under `reference/`.
+- Reference code: `http_client.py` (per-phase timeouts, User-Agent, retry on 429 and 5xx honouring
+  `Retry-After`, idempotent methods only, debug logging) and `status.py`, each with tests. A
+  generation test follows the recipe literally — `uv add httpx`, copy, the `cli.py` edit — and runs
+  the gate and suite. In place, `.claude/` is excluded from ruff, ty and the conventions hook.
+- The machinery's tests are in `tools/tests/`; `tests/` holds the product's, plus a package import
+  test every type gets.
+- The scaffold docstrings point at the skill's reference files instead of restating the reasons.
+
+Left: the secondary skills' code blocks are still unchecked. Each gets reference files and the
+same generation test in its own phase (9–12), as the definition of done there already requires.
 
 ### Phase 7 — DevOps CLI features
 
