@@ -51,6 +51,7 @@ BASE_TESTS = {
     "test_gate.py",
     "test_gate_log.py",
     "test_hook_payload.py",
+    "test_session_doctor.py",
     "test_stop_gate.py",
 }
 CLI_TESTS = {"conftest.py", "test_about.py", "test_config.py", "test_typer_entrypoint.py"}
@@ -516,6 +517,20 @@ def test_stop_gate_refuses_once_to_end_a_turn_on_an_unchecked_file(copie: Copie)
         check=False,
     )
     assert again.returncode == 0, "a second stop must always be allowed"
+
+
+@requires_uv
+def test_session_doctor_reports_a_missing_shim_in_a_generated_project(copie: Copie) -> None:
+    """Every guard fails open; this hook is the only place a switched-off one becomes visible."""
+    project = _generate(copie, "cli-modern")
+    argv = _hook_argv(project, "tools/session_doctor.py")
+    healthy = _run(argv, project)
+    assert healthy.returncode == 0, healthy.stderr
+    assert healthy.stdout.startswith("## main"), healthy.stdout
+    (project / ".git" / "hooks" / "commit-msg").unlink()
+    broken = _run(argv, project)
+    assert broken.returncode == 0, broken.stderr
+    assert "commit-msg" in json.loads(broken.stdout)["systemMessage"]
 
 
 @requires_prek

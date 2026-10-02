@@ -8,7 +8,7 @@
 # Install ALL THREE shims — `prek install` alone wires only pre-commit, so the
 # commit-msg check would never fire and `git merge --no-ff` into main would be
 # blocked by no-commit-to-branch:
-#   prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+#   prek install -t pre-commit -t commit-msg -t pre-merge-commit
 repos:
   - repo: builtin
     hooks:

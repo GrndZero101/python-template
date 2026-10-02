@@ -119,7 +119,7 @@ Do not delete `.copier-answers.yml` — `copier update` reads it to know what yo
 git clone https://github.com/GrndZero101/python-template
 cd python-template
 uv sync
-prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+prek install -t pre-commit -t commit-msg -t pre-merge-commit
 ```
 
 All three shims are required. `prek install` alone wires only `pre-commit`, which silently skips

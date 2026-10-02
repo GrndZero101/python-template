@@ -104,6 +104,7 @@ which rest on your own discipline.
 | `main` receives merge commits, never fast-forwards | *convention — review only* |
 | Merge subject describes the work, never `Merge branch '...'` | *convention — `Merge` is exempt from the message check* |
 | Clean tree before starting work | *convention — `SessionStart` reports it, does not block* |
+| `prek` installed and all three git shims present | `tools/session_doctor.py` via `SessionStart` — reports, does not block |
 | Commit summary ≤72 chars, imperative | *convention — review only* |
 | One logical change per commit | *convention — review only* |
 | No `class` inside a function | *convention — review only* |
@@ -283,7 +284,7 @@ First-time setup needs **all three** shims. `prek install` alone wires only `pre
 silently disables the commit-message check *and* makes `git merge --no-ff` into `main` fail:
 
 ```bash
-prek install && prek install -t commit-msg && prek install -t pre-merge-commit
+prek install -t pre-commit -t commit-msg -t pre-merge-commit
 ```
 
 Add dependencies with `uv add` / `uv add --dev`, never by editing `pyproject.toml` by hand.

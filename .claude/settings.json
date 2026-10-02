@@ -21,13 +21,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "git",
+            "command": "uv",
             "args": [
-              "-C",
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
               "${CLAUDE_PROJECT_DIR}",
-              "status",
-              "--short",
-              "--branch"
+              "python",
+              "template/tools/session_doctor.py"
             ],
             "timeout": 15
           }
