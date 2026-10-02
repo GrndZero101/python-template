@@ -238,13 +238,13 @@ history readable while it exists. But half-written code will not pass `ty`, so s
 without skipping the *message* check:
 
 ```bash
-SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-defs git commit -m "chore(x): wip"
+SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit -m "chore(x): wip"
 ```
 
 `git commit --no-verify` is the wrong tool here — it skips the message check too. Worth an alias:
 
 ```bash
-git config alias.wip '!SKIP=ruff-format,ruff-check,ty,rumdl-fmt,rumdl,no-nested-defs git commit'
+git config alias.wip '!SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,no-nested-defs git commit'
 ```
 
 ## Commits
