@@ -26,7 +26,7 @@ decide:
 - the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
   `.copier-answers.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
-- `conftest.py` and the three test modules, which import the package by name.
+- `conftest.py` and the test modules under `tests/`, which import the package by name.
 
 Everything else — `CLAUDE.md`, all of `tools/`, every skill, and the other source modules — ships
 literally. The source modules manage it because their internal imports are **relative**, so

@@ -115,6 +115,7 @@ max-returns = 6
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use bare literals, and poke at internals — all fine there.
 "tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
+"tools/tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
 # The checker's whole job is printing findings, to stderr.
 "tools/**" = ["T20"]
 # Invoking an external tool IS this module's purpose, so the subprocess warnings cannot be
@@ -157,5 +158,7 @@ strict_parametrization_ids = true   # two parametrized cases with the same id ar
 # the code breaking at the dependency's next major version. Silence a specific, understood warning
 # with its own "ignore:..." line below this one; never remove this line.
 filterwarnings = ["error"]
-testpaths = ["tests"]
+# tests/ is the product's suite. tools/tests/ tests the template's machinery — the hooks and the
+# conventions checker — kept apart so tests/ holds only what a new test should be modelled on.
+testpaths = ["tests", "tools/tests"]
 pythonpath = ["tools"]  # so the hooks and the conventions checker are importable by their tests

@@ -43,7 +43,10 @@ CLI_MODULES = {
     "output.py",
     "typer_entrypoint.py",
 }
-BASE_TESTS = {
+BASE_TESTS = {"test_package.py"}
+# The template's machinery is tested under tools/tests/, the same for every type, so tests/ holds
+# only the product's own suite.
+TOOLS_TESTS = {
     "test_branch_guard.py",
     "test_check_conventions.py",
     "test_debug_module.py",
@@ -199,6 +202,8 @@ def test_scaffold_cli_travels_only_with_cli_modern(copie: Copie, project_type: s
     assert modules == (BASE_MODULES | CLI_MODULES if is_cli else BASE_MODULES)
     tests = {path.name for path in (project / "tests").glob("*.py")}
     assert tests == (BASE_TESTS | CLI_TESTS if is_cli else BASE_TESTS)
+    tools_tests = {path.name for path in (project / "tools" / "tests").glob("*.py")}
+    assert tools_tests == TOOLS_TESTS
     assert (
         f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"'
         in (project / "pyproject.toml").read_text(encoding="utf-8")
