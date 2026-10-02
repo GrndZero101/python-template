@@ -8,6 +8,9 @@
       "extensions": [".py"],
       "transport": "stdio",
       "launch": {
+        "program": "${workspaceFolder}/tools/debug_module.py",
+        "args": ["${file}"],
+        "cwd": "${workspaceFolder}",
         "justMyCode": false
       }
     },

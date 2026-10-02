@@ -2,8 +2,8 @@
 name: python-debug
 description: >-
   How to drive a live debugger from an agent with the standalone DebugMCP CLI — launching a script
-  or a test file, conditional breakpoints and logpoints, reading values without drowning in debugpy's
-  object trees, and the CLI's known gaps. Use when investigating a wrong value, an exception or a
+  or a test file, conditional breakpoints, reading values without drowning in debugpy's object trees,
+  and the CLI's known gaps. Use when investigating a wrong value, an exception or a
   failing test at runtime, or whenever the alternative is adding print statements or guessing.
 ---
 
@@ -20,15 +20,21 @@ forces Node onto anyone who does not want it. Node 20+ is required:
 
 ```bash
 npm install --global debugmcp
-claude mcp add --scope user debugmcp -- debugmcp serve --stdio
+claude mcp add --scope user debugmcp-cli -- debugmcp serve --stdio
 ```
 
-On native Windows, wrap the command: `claude mcp add --scope user debugmcp -- cmd /c debugmcp serve
---stdio`. Restart Claude Code afterwards.
+On native Windows, wrap the command: `claude mcp add --scope user debugmcp-cli -- cmd /c debugmcp
+serve --stdio`. Restart Claude Code afterwards.
+
+Register it as **`debugmcp-cli`**, not `debugmcp`. The DebugMCP VS Code extension's server takes
+`debugmcp`, so on a machine with both, one of them silently ends up under some other name. Tool
+names follow the registration name — `mcp__debugmcp-cli__start_debugging` and so on — so a server
+registered differently shows the same tools under a different prefix.
 
 Register it by hand like this rather than with `debugmcp configure`. That command also installs a
 bundled `debug-live` skill written for the VS Code extension, whose advice on `testName` does not
-apply to the CLI, and it replaces any existing `debugmcp` entry, including an extension one.
+apply to the CLI, and it replaces any existing `debugmcp` entry, including an extension one. The
+`start_debugging` description still says to load `debug-live`; this skill replaces it.
 
 If the tools are absent from the session, the server is not registered. Say so; do not fall back to
 print debugging silently.
@@ -40,8 +46,17 @@ print debugging silently.
 
 | `configurationName` | Runs | Use for |
 |---|---|---|
-| `python` | the requested file as a script | a module with an `if __name__ == "__main__":` block |
+| `python` | the requested file as `__main__`, through `tools/debug_module.py` | a module with an `if __name__ == "__main__":` block, or a standalone script |
 | `pytest` | `pytest <requested file>` through `tools/debug_pytest.py` | a test file |
+
+The `python` adapter runs a module inside a package under `src/` by its dotted name, as `python -m`
+would, so its relative imports resolve. Any other file — under `tools/`, a scratch script, anything
+outside a `src/` package — runs by path, as `python <file>` would.
+
+**Neither adapter can pass arguments.** `start_debugging` has no parameter for them, so the
+`python` adapter runs the file with none. A CLI entry point therefore prints its help and exits. To
+stop inside a command, debug the **test** that invokes it with the arguments you need, through the
+`pytest` adapter; write that test first if it does not exist.
 
 Always pass `workingDirectory` as the **project root**. The CLI reads `.debugmcp.json` from that
 directory and resolves `${workspaceFolder}` to it, so a subdirectory finds no adapters and a wrong
@@ -55,8 +70,12 @@ platform without naming an OS-specific interpreter path.
 1. `add_breakpoint` on the earliest line that is still relevant. Lines are 1-based; re-check them
    after any edit, because they shift.
 2. `start_debugging` with `fileFullPath`, `workingDirectory` and `configurationName`. It returns
-   when the program pauses or finishes. "Ran to completion without stopping" means no breakpoint
-   was hit: check the line, then the condition.
+   when the program pauses or finishes — or when it gives up waiting, which it reports the same
+   way. **"Ran to completion without stopping" is not proof of a miss.** If the result shows
+   `sessionActive: true`, the program is still running: call `get_debug_status` with
+   `waitForPauseSeconds` before concluding anything. A conditional breakpoint is the usual case,
+   since evaluating the condition on every pass is slow. Only when the session is gone is it a
+   miss: check the line, then the condition, then whether the program even started (see below).
 3. Inspect, step, and form a hypothesis. Trace a wrong value back to where it first went wrong;
    the first wrong value you see is usually a symptom.
 4. `stop_debugging` and `clear_all_breakpoints` before moving on. Breakpoints outlive the session.
@@ -92,9 +111,19 @@ This also picks out a single parametrized case, which a test name could not.
 
 ## Output is not captured
 
-The debuggee's stdout and stderr go nowhere the agent can read. There is no output tool. To watch
-a value over time, use `add_logpoint` with `{expression}` interpolation — or pause and evaluate.
-Never edit `print` into the code to see it.
+The debuggee's stdout and stderr go nowhere the agent can read. There is no output tool, so a
+program that crashes on startup — an import error, a bad argument — looks exactly like one that
+ran cleanly past every breakpoint. When a run ends sooner than it should, launch the same thing
+outside the debugger and read what it says:
+
+```bash
+uv run python tools/debug_module.py <file> [ARG ...]   # what the python adapter runs
+uv run python tools/debug_pytest.py <test file>        # what the pytest adapter runs
+```
+
+**Do not use `add_logpoint`.** The CLI accepts it, but its output lands nowhere the agent can read
+either. To watch a value change, put a breakpoint where it changes and evaluate it at each stop,
+with `continue_execution` in between. Never edit `print` into the code to see it.
 
 ## Status after continuing
 

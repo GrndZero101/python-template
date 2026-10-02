@@ -19,10 +19,10 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   `git commit` task failed against the project's own `no-commit-to-branch` hook, so **every update
   exited non-zero**. Note the variable is `_copier_operation`, not `_copier_conf.operation` — the
   latter renders undefined, which is falsy, which silently disables every task including on copy.
-- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Five modules under
+- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Six modules under
   `template/tools/`: `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and
   `gate` (the two hooks), `hook_payload` (shared parsing so they cannot diverge), and
-  `debug_pytest` (the DebugMCP pytest shim).
+  `debug_module` and `debug_pytest` (the DebugMCP launchers for a source file and a test file).
 - Guards live: `PreToolUse` blocks edits to *repo* files on `main`, `no-commit-to-branch` blocks
   direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
   message, `SessionStart` reports branch and tree state.
@@ -37,7 +37,7 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 - `cli-modern` ships a **scaffold**, not a demo: one placeholder `about` command, a global
   `--verbose`/`--version` and a per-command `--output`, each resolving flag, then environment
   variable (`<SCRIPT>_*`), then default through `pydantic-settings`. The old `geo`/`currency`
-  demo became specs under `examples/` — see item 3 for how they are meant to be used.
+  demo became specs under `examples/` — see item 2 for how they are meant to be used.
 - A file under `template/` is `.jinja` only when it names something an answer decides; root
   `CLAUDE.md` lists them. The remaining source modules ship literally because their internal
   imports are **relative** — nothing inside `src/` names the package.
@@ -47,10 +47,13 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 - Agent debugging is the **standalone DebugMCP CLI** (`debugmcp` on npm, Microsoft), which
   replaced `mcp-debugger`. Projects ship `.debugmcp.json` (a `python` and a `pytest` adapter, both
   `uv run python -m debugpy.adapter`), `tools/debug_pytest.py` and the `python-debug` skill; the
-  server itself is registered per user, so no generated project needs Node. Proven headless in
-  WSL against 0.1.3: breakpoints, conditional breakpoints on one parametrized case, stepping and
-  evaluation, for a script and for a pytest file. "A script" there meant a standalone file: any
-  module under `src/` fails under the `python` adapter (item 1).
+  server itself is registered per user (as `debugmcp-cli`, since the VS Code extension takes
+  `debugmcp`), so no generated project needs Node. Proven headless in WSL against 0.1.3:
+  breakpoints, conditional breakpoints on one parametrized case, stepping and evaluation, for a
+  pytest file, a `src/` module with relative imports (`cli.py`, via `tools/debug_module.py`, which
+  runs it as `python -m` would) and an ad-hoc script outside `src/` (which falls back to running by
+  path). Neither adapter can pass the program arguments, so the skill sends commands through
+  their tests.
 - **Dogfood:** `GrndZero101/template-dogfood`, a private `cli-modern` consumer with its own
   `weather` command and script `tdf-cli`. It has taken three `copier update`s, to `ba78c6d`,
   `31e9fa8` and `de20fe3`; gate green, 115 tests, pushed. A fresh session there confirmed the
@@ -66,54 +69,17 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
 
 ## Do next
 
-### 1. Fix what the first agent debugging session found
-
-Driven from a real Claude Code session in `template-dogfood`, following the `python-debug` skill,
-against DebugMCP CLI 0.1.3 in WSL. The `pytest` adapter works: breakpoints, stepping, `repr()`
-evaluation, and a conditional breakpoint selecting one parametrized case. Everything else below is
-broken or misleading.
-
-- **The `python` adapter cannot run any module under `src/`.** It launches the file as a script, so
-  the first relative import fails — `ImportError: attempted relative import with no known parent
-  package` — and every source module uses relative imports. Because debuggee output is not
-  captured, the agent sees only "ran to completion without stopping". The skill sends agents to
-  exactly these modules ("a module with an `if __name__ == "__main__":` block").
-
-  The standard fix, `"module": "pkg.cli"` (what `python -m` does), is unreachable: the CLI always
-  sets `program` (`debugmcp.js`, the adapter-config builder falls back to the requested file), and
-  debugpy rejects a config naming more than one of `"program", "module", and "code"`
-  (`debugpy/adapter/clients.py`). Nor can it be templated, since the CLI substitutes only
-  `${workspaceFolder}`, `${file}`, `${fileDirname}` and `${fileBasenameNoExtension}`.
-
-  So use the same shape as the pytest fix: a `tools/debug_module.py` launcher as the `python`
-  adapter's `program`, taking `${file}`, mapping `src/pkg/cli.py` to `pkg.cli` via
-  `Path.relative_to`, and calling `runpy.run_module(name, run_name="__main__", alter_sys=True)`.
-  Prototyped outside the repo: `cli.py --help` runs and exits 0. Still to do — tests, a clear error
-  for a file outside `src/`, a decision on whether a non-`src` file falls back to `run_path`, and a
-  breakpoint round-trip through the CLI.
-- **`start_debugging` reports a miss that is not one.** With a conditional breakpoint it returned
-  "ran to completion without stopping (no breakpoint hit)" while `sessionActive` was still `true`;
-  `get_debug_status` with `waitForPauseSeconds` then showed it paused on the right line and case.
-  The skill tells the agent to treat that message as a wrong line or condition. It should say: if
-  `sessionActive` is `true`, wait on `get_debug_status` before concluding anything.
-- **Logpoints are invisible.** `add_logpoint` is accepted and its output goes nowhere the agent can
-  read — no tool returns it, nothing is written to disk. The skill recommends it for watching a
-  value over time; it should say pause and evaluate instead.
-- **The registration name collides.** The skill registers the CLI as `debugmcp`, but that is also
-  the name the VS Code extension's HTTP server takes. On a machine with both, the CLI ends up as
-  something else (here `debugmcp-cli`). The skill should name one and say tool names follow it.
-
-### 2. Per-release update notes
+### 1. Per-release update notes
 
 The README's "Keeping it in sync" section now covers the update mechanics: the sequence, `uv sync`
 before checking, new questions under `--defaults`, and reading copier's conflicts. What is left
-depends on item 6. A release should say two things that a conflict never will: which features were
+depends on item 5. A release should say two things that a conflict never will: which features were
 absorbed from consumers (in `typer_entrypoint.py` the "project" side was the dogfood's own feature,
 superseded upstream with changed semantics), and which interface moves a consumer's *own*
 commands must follow (`-v/--verbose` went global, so `tdf-cli weather -v cleve` became
 `tdf-cli -v weather cleve`, and nothing warned).
 
-### 3. Run the `examples/` specs as dogfood exercises
+### 2. Run the `examples/` specs as dogfood exercises
 
 `examples/geo.md` and `examples/currency.md` describe the removed demo commands as specs: flags,
 service, output, failure modes and the tests that should exist, but no structure. Hand one to an
@@ -125,7 +91,7 @@ conflict markers and the conflicted-`pyproject.toml` guard were not recorded fir
 update, so treat them as proven only by the generation tests until an update with a conflict
 shows them on a consumer.
 
-### 4. Non-`cli-modern` types generate an empty package
+### 3. Non-`cli-modern` types generate an empty package
 
 `fastapi`, `tui`, `data` and `cli-stdlib` receive the infrastructure — `tools/`, `CLAUDE.md`, the
 gate, the hooks, their one skill — but `src/<package>/` contains only `__init__.py` and `py.typed`.
@@ -142,7 +108,7 @@ Note `logging_setup.py` is currently excluded from those types because it import
 stdlib `logging` equivalent is probably the right shared default, with the loguru one shipping only
 where a skill calls for it.
 
-### 5. A config-file layer for settings
+### 4. A config-file layer for settings
 
 Today settings resolve flag, then environment variable, then default. The missing layer is a
 **user config file** between the environment and the defaults. Proposed shape:
@@ -164,7 +130,7 @@ Today settings resolve flag, then environment variable, then default. The missin
 - Decide whether a project-local file (`./<script>.toml`) is also wanted. It is a second source
   of surprise; leave it out unless a real need appears.
 
-### 6. Decide on tagging, which changes update semantics
+### 5. Decide on tagging, which changes update semantics
 
 The template has **no git tags**, so `.copier-answers.yml` records a bare commit hash and the
 `--vcs-ref v1.3.0` examples in the README refer to tags that do not exist yet.
@@ -175,7 +141,7 @@ iterated on, because fixes stop propagating to the dogfood until they are tagged
 stay untagged until the dogfood settles, then cut `v0.1.0` and fix the README examples to match
 whatever scheme is chosen.
 
-### 7. Verify generation into unusual git states
+### 6. Verify generation into unusual git states
 
 Still unverified:
 
@@ -183,23 +149,24 @@ Still unverified:
   (`branch_guard` takes `--protected main master`).
 - The generation tasks assume `git init -b main` succeeds, i.e. that nothing is there yet.
 
-### 8. Prove the DebugMCP CLI on Windows native, later
+### 7. Prove the DebugMCP CLI on Windows native, later
 
-The agent-session half is done (item 1) — in WSL. Still unverified, and needing a session started
+The agent-session half is done — in WSL. Still unverified, and needing a session started
 on Windows itself: the `cmd /c` registration, `uv` resolving as the adapter command, and both
 adapters launching through it. The same session should confirm the exec-form hooks: exec form on
 Windows needs `command` to be a real `.exe`, which `uv` and `git` are, but nothing has run them
-there yet. Worth doing after item 1, so the `python` adapter's launcher is
-proven on both platforms at once.
+there yet. It should also run the `python` adapter's launcher, which so far is proven only on
+Linux.
 
 Known CLI gaps, all worked around in the skill rather than fixed: it ignores `launch.json`; it
-always sets `program`, so pytest needs the shim (and, per item 1, so does every `src/` module);
+always sets `program`, so pytest and every `src/` module need a launcher, and it cannot pass the
+program arguments;
 complex values render as dunder trees unless wrapped in `repr()`; the debuggee's output is not
 captured, and neither is logpoint output. Upstream and minor: `stop_debugging` always appends a
 "root cause analysis checkpoint" lecture, and the `start_debugging` description tells the agent to
 load a `debug-live` skill that is not installed when the server is registered by hand.
 
-### 9. The DebugMCP VS Code extension, later
+### 8. The DebugMCP VS Code extension, later
 
 Deferred by choice. It drives VS Code's own debugger over HTTP on `localhost:3001` and reuses
 `launch.json`, but it uses the interpreter selected for the *open window*: from a
