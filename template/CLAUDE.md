@@ -264,13 +264,15 @@ the "is this one change?" question at the point where it is cheap to fix.*
 ## Commands
 
 ```bash
-ruff format . && ruff check --fix .              # format, then auto-fix
-ty check                                         # types
-rumdl fmt . && rumdl check .                     # markdown
-uv run pytest                                    # tests
-uv run python tools/check_nested_defs.py src tests tools
-prek run --all-files                             # everything above, as one gate
+prek run --files <path> [<path> ...]    # the whole gate, on the files you touched
+prek run ty --all-files                 # one hook by id: ruff-check, ty, rumdl, no-nested-defs
+prek run --all-files                    # the whole gate, every tracked file
+uv run pytest                           # tests, which the gate does not run
 ```
+
+Run the linters **through prek, never directly.** `ty` is not installed outside the gate, so
+`ty check` is "command not found", and a `ruff` on PATH can be a different version from the hook's
+pin and disagree with it. prek runs the pinned versions, so what passes here passes at commit.
 
 First-time setup needs **all three** shims. `prek install` alone wires only `pre-commit`, which
 silently disables the commit-message check *and* makes `git merge --no-ff` into `main` fail:
