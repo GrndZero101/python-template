@@ -97,53 +97,20 @@ project's gate, not just read. A phase that changes what generated projects rece
 
 ### Phase 1 — Fix what is broken (CLI and shared)
 
-Small, verified defects. Each costs a model a failed attempt or a wrong turn, so this is the
-cheapest work with the largest effect on weaker models.
+All nine defects are fixed on `fix/phase1-defects`, 2026-10-02: `--trust` on every copier command;
+the `python-cli-modern` examples run through a generated gate; `python-cli` stack-agnostic, with no
+`publicip` and no contradictions with the scaffold; prek forms only for the lint commands; ruff's
+fixer before its formatter; F5 through `tools/debug_module.py`; `python_version` a choice of
+3.12–3.14 rendered into `.python-version`, with every type proven at 3.12; and the `T20` and
+`from None` table rows corrected.
 
-- [ ] **`--trust` missing from the copy and update commands.** `README.md:26` (`copier copy gh:...`)
-  and the generated README's `copier update` (`template/README.md.jinja:92`) both exit 4 with
-  "Template uses potentially unsafe feature: tasks" for anyone without a copier `trust` setting.
-  Add `--trust` to both, with the one-line reason the update section already gives.
-- [ ] **Skill examples that fail the gate they ship with.** In `python-cli-modern/SKILL.md`:
-  `import click` (line 84) fails ty with `unresolved-import`, because typer 0.27.2 vendors click as
-  `typer._click` and `click` is not installed — point at `typer_entrypoint.run_app` rather than
-  restating it. `class OutputFormat(str, Enum)` (line 120) trips `replace-str-enum`; use `StrEnum`
-  as `output.py` does. The httpx section declares an async generator over `httpx.AsyncClient`
-  (line 241), then tests it with a sync `Client` against a list (line 271); make it one or the
-  other throughout.
-- [ ] **References to a file that does not exist.** `python-cli/SKILL.md` calls
-  `src/claude/publicip.py` "a working reference for everything below" (lines 16, 43, 46, 78, 124
-  and 136), and `python-cli-stdlib/SKILL.md:38` cites it. Point at the scaffold's real modules, or,
-  in the stack-agnostic skill, at nothing.
-- [ ] **`python-cli` contradicts `python-cli-modern`.** Both load for a `cli-modern` command. Settle
-  each in the scaffold's favour: `caplog` versus "caplog does not work, assert on stderr"; `--json`
-  versus `--output json`; "machine-readable when it is not a terminal" versus "the default never
-  changes on its own"; and `logger.debug("querying %s", url)`, which loguru prints with a literal
-  `%s`. `python-cli` should state interface rules only and leave stack detail to the stack skill.
-- [ ] **Commands in CLAUDE.md that do not run.** `ty check` (`template/CLAUDE.md:268`, and the same
-  block in the generated README) gives "command not found": ty exists only inside the prek hook.
-  The `ruff` on PATH (0.16.10 here) also differs from the hook pin (v0.16.0), so the listed command
-  can disagree with the gate. List `prek run` forms only — `prek run --files <path>`,
-  `prek run ty --all-files`, `prek run --all-files` — so the agent always gets the gate's versions.
-- [ ] **ruff hook order.** The root `.pre-commit-config.yaml` (line 63) and
-  `template/.pre-commit-config.yaml.jinja` (line 50) run `ruff-format` before `ruff-check --fix`.
-  Astral's integration docs put the fixer first, because a fix can need reformatting. Swap both,
-  and the "format, then auto-fix" order in CLAUDE.md's commands.
-- [ ] **VS Code F5 fails on every source module.** "Python: current file" runs
-  `"program": "${file}"` (`template/.vscode/launch.json:10`), so `src/<pkg>/cli.py` dies on its
-  first relative import — the defect `tools/debug_module.py` already fixed for DebugMCP. Point that
-  configuration's `program` at the launcher, with `"args": ["${file}"]`.
-- [ ] **The declared minimum Python is never checked.** `python_version` (`copier.yml:82`) accepts
-  any string. Answering `3.11` generates a project that passes its gate and tests on 3.14, then
-  raises `ImportError: cannot import name 'override' from 'typing'` on 3.11. The shipped ty hook
-  runs as `uv check`, which targets `.python-version` (hard-coded `3.14`) rather than
-  `requires-python` or `[tool.ty] python-version`. Make the question a `choices` list of 3.12, 3.13
-  and 3.14 with 3.14 as the default, render `template/.python-version` from the answer (D1), and
-  add a generation test at the floor.
-- [ ] **Two rows of the enforcement table overstate.** `T20` blocks `print` inside `__main__` as
-  well (`template/CLAUDE.md:82` says "outside"). `raise ... from e` (line 84) is not enforced by
-  `B904` when the cause is `None`: `raise X from None` passes everything, and the dogfood's
-  `weather.py` uses it to drop a `JSONDecodeError`. Fix the wording now; phase 5 adds the check.
+- [ ] **`copier update` the dogfood** to the merge commit, by hand as the README describes. The
+  update touches `.python-version` (now rendered), the prek config (hook order), `launch.json`,
+  CLAUDE.md and three skills. Expect conflicts only where the dogfood edited those files. Its
+  `weather.py` has three `raise ... from None`, which CLAUDE.md now names as a violation: line 69
+  drops a `JSONDecodeError`, and lines 134 and 137 raise `typer.Exit`. All three become `from exc`.
+  For an exit signal that changes nothing at runtime, which is why phase 5's check needs no
+  exemption for it. Fix them in the dogfood, from a session started there.
 
 ### Phase 2 — A benchmark harness and a baseline
 
