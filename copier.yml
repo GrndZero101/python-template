@@ -80,10 +80,17 @@ author_email:
   type: str
   help: Author email
 
+# A choice, not free text: the scaffold uses `typing.override`, so anything below 3.12 generates a
+# project that passes its gate and then fails at import. `.python-version` is rendered from this,
+# so the venv, the tests and ty all run at the floor and prove it on every run.
 python_version:
   type: str
   help: Minimum Python version
   default: "3.14"
+  choices:
+    - "3.12"
+    - "3.13"
+    - "3.14"
 
 # ---------------------------------------------------------------------------
 # What not to copy

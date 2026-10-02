@@ -61,6 +61,9 @@ PACKAGE_NAME = "a_deliberately_long_package_name"
 DIST_NAME = PACKAGE_NAME.replace("_", "-")
 SCRIPT_NAME = "weather-tools"
 
+# The lowest `python_version` copier.yml offers. Every other test generates at the default.
+PYTHON_FLOOR = "3.12"
+
 BASE_ANSWERS = {
     "project_name": "Weather Tools",
     "package_name": PACKAGE_NAME,
@@ -72,9 +75,12 @@ BASE_ANSWERS = {
 }
 
 
-def _answers(project_type: str) -> dict[str, str]:
-    """Return the full answer set for one project type."""
-    return {**BASE_ANSWERS, "project_type": project_type}
+def _answers(project_type: str, python_version: str | None = None) -> dict[str, str]:
+    """Return the full answer set for one project type, optionally at another Python version."""
+    answers = {**BASE_ANSWERS, "project_type": project_type}
+    if python_version is not None:
+        answers["python_version"] = python_version
+    return answers
 
 
 def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -82,13 +88,19 @@ def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
 
 
-def _generate(copie: Copie, project_type: str, template_dir: Path | None = None) -> Path:
+def _generate(
+    copie: Copie,
+    project_type: str,
+    template_dir: Path | None = None,
+    python_version: str | None = None,
+) -> Path:
     """Generate a project and return its directory, failing the test if copier did not.
 
     `template_dir` overrides the repo under test, which the update tests need so they can move
     the template forward without committing to the real one.
     """
-    result = copie.copy(extra_answers=_answers(project_type), template_dir=template_dir)
+    answers = _answers(project_type, python_version)
+    result = copie.copy(extra_answers=answers, template_dir=template_dir)
     assert result.exception is None, f"copier raised: {result.exception}"
     assert result.exit_code == 0, f"copier exited {result.exit_code}"
     assert result.project_dir is not None
@@ -265,6 +277,33 @@ def test_generated_project_passes_its_own_tests(copie: Copie, project_type: str)
     project = _generate(copie, project_type)
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+def test_python_version_file_follows_the_answer(copie: Copie) -> None:
+    """`.python-version` picks the venv's interpreter and ty's target, so it must be the floor."""
+    project = _generate(copie, "cli-modern", python_version=PYTHON_FLOOR)
+    assert (project / ".python-version").read_text(encoding="utf-8").strip() == PYTHON_FLOOR
+    pyproject = (project / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'requires-python = ">={PYTHON_FLOOR}"' in pyproject
+
+
+@requires_uv
+@requires_prek
+@pytest.mark.parametrize("project_type", PROJECT_TYPES)
+def test_generated_project_works_at_the_python_floor(copie: Copie, project_type: str) -> None:
+    """A project that declares the floor must pass its gate and tests running on it.
+
+    Without this, answering an older version produced a project that passed everything on 3.14
+    and then failed at import on the version it claimed to support. ty targets `.python-version`,
+    so the gate here also rejects an API the floor does not have.
+    """
+    project = _generate(copie, project_type, python_version=PYTHON_FLOOR)
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
+    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
+    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+    version = _run(["uv", "run", "python", "--version"], project)
+    assert version.stdout.startswith(f"Python {PYTHON_FLOOR}."), version.stdout
 
 
 @requires_uv
