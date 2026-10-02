@@ -11,14 +11,75 @@ supply the structure, and a spec handed to an agent is how to find out whether t
 
 ## Running one
 
-1. Generate a `cli-modern` project, or update the dogfood to the current template.
-2. Start a Claude Code session **rooted in that project**, so its hooks and skills load.
-3. Hand the agent the spec, unedited. Watch rather than steer.
-4. Record what the template did and did not catch in [TODO.md](../TODO.md).
+Each run is one spec built by one model in a fresh project, then judged in a second session by a
+stronger model. Run each spec with `haiku` and with `sonnet`: the claim being tested is that a
+lower-reasoning model builds a good tool when the template carries the knowledge.
 
-Things worth watching for: the branch guard on the first edit, whether the gate's stderr was
-actionable, whether the skill was loaded at all, and whether the result needed `CLAUDE.md` rules
-that nothing enforces.
+The commands set `REPO` to this checkout and name the run after the spec and the model:
+
+```bash
+REPO=~/projects/github/GrndZero101/python-template
+SPEC=geo MODEL=haiku                  # or currency; or sonnet
+RUN=~/scratch/spec-runs/$SPEC-$MODEL
+```
+
+### 1. Generate a fresh project
+
+```bash
+copier copy --trust --defaults --vcs-ref main \
+  -d project_name="Spec Run" -d author_name="A Dev" -d author_email=dev@example.com \
+  gh:GrndZero101/python-template "$RUN"
+grep _commit "$RUN/.copier-answers.yml"   # note it: the template commit this run measures
+```
+
+It is generated on `main`, with prek's three git shims installed. Leave it on `main`: whether
+the agent branches by itself is part of what is being observed.
+
+### 2. Build: hand the agent the spec
+
+```bash
+cd "$RUN"
+claude --model "$MODEL" --permission-mode acceptEdits "$(cat "$REPO/examples/$SPEC.md")"
+```
+
+The spec goes in unedited, as the whole prompt. Approve the permission prompts that remain, but
+**do not steer**: no hints, no corrections. A question the agent asks is a finding, so answer it
+in as few words as the spec would allow. When it says it is finished, run `/cost`, note the
+figure, and exit.
+
+Your own `~/.claude` setup (global rules, MCP servers, memory) also loads in this session. Bear
+that in mind when the agent does something the template does not teach.
+
+### 3. Check it yourself
+
+Still in `$RUN`:
+
+```bash
+prek run --all-files
+uv run pytest
+```
+
+Note pass or fail for each. The agent saying it is done is not evidence.
+
+### 4. Review: a second session, a stronger model
+
+```bash
+claude --model opus --permission-mode plan \
+  "$(cat "$REPO/examples/evaluate.md") Spec: $REPO/examples/$SPEC.md"
+```
+
+Plan mode keeps it read-only. [evaluate.md](evaluate.md) tells it what to read — the spec, the
+diff, `.gate.log` and the build session's transcript — and to separate what the *template* should
+change from what was just the model.
+
+### 5. Record
+
+Add a row to the results table under phase 2 in [TODO.md](../TODO.md), and turn each template
+finding into an item in the phase it belongs to.
+
+Things worth watching for while it builds: the branch guard on the first edit, whether the gate's
+stderr was actionable, whether the skill was loaded at all, and whether the result needed
+`CLAUDE.md` rules that nothing enforces.
 
 ## The specs
 

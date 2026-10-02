@@ -89,9 +89,9 @@ project's gate, not just read. A phase that changes what generated projects rece
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
 | D1 | Python floor: render `.python-version` from the answer, or keep 3.14 and test the floor in CI only | Phase 1 | **Decided:** render it from the answer, keeping 3.14 as the question's default. The gate and the tests then prove the floor on every run. |
-| D2 | Benchmark spend: which models, how many runs per spec | Phase 2 | Haiku and Sonnet, three runs each, on both existing specs. |
+| D2 | Benchmark: which models, how many runs per spec | Phase 2 | **Decided:** by hand, no harness. Haiku and Sonnet, one run each, on both specs, reviewed by Opus. |
 | D3 | Git ritual: prose in a skill, or a script the skill calls | Phase 6 | A script. A multi-step ritual in prose is where weaker models slip. |
-| D4 | `cli-stdlib`: finish it with an argparse scaffold, or replace it with a PEP 723 single-file `scripts` type | Phase 7 | Finish it; reconsider once the benchmark has numbers. |
+| D4 | `cli-stdlib`: finish it with an argparse scaffold, or replace it with a PEP 723 single-file `scripts` type | Phase 7 | Finish it; reconsider once the spec runs have findings. |
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Unchanged: tag `v0.1.0` once the dogfood settles. |
 | D6 | Shape of `data` and `tui`: build on the `cli-modern` CLI layer, or each in its own idiom | Phase 9 | Build on the CLI layer. Both are CLI tools that happen to crunch data or draw a screen. |
 | D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
@@ -110,27 +110,26 @@ was `README.md`'s `tools/` list, which the dogfood had extended with `weather`. 
 `raise ... from None` in `weather.py` became `from exc` in the same commit, since the update's own
 `raise-from-none` check rejects them. Gate green, 193 tests, merged with `finish_branch.py`, pushed.
 
-### Phase 2 — A benchmark harness and a baseline
+### Phase 2 — Spec runs and a baseline
 
 Moved ahead of the improvements so each later phase is measured against a baseline rather than
 judged by feel. Nothing has yet run this template with a lower-reasoning model, which is the claim
 goal three makes.
 
-- [ ] **A harness under `bench/`**, not shipped. For one spec and one model: generate a fresh
-  `cli-modern` project, cut a branch so the guard does not stop the first edit, run
-  `claude -p "<spec>" --model <model> --output-format json` with the project as its working
-  directory so its hooks and skills load, then run the project's own `prek run --all-files` and
-  `uv run pytest`. Record `total_cost_usd`, turns, duration, gate blocks (from `.gate.log`) and
-  pass or fail. Flags checked against Claude Code 2.1.287: `-p "$(cat spec.md)"`, `--model`,
-  `--output-format json` (or `stream-json` for every tool call), `--permission-mode acceptEdits`,
-  `--allowedTools` (the project allowlist covers `uv run` and `prek`, not `git`),
-  `--max-budget-usd`, `--no-session-persistence` and `--strict-mcp-config`. Never `--bare`: it
-  skips the hooks being measured. Open: whether `--setting-sources project,local` also keeps the
-  user's own `~/.claude` rules out of the run, so the baseline measures the template alone.
-- [ ] **Score against the spec, not only the gate.** Each spec in `examples/` lists the tests that
-  should exist and a failure table. A short checklist per spec turns that into a score.
-- [ ] **A baseline straight after phase 1**, per D2, so broken documentation does not dominate the
-  numbers. Re-run after phases 3, 5 and 6, and record every run's numbers here.
+**Decided 2026-10-03: no bespoke harness.** Each run is done by hand, as
+[examples/README.md](examples/README.md) describes: a fresh project, the spec handed unedited to
+the model in an interactive session, the gate and tests run by hand, then a review in a separate
+`opus` session in plan mode, driven by [examples/evaluate.md](examples/evaluate.md). What a run
+teaches is in the review's template findings, not in a score.
+
+- [ ] **A baseline**: both specs, with `haiku` and with `sonnet`, at the current `main`. Then again
+  after any phase that changes what a skill or the gate tells a model.
+- [ ] **Each template finding becomes an item** in the phase it belongs to.
+
+| Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
+|---|---|---|---|---|---|---|---|
+| | | | | | | | |
+
 - [ ] Carried over: the original demo code is at `d8e26b0` for comparison. The gate's pause on
   conflict markers and the conflicted-`pyproject.toml` guard are still proven only by the
   generation tests, not by a consumer update with a real conflict.
@@ -288,7 +287,7 @@ project, and probes in the review found each broken somewhere a first attempt wo
 - [ ] **One definition of done for every type**: a scaffold that is the smallest runnable, tested
   thing exercising its plumbing (not a demo to delete); a recipe-first skill with reference files;
   its code checked by the phase 6 mechanism; a generation test; a spec under `examples/`; and a
-  benchmark run.
+  spec run.
 
 ### Phase 10 — `data`
 
@@ -310,7 +309,7 @@ Build-out:
   asserted alongside the values, `assert_frame_equal`, and a sort after every `group_by`.
 - [ ] **Skill additions:** an "add a pipeline stage" recipe; `rel.pl(lazy=True)` to hand a duckdb
   result to polars lazily; parameterised duckdb queries rather than f-strings.
-- [ ] **Spec:** one under `examples/` to benchmark — a log or billing-export summariser, say.
+- [ ] **Spec:** one under `examples/` to run — a log or billing-export summariser, say.
 
 ### Phase 11 — `tui`
 
@@ -335,7 +334,7 @@ Build-out:
 - [ ] **Debugging recipe:** stepping through the running app with debugpy (a launch line plus the
   existing attach configuration), and through the DebugMCP `pytest` adapter for logic a Pilot test
   reaches.
-- [ ] **Spec:** one under `examples/` to benchmark — a log or process viewer, say.
+- [ ] **Spec:** one under `examples/` to run — a log or process viewer, say.
 
 ### Phase 12 — `fastapi`
 
@@ -362,7 +361,7 @@ Build-out:
 - [ ] **Skill additions:** settings as a dependency; logging alongside uvicorn's loggers; running
   with `fastapi dev` or uvicorn, and debugging the app through its tests; `SecretStr` for
   credentials; exception handlers that keep the traceback.
-- [ ] **Spec:** one under `examples/` to benchmark — a small webhook receiver, say.
+- [ ] **Spec:** one under `examples/` to run — a small webhook receiver, say.
 
 ## Later
 
