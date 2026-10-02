@@ -90,7 +90,7 @@ def owning_repo(target: Path, session_root: Path) -> Path | None:
 GATE_CONFIG_NAMES = ("prek.toml", ".pre-commit-config.yaml")
 
 
-def _has_gate_config(directory: Path) -> bool:
+def has_gate_config(directory: Path) -> bool:
     """Return whether `directory` holds a prek configuration file."""
     return any((directory / name).exists() for name in GATE_CONFIG_NAMES)
 
@@ -111,6 +111,6 @@ def find_gate_root(target: Path, root: Path) -> Path | None:
     for candidate in [target.resolve().parent, *target.resolve().parents]:
         if not candidate.is_relative_to(resolved_root):
             return None
-        if _has_gate_config(candidate):
+        if has_gate_config(candidate):
             return candidate
     return None

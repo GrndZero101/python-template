@@ -94,7 +94,7 @@ def _make_repo(root: Path) -> Path:
 def test_command_names_the_edited_file_explicitly() -> None:
     """--files, not --all-files: prek skips untracked files, which agents create constantly."""
     target = Path("src/x.py")
-    command = build_command(target, skip="no-commit-to-branch")
+    command = build_command([target], skip="no-commit-to-branch")
     assert command[:2] == ["prek", "run"]
     assert "--all-files" not in command
     # str(Path(...)), not a literal: the separator differs by platform.
@@ -103,31 +103,31 @@ def test_command_names_the_edited_file_explicitly() -> None:
 
 def test_command_reports_only_failures() -> None:
     """Fifteen "Passed" and "Skipped" lines per edit are tokens the agent pays for and ignores."""
-    assert "--quiet" in build_command(Path("src/x.py"))
+    assert "--quiet" in build_command([Path("src/x.py")])
 
 
 def test_command_skips_the_branch_hook() -> None:
     """Branch protection is the PreToolUse guard's job; running it here fails every edit on main."""
-    command = build_command(Path("src/x.py"))
+    command = build_command([Path("src/x.py")])
     assert "--skip" in command
     assert "no-commit-to-branch" in command
 
 
 def test_each_skipped_hook_gets_its_own_flag() -> None:
     """prek's --skip takes one id; `a,b` passed whole matches no hook and skips nothing."""
-    command = build_command(Path("src/x.py"), skip="no-commit-to-branch, generation-tests")
+    command = build_command([Path("src/x.py")], skip="no-commit-to-branch, generation-tests")
     skips = command[command.index("--skip") :]
     assert skips == ["--skip", "no-commit-to-branch", "--skip", "generation-tests"]
 
 
 def test_an_empty_skip_list_adds_no_flag() -> None:
-    assert "--skip" not in build_command(Path("src/x.py"), skip="")
+    assert "--skip" not in build_command([Path("src/x.py")], skip="")
 
 
 def test_check_forwards_command_and_cwd(tmp_path: Path) -> None:
     seen: list[tuple[Sequence[str], Path]] = []
     check(
-        tmp_path / "x.py",
+        [tmp_path / "x.py"],
         tmp_path,
         "no-commit-to-branch",
         functools.partial(_recording, seen),
@@ -139,7 +139,7 @@ def test_check_forwards_command_and_cwd(tmp_path: Path) -> None:
 def test_check_runs_again_when_prek_only_applied_fixes(tmp_path: Path) -> None:
     """A reformat fails the first run although nothing is left to fix; report the second."""
     results = [FIXED, PASS]
-    result = check(tmp_path / "x.py", tmp_path, "", functools.partial(_sequence, results))
+    result = check([tmp_path / "x.py"], tmp_path, "", functools.partial(_sequence, results))
     assert result.code == 0
     assert result.rerun
     assert not results
@@ -147,7 +147,7 @@ def test_check_runs_again_when_prek_only_applied_fixes(tmp_path: Path) -> None:
 
 def test_check_does_not_run_again_on_a_genuine_failure(tmp_path: Path) -> None:
     results = [FAIL, PASS]
-    result = check(tmp_path / "x.py", tmp_path, "", functools.partial(_sequence, results))
+    result = check([tmp_path / "x.py"], tmp_path, "", functools.partial(_sequence, results))
     assert result.code == 1
     assert not result.rerun
     assert results == [PASS]

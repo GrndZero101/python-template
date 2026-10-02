@@ -79,6 +79,27 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "--no-config",
+              "--directory",
+              "${CLAUDE_PROJECT_DIR}",
+              "python",
+              "tools/stop_gate.py"
+            ],
+            "timeout": 300,
+            "statusMessage": "Checking the changed files before stopping..."
+          }
+        ]
+      }
     ]
   },
   "enabledPlugins": {

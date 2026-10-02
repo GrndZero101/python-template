@@ -49,7 +49,9 @@ BASE_TESTS = {
     "test_debug_module.py",
     "test_debug_pytest.py",
     "test_gate.py",
+    "test_gate_log.py",
     "test_hook_payload.py",
+    "test_stop_gate.py",
 }
 CLI_TESTS = {"conftest.py", "test_about.py", "test_config.py", "test_typer_entrypoint.py"}
 
@@ -482,6 +484,38 @@ def test_gate_pauses_while_conflict_markers_remain(copie: Copie) -> None:
     assert gate.returncode == 2, gate.stderr
     assert "gate paused" in gate.stderr
     assert "README.md" in gate.stderr
+
+
+@requires_uv
+@requires_prek
+def test_stop_gate_refuses_once_to_end_a_turn_on_an_unchecked_file(copie: Copie) -> None:
+    """A file written by a heredoc never passes PostToolUse; the Stop hook must still catch it."""
+    project = _generate(copie, "cli-modern")
+    _run(["git", "switch", "--quiet", "-c", "feat/probe"], project)
+    module = project / "src" / PACKAGE_NAME / "probe.py"
+    module.write_text(
+        '"""Probe."""\n\n\ndef f() -> str:\n    """F."""\n    return 1\n', encoding="utf-8"
+    )
+    argv = _hook_argv(project, "tools/stop_gate.py")
+    first = subprocess.run(
+        argv,
+        cwd=project,
+        input=json.dumps({"hook_event_name": "Stop", "stop_hook_active": False}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert first.returncode == 2, first.stdout + first.stderr
+    assert "invalid-return-type" in first.stderr
+    again = subprocess.run(
+        argv,
+        cwd=project,
+        input=json.dumps({"hook_event_name": "Stop", "stop_hook_active": True}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert again.returncode == 0, "a second stop must always be allowed"
 
 
 @requires_prek

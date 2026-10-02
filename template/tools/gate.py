@@ -114,14 +114,14 @@ def condense(output: str) -> str:
     return "\n".join(kept).strip()
 
 
-def build_command(path: Path, skip: str = SKIP_HOOKS) -> list[str]:
-    """Return the prek invocation that checks exactly `path`, reporting only failures.
+def build_command(paths: Sequence[Path], skip: str = SKIP_HOOKS) -> list[str]:
+    """Return the prek invocation that checks exactly `paths`, reporting only failures.
 
     `skip` is comma-separated, but prek's `--skip` flag takes exactly one hook id and is
     repeated for more — only the `SKIP` environment variable splits on commas. Passed whole,
     `a,b` names a hook that does not exist, and prek skips nothing.
     """
-    command = ["prek", "run", "--quiet", "--files", str(path)]
+    command = ["prek", "run", "--quiet", "--files", *(str(path) for path in paths)]
     for hook_id in skip.split(","):
         stripped = hook_id.strip()
         if stripped:
@@ -153,9 +153,9 @@ def paused_message(conflicted: Sequence[str]) -> str:
     )
 
 
-def check(target: Path, root: Path, skip: str, runner: Runner) -> GateResult:
-    """Run the gate for one edited file, once more if the first run only applied fixes."""
-    command = build_command(target, skip)
+def check(paths: Sequence[Path], root: Path, skip: str, runner: Runner) -> GateResult:
+    """Run the gate on `paths`, once more if the first run only applied fixes."""
+    command = build_command(paths, skip)
     first = runner(command, root)
     if first.code == 0 or MODIFIED_MARK not in first.output:
         return first
@@ -235,7 +235,7 @@ def main(
         record(gate_root, Entry(hook="gate", outcome="paused", target=logged_target))
         sys.stderr.write(f"{paused_message(conflicted)}\n")
         return BLOCK
-    result = check(target, gate_root, args.skip, runner)
+    result = check([target], gate_root, args.skip, runner)
     failed = failed_hooks(result.output) if result.code != 0 else ()
     entry = Entry(hook="gate", outcome=outcome_of(result), target=logged_target, failed=failed)
     record(gate_root, entry)

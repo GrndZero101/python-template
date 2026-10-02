@@ -1,7 +1,8 @@
 # Python rules
 
 Enforced by a PostToolUse hook that auto-formats, then blocks on anything left. Violations block
-the edit — fix them, don't work around them.
+the edit — fix them, don't work around them. A Stop hook checks every changed file again, and runs
+the tests, before a turn can end, so a file changed by `sed` or a heredoc is caught too.
 
 ## Structure
 
@@ -96,6 +97,7 @@ which rest on your own discipline.
 | Hooks are exec form: `command` plus `args`, no shell | *convention — review only* |
 | No literal path separators asserted in tests | *convention — review only* |
 | No edits to repo files while on `main` | `tools/branch_guard.py` via `PreToolUse` |
+| No turn ends with a changed file failing the gate, or a failing test | `tools/stop_gate.py` via `Stop` — blocks once, then lets you stop and explain |
 | No direct commits to `main` (merges allowed) | `no-commit-to-branch` at `pre-commit` stage only |
 | Conventional Commit format, every branch | `conventional-pre-commit` (prek, `commit-msg` stage) |
 | Branch consolidated to one commit before merge | *convention — review only* |
