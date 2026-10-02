@@ -16,7 +16,8 @@ by lint config and a `prek` gate — not just documented and hoped for.
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_nested_defs.py` (no
   `def` inside a `def`), `branch_guard.py` and `gate.py` (the `PreToolUse`/`PostToolUse` hooks that
   block edits to `main` and run the lint gate on save), `hook_payload.py` (shared parsing), and
-  `debug_pytest.py` (lets the DebugMCP CLI debug a test file; see below).
+  `debug_module.py` and `debug_pytest.py` (let the DebugMCP CLI debug a source module and a test
+  file; see below).
 - **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply.
 - **`.debugmcp.json`** — debugger adapters for an agent driving [DebugMCP](https://github.com/microsoft/DebugMCP).
 - **`CLAUDE.md`** — the full rule set: structure, debuggability, agent-friendliness, portability,

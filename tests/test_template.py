@@ -46,6 +46,7 @@ CLI_MODULES = {
 BASE_TESTS = {
     "test_branch_guard.py",
     "test_check_nested_defs.py",
+    "test_debug_module.py",
     "test_debug_pytest.py",
     "test_gate.py",
     "test_hook_payload.py",
@@ -155,8 +156,9 @@ def test_only_the_matching_skills_ship(copie: Copie, project_type: str) -> None:
 
 
 @pytest.mark.parametrize("project_type", PROJECT_TYPES)
-def test_debugmcp_pytest_adapter_points_at_a_shipped_program(
-    copie: Copie, project_type: str
+@pytest.mark.parametrize("adapter", ["python", "pytest"])
+def test_debugmcp_adapter_points_at_a_shipped_program(
+    copie: Copie, project_type: str, adapter: str
 ) -> None:
     """The DebugMCP CLI resolves `program` only when a session starts, so a renamed shim fails late.
 
@@ -164,7 +166,7 @@ def test_debugmcp_pytest_adapter_points_at_a_shipped_program(
     """
     project = _generate(copie, project_type)
     config = json.loads((project / ".debugmcp.json").read_text(encoding="utf-8"))
-    program = config["adapters"]["pytest"]["launch"]["program"]
+    program = config["adapters"][adapter]["launch"]["program"]
     relative = program.removeprefix("${workspaceFolder}/")
     assert (project / relative).is_file(), f"{program} does not exist in the generated project"
 
@@ -263,6 +265,20 @@ def test_generated_project_passes_its_own_tests(copie: Copie, project_type: str)
     project = _generate(copie, project_type)
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+@requires_uv
+def test_debug_launcher_runs_a_source_module_with_relative_imports(copie: Copie) -> None:
+    """The `python` adapter's `program`, run exactly as the DebugMCP CLI would launch it.
+
+    Launched as a plain script instead, `cli.py` dies on its first relative import — and under the
+    debugger that surfaces only as "ran to completion", which is how the defect went unnoticed.
+    """
+    project = _generate(copie, "cli-modern")
+    cli = project / "src" / PACKAGE_NAME / "cli.py"
+    launched = _run(["uv", "run", "python", "tools/debug_module.py", str(cli), "--help"], project)
+    assert launched.returncode == 0, f"{launched.stdout}\n{launched.stderr}"
+    assert SCRIPT_NAME in launched.stdout
 
 
 # --- copier update ------------------------------------------------------------------------

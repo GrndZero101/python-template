@@ -40,8 +40,17 @@ print debugging silently.
 
 | `configurationName` | Runs | Use for |
 |---|---|---|
-| `python` | the requested file as a script | a module with an `if __name__ == "__main__":` block |
+| `python` | the requested file as `__main__`, through `tools/debug_module.py` | a module with an `if __name__ == "__main__":` block, or a standalone script |
 | `pytest` | `pytest <requested file>` through `tools/debug_pytest.py` | a test file |
+
+The `python` adapter runs a module inside a package under `src/` by its dotted name, as `python -m`
+would, so its relative imports resolve. Any other file — under `tools/`, a scratch script, anything
+outside a `src/` package — runs by path, as `python <file>` would.
+
+**Neither adapter can pass arguments.** `start_debugging` has no parameter for them, so the
+`python` adapter runs the file with none. A CLI entry point therefore prints its help and exits. To
+stop inside a command, debug the **test** that invokes it with the arguments you need, through the
+`pytest` adapter; write that test first if it does not exist.
 
 Always pass `workingDirectory` as the **project root**. The CLI reads `.debugmcp.json` from that
 directory and resolves `${workspaceFolder}` to it, so a subdirectory finds no adapters and a wrong
