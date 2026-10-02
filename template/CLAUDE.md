@@ -31,10 +31,12 @@ Every rule here exists so a human can stop the program and inspect it.
 - Inject dependencies — clock, rng, HTTP client, paths — as parameters with defaults. Never reach
   for module-level mutable state.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
-- Never swallow an exception. `raise ... from e`, or `logger.exception(...)`.
+- Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
+  `raise ... from None`, which discards the cause just as surely.
   *Why: a bare `except: pass` destroys the traceback that tells you where it started.*
-- A configured logger writing to **stderr**, never `print`, outside a `__main__` block. Stdlib
-  `logging` by default; `loguru` where a stack skill says so.
+- Diagnostics go to a configured logger writing to **stderr**; data goes out with
+  `sys.stdout.write`. Never `print`, not even in a `__main__` block. Stdlib `logging` by default;
+  `loguru` where a stack skill says so.
   *Why: stdout is reserved for a command's data, so it stays pipeable. Diagnostics that land there
   corrupt the output a caller is parsing.*
 - Every module that can run standalone gets `if __name__ == "__main__":`.
@@ -79,9 +81,10 @@ which rest on your own discipline.
 | No `def` inside a function | `tools/check_nested_defs.py` |
 | Guard clauses; ≤3 nested blocks | `PLR1702` |
 | ≤40 statements, complexity ≤8, ≤12 locals, ≤5 args | `PLR0915` `C901` `PLR0914` `PLR0913` |
-| No `print` outside `__main__` | `T20` |
+| No `print`, `__main__` blocks included (`tools/` exempt) | `T20` |
 | Correct logging calls | `LOG` `G` — **stdlib only**; neither sees `loguru` call sites |
 | Never swallow exceptions; `raise ... from e` | `BLE` `B904` `TRY` |
+| Never `raise ... from None` | *convention — `B904` accepts it, and so does everything else* |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |
