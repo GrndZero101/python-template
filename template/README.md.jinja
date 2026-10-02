@@ -43,12 +43,12 @@ needs Node. It needs Node 20+:
 
 ```bash
 npm install --global debugmcp
-claude mcp add --scope user debugmcp -- debugmcp serve --stdio
+claude mcp add --scope user debugmcp-cli -- debugmcp serve --stdio
 ```
 
-On native Windows, use `-- cmd /c debugmcp serve --stdio`. Prefer this to `debugmcp configure`,
-which also installs a skill written for the VS Code extension. The `python-debug` skill covers
-using it.
+On native Windows, use `-- cmd /c debugmcp serve --stdio`. The name is `debugmcp-cli` because the
+VS Code extension takes `debugmcp`. Prefer this to `debugmcp configure`, which also installs a
+skill written for the VS Code extension. The `python-debug` skill covers using it.
 
 ## Commands
 
