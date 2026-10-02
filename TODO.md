@@ -52,13 +52,17 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   evaluation, for a script and for a pytest file. "A script" there meant a standalone file: any
   module under `src/` fails under the `python` adapter (item 1).
 - **Dogfood:** `GrndZero101/template-dogfood`, a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`. It has taken two `copier update`s, to `ba78c6d` and
-  `31e9fa8`; gate green, 104 tests. A rehearsal on a scratch clone (`_src_path` edited,
-  `copier update --trust --defaults --vcs-ref <branch>`) predicted the real `31e9fa8` run exactly,
-  so it is a trustworthy dry run. **Drive it from a session started in its own directory** —
-  Claude Code loads hooks and skills from the session's project, so from here its guard, gate and
-  skills are all inert. It exists to test what no test here can: the guard on the first edit,
-  the gate's stderr on save, whether the skills steer, and how `CLAUDE.md` reads mid-task.
+  `weather` command and script `tdf-cli`. It has taken three `copier update`s, to `ba78c6d`,
+  `31e9fa8` and `de20fe3`; gate green, 115 tests, pushed. A fresh session there confirmed the
+  exec-form hooks on a consumer: `SessionStart` reports, the guard blocks a write on `main`, and
+  on a branch the gate blocks a nested def after the save. The guard also refuses when run from
+  outside the repository, so `--directory ${CLAUDE_PROJECT_DIR}` holds. A rehearsal on a scratch
+  clone (`_src_path` edited, `copier update --trust --defaults --vcs-ref <branch>`) predicted the
+  real `31e9fa8` run exactly, so it is a trustworthy dry run. **Drive it from a session started
+  in its own directory** — Claude Code loads hooks and skills from the session's project, so from
+  here its guard, gate and skills are all inert. It exists to test what no test here can: the
+  guard on the first edit, the gate's stderr on save, whether the skills steer, and how
+  `CLAUDE.md` reads mid-task.
 
 ## Do next
 
@@ -99,29 +103,15 @@ broken or misleading.
   the name the VS Code extension's HTTP server takes. On a machine with both, the CLI ends up as
   something else (here `debugmcp-cli`). The skill should name one and say tool names follow it.
 
-### 2. Document the update path in the README
+### 2. Per-release update notes
 
-The README's "Updating from the template" section is one command. What both dogfood updates
-showed a consumer needs:
-
-- **The sequence:** `copier update --trust`, resolve, `uv sync`, then `prek run --all-files`.
-  `--trust` is needed because the template has `_tasks`, even though every task is guarded to
-  `copy`, and it is also the flag an agent's permission classifier refuses. `uv sync` matters
-  because a dependency the template dropped stays in the venv until then, so `ty` passes an
-  import that `pyproject.toml` no longer provides — `httpx` did exactly that.
-- **New questions take their default under `--defaults`.** `script_name` arrived after the
-  dogfood was generated, and `--defaults` recorded `template-dogfood`, re-proposing the rename in
-  every file carrying the name. Run without `--defaults`, or pass `--data <question>=<value>`,
-  whenever the template has added a question.
-- **Reading conflicts.** copier labels the sides `before updating` (the project) and
-  `after updating` (the new template render). Index stage 3 is the new render, so
-  `git checkout --theirs <file>` takes it whole — which also drops project-only lines *outside*
-  the markers, unlike a hunk-by-hunk resolution.
-- **Per-release update notes** — depends on item 6. Two things a release should say that a
-  conflict never will: which features were absorbed from consumers (in `typer_entrypoint.py` the
-  "project" side was the dogfood's own feature, superseded upstream with changed semantics), and
-  which interface moves a consumer's *own* commands must follow (`-v/--verbose` went global, so
-  `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
+The README's "Keeping it in sync" section now covers the update mechanics: the sequence, `uv sync`
+before checking, new questions under `--defaults`, and reading copier's conflicts. What is left
+depends on item 6. A release should say two things that a conflict never will: which features were
+absorbed from consumers (in `typer_entrypoint.py` the "project" side was the dogfood's own feature,
+superseded upstream with changed semantics), and which interface moves a consumer's *own*
+commands must follow (`-v/--verbose` went global, so `tdf-cli weather -v cleve` became
+`tdf-cli -v weather cleve`, and nothing warned).
 
 ### 3. Run the `examples/` specs as dogfood exercises
 
@@ -130,9 +120,10 @@ service, output, failure modes and the tests that should exist, but no structure
 agent in a session rooted in a generated project and record what the template steered and what it
 missed. The original code is at `d8e26b0` for comparison.
 
-Update the dogfood first. That update is itself the first real test of the hook changes above —
-the pause, the exec-form hooks, the conflicted-`pyproject.toml` guard — on a consumer rather than
-in the generation tests.
+The dogfood is current (`de20fe3`) and its exec-form hooks are proven there. The gate's pause on
+conflict markers and the conflicted-`pyproject.toml` guard were not recorded firing during that
+update, so treat them as proven only by the generation tests until an update with a conflict
+shows them on a consumer.
 
 ### 4. Non-`cli-modern` types generate an empty package
 
