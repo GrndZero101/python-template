@@ -90,6 +90,7 @@ which rest on your own discipline.
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |
 | Timezone-aware datetimes | `DTZ` |
+| A deprecation warning fails the test that triggers it | pytest `filterwarnings = ["error"]` |
 | No unused args, no private-member access | `ARG` `SLF` |
 | `pathlib` over `os.path` | `PTH` |
 | Explicit `encoding=` on reads and writes | `unspecified-encoding` |

@@ -147,5 +147,15 @@ extra-paths = ["tools"]
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 addopts = "-x -q --tb=short"
+# Named one by one rather than `strict = true`, which also adopts every strictness option a later
+# pytest adds: the same reason ruff's preview rules are listed by code above.
+strict_config = true                # a typo in this section is an error, not a silent no-op
+strict_markers = true               # an unregistered marker is an error, not a new marker
+strict_xfail = true                 # an xfail that starts passing fails, so it gets removed
+strict_parametrization_ids = true   # two parametrized cases with the same id are an error
+# A deprecation in typer, pydantic or anything else fails a test the day it appears, rather than
+# the code breaking at the dependency's next major version. Silence a specific, understood warning
+# with its own "ignore:..." line below this one; never remove this line.
+filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["tools"]  # so the nested-def checker is importable by its tests
