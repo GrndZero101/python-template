@@ -97,3 +97,11 @@ resolve the wrong script. Prefer `git -C <dir>` anyway: it keeps every command's
 
 Identical to the imported rules: never edit on `main`, branch first, `main` receives only merge
 commits. The `PreToolUse` guard runs from the root and covers the whole repo, `template/` included.
+
+Finish a branch here with the template's own script, which runs unchanged from the root:
+
+```bash
+uv run python template/tools/finish_branch.py "feat(x): summary"
+```
+
+Its gate is the root's, so the squashed commit runs the generation suite: about a minute.

@@ -22,14 +22,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_TYPES = ["cli-modern", "cli-stdlib", "fastapi", "tui", "data"]
 
 # The scaffold CLI travels only with cli-modern; every other type gets infrastructure and its
-# own skill. The debugging skill is infrastructure, so every type gets it. Keep this table in
+# own skill. The debugging and git-workflow skills are infrastructure, so every type gets them. Keep this table in
 # step with `_exclude` in copier.yml.
+INFRA_SKILLS = {"git-workflow", "python-debug"}
 SKILLS_BY_TYPE = {
-    "cli-modern": {"python-cli", "python-cli-modern", "python-debug"},
-    "cli-stdlib": {"python-cli", "python-cli-stdlib", "python-debug"},
-    "fastapi": {"python-fastapi", "python-debug"},
-    "tui": {"python-tui", "python-debug"},
-    "data": {"python-data", "python-debug"},
+    "cli-modern": {"python-cli", "python-cli-modern"} | INFRA_SKILLS,
+    "cli-stdlib": {"python-cli", "python-cli-stdlib"} | INFRA_SKILLS,
+    "fastapi": {"python-fastapi"} | INFRA_SKILLS,
+    "tui": {"python-tui"} | INFRA_SKILLS,
+    "data": {"python-data"} | INFRA_SKILLS,
 }
 
 # What each project type's src/ and tests/ hold. Keep in step with `_exclude` in copier.yml.
@@ -51,6 +52,7 @@ TOOLS_TESTS = {
     "test_check_conventions.py",
     "test_debug_module.py",
     "test_debug_pytest.py",
+    "test_finish_branch.py",
     "test_gate.py",
     "test_gate_log.py",
     "test_hook_payload.py",
