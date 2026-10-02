@@ -26,10 +26,12 @@ decide:
 - the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
   `.copier-answers.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
-- `conftest.py` and the test modules under `tests/`, which import the package by name.
+- `conftest.py` and the test modules under `tests/`, which import the package by name;
+- the reference tests in `.claude/skills/python-cli-modern/reference/`, for the same reason: they
+  are copied into `tests/` unchanged, so they must already name the package.
 
-Everything else — `CLAUDE.md`, all of `tools/`, every skill, and the other source modules — ships
-literally. The source modules manage it because their internal imports are **relative**, so
+Everything else — `CLAUDE.md`, all of `tools/`, every other skill file, and the other source modules
+— ships literally. The source modules manage it because their internal imports are **relative**, so
 nothing inside `src/` names the package and copier only has to render the directory name. Keep it
 that way: an absolute import there would force another file to become a template. Anything that
 needs the script name should import it from `config.py` rather than render it again.

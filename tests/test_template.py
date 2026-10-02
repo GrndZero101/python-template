@@ -316,6 +316,52 @@ def test_generated_project_works_at_the_python_floor(copie: Copie, project_type:
     assert version.stdout.startswith(f"Python {PYTHON_FLOOR}."), version.stdout
 
 
+# The skill's reference files, and where its "call an HTTP API" recipe says to copy them.
+REFERENCE_DIR = Path(".claude") / "skills" / "python-cli-modern" / "reference"
+REFERENCE_MODULES = ["http_client.py", "status.py"]
+REFERENCE_TESTS = ["test_http_client.py", "test_status.py"]
+# The registration the "add a command" recipe shows, and the scaffold lines it goes beside.
+REGISTRATIONS = {
+    "from .typer_entrypoint import run_app\n": "from .status import status_command\n",
+    'app.command("about")(about_command)\n': 'app.command("status")(status_command)\n',
+}
+
+
+def _register_status_command(cli: Path) -> None:
+    """Make the recipe's two-line edit to cli.py, failing loudly if the scaffold has moved on."""
+    source = cli.read_text(encoding="utf-8")
+    for anchor, line in REGISTRATIONS.items():
+        assert anchor in source, f"cli.py no longer has {anchor!r}; update the skill's recipe"
+        before, after = (line, anchor) if line.startswith("from") else (anchor, line)
+        source = source.replace(anchor, before + after)
+    cli.write_text(source, encoding="utf-8")
+
+
+@requires_uv
+@requires_prek
+def test_skill_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Copie) -> None:
+    """Skill code is checked code: follow the recipe literally, then run the project's gate.
+
+    Every defect phase 1 found in a skill was an example nobody had run. These files are meant to
+    be copied unchanged, so they must pass the gate and their own tests exactly as shipped.
+    """
+    project = _generate(copie, "cli-modern")
+    _run(["git", "switch", "--quiet", "-c", "feat/status"], project)
+    added = _run(["uv", "add", "httpx"], project)
+    assert added.returncode == 0, added.stderr
+    reference = project / REFERENCE_DIR
+    for name in REFERENCE_MODULES:
+        shutil.copy(reference / name, project / "src" / PACKAGE_NAME / name)
+    for name in REFERENCE_TESTS:
+        shutil.copy(reference / name, project / "tests" / name)
+    _register_status_command(project / "src" / PACKAGE_NAME / "cli.py")
+    _run(["git", "add", "-A"], project)
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
+    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
+    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
 @requires_uv
 def test_debug_launcher_runs_a_source_module_with_relative_imports(copie: Copie) -> None:
     """The `python` adapter's `program`, run exactly as the DebugMCP CLI would launch it.
