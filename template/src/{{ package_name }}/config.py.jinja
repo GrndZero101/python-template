@@ -13,6 +13,9 @@ Each field reads `{{ script_name | upper | replace('-', '_') }}_<FIELD>`, so `ou
 2. Add a keyword to `load_settings` and pass it through.
 3. Declare the flag in `options.py` with a `None` default, naming `env_var("<field>")` in its help.
 
+The wiring tests at the end of `tests/test_config.py` fail, naming the step, until all three
+are done.
+
 No `.env` file is read, so a stray file in the working directory cannot change a test's outcome.
 Add `env_file=".env"` to `model_config` to opt in.
 """
