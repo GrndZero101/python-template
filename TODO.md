@@ -19,10 +19,11 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   `git commit` task failed against the project's own `no-commit-to-branch` hook, so **every update
   exited non-zero**. Note the variable is `_copier_operation`, not `_copier_conf.operation` — the
   latter renders undefined, which is falsy, which silently disables every task including on copy.
-- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Six modules under
-  `template/tools/`: `check_nested_defs` (no linter covers `def` inside `def`), `branch_guard` and
-  `gate` (the two hooks), `hook_payload` (shared parsing so they cannot diverge), and
-  `debug_module` and `debug_pytest` (the DebugMCP launchers for a source file and a test file).
+- Toolchain: `uv`, `ruff`, `ty`, `prek`, `rumdl`, `copier` 9.17.0. Eleven modules under
+  `template/tools/`: `check_conventions` and `convention_rules` (the CLAUDE.md rules no linter
+  covers), the four hooks `branch_guard`, `gate`, `stop_gate` and `session_doctor`, `gate_log`,
+  `hook_payload` (shared parsing so the hooks cannot diverge), and `debug_module` and
+  `debug_pytest` (the DebugMCP launchers for a source file and a test file).
 - Guards live: `PreToolUse` blocks edits to *repo* files on `main`, `no-commit-to-branch` blocks
   direct commits while still permitting `--no-ff` merges, `conventional-pre-commit` checks every
   message, `SessionStart` reports branch and tree state.
@@ -164,20 +165,17 @@ rather than `strict = true`, which would adopt later options unannounced, and ha
 
 ### Phase 5 — Turn conventions into checks
 
-Every rule a weak model has to remember is one it will eventually skip. Five rows of CLAUDE.md's
-"convention — review only" list are cheap AST checks, and a probe through the gate confirmed none of
-them is flagged today.
+Done on `feat/phase5-conventions`, 2026-10-02. `check_nested_defs.py` became `check_conventions.py`
+plus `convention_rules.py`, hook id `conventions`, with six rules — `nested-def`, `nested-class`,
+`complex-comprehension`, `raise-from-none`, `dynamic-attribute` (`getattr`, `setattr`, `delattr`)
+and `missing-main-guard` — each with a message naming its fix and a `# noqa: <rule-id>` opt-out.
+Five table rows moved from convention to the checker. No template code tripped it; the dogfood
+trips it exactly three times, on the `from None` lines noted under phase 1.
 
-- [ ] **Grow `check_nested_defs.py` into a conventions checker**, with a rule id per check, the same
-  per-line opt-out, and a message that names the fix: a `class` inside a function; a comprehension
-  with more than one `for`, or a nested comprehension; `raise ... from None`; `getattr` with a
-  non-literal attribute name; and a module that defines `main` without an
-  `if __name__ == "__main__":` block. Move the table rows from "convention" to the checker. A rename
-  touches the hook id, both configs, CLAUDE.md, the READMEs and the tests.
-- [ ] **Make "add a setting" fail loudly when a step is missed.** It is four coordinated edits
-  today: `Settings`, `_Overrides`, `load_settings` and an option alias in `options.py`. Add a test
-  that the field names of the first three agree and that every field's environment variable
-  appears in some option's help. Consider a shape with fewer places to touch.
+A half-added setting now fails `tests/test_config.py`, naming the missed step. The fewer-places
+shape was considered: `Settings.model_validate` does read the environment on pydantic-settings
+2.15, which would let `load_settings` take `**flags` and drop its keyword list, but only the
+constructor is documented as resolving sources, so the four edits stay, guarded by the tests.
 
 ### Phase 6 — Cut the always-loaded context; make the skills recipes
 
