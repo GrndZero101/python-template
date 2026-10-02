@@ -106,4 +106,4 @@ Finish a branch here with the template's own script, which runs unchanged from t
 uv run python template/tools/finish_branch.py "feat(x): summary"
 ```
 
-Its gate is the root's, so the squashed commit runs the generation suite: about a minute.
+It runs the root's whole gate before merging, generation suite included: about a minute.

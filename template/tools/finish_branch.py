@@ -8,17 +8,20 @@ rather than remembered. Run it from the branch being finished:
     uv run python tools/finish_branch.py --no-merge "fix(cli): exit 2 on a bad flag"
 
 **Default — squash.** The branch's commits are squashed onto a new branch cut from the current
-`main`, committed there with MESSAGE (the full gate and the commit-message check run on that
-commit), and merged into `main` with `--no-ff` and the same subject. Both branches are then
-deleted. A branch that is already one commit on top of `main` is merged as it is, and MESSAGE may
-be omitted to reuse its subject.
+`main`, committed there with MESSAGE, and merged into `main` with `--no-ff` and the same subject.
+Both branches are then deleted. A branch that is already one commit on top of `main` is merged as
+it is, and MESSAGE may be omitted to reuse its subject.
 
 **`--keep-commits` — rebase in place**, for a branch that genuinely holds more than one change.
-`fixup!` commits are folded in with an autosquash rebase, `prek run --all-files` runs (no hook runs
-during a rebase, so this is the only check the rebased tree gets), and the branch is merged with
+`fixup!` commits are folded in with an autosquash rebase, and the branch is merged with
 `--no-ff --log`, so the body lists the commits that arrived.
 
-**`--no-merge`** stops before touching `main`, leaving the consolidated branch for review.
+**Every path is checked here, not by the git hooks.** Before anything reaches `main`,
+`prek run --all-files` runs on the branch's tip and the commit-message check runs on every message
+it will add. The hooks cannot be trusted with this: a commit made while the shims were missing ran
+none of them, a rebase runs none, and nothing about the commit shows it.
+
+**`--no-merge`** stops before touching `main`, leaving the checked branch for review.
 
 Nothing is lost on failure. The original branch is never rewritten on the default path, and on
 any failure the script returns to it and says what to do next. Exit 0 when merged (or ready, with
@@ -36,6 +39,7 @@ from hook_payload import find_repo_root
 USAGE = 2
 FAILED = 1
 SQUASH_SUFFIX = "-squashed"
+MESSAGE_FILE = "FINISH_BRANCH_MSG"
 
 
 class FinishError(Exception):
@@ -99,7 +103,7 @@ def _restore(target: Plan, runner: Runner, scratch: str) -> None:
 
 
 def squash(target: Plan, runner: Runner) -> str:
-    """Return the branch to merge, holding the whole change as one commit made through the gate.
+    """Return the branch to merge, holding the whole change as one commit.
 
     A branch that is already one commit on the base tip is returned as it is.
     """
@@ -118,19 +122,18 @@ def squash(target: Plan, runner: Runner) -> str:
             f"{merged.output}"
         )
         raise FinishError(msg)
-    committed = _git(runner, target.root, "commit", "--quiet", "-m", target.message)
+    # `--no-verify` because `verify` gates this commit next, on every path; letting the hooks run
+    # here too would gate the same tree twice.
+    committed = _git(runner, target.root, "commit", "--quiet", "--no-verify", "-m", target.message)
     if committed.code != 0:
         _restore(target, runner, scratch)
-        msg = (
-            f"the gate refused the squashed commit, so nothing was merged. Fix it on "
-            f"{target.branch} and run this again.\n{committed.output}"
-        )
+        msg = f"the squashed commit failed, so nothing was merged.\n{committed.output}"
         raise FinishError(msg)
     return scratch
 
 
 def rebase_in_place(target: Plan, runner: Runner) -> str:
-    """Fold `fixup!` commits in, then run the full gate the rebase skipped."""
+    """Fold `fixup!` commits in. The rebase runs no hook, so `verify` must follow."""
     # `-i` with a no-op sequence editor applies the autosquash order without stopping to ask.
     autosquash = ("-c", "sequence.editor=true", "rebase", "-i", "--autosquash", target.base)
     rebased = _git(runner, target.root, *autosquash)
@@ -138,11 +141,50 @@ def rebase_in_place(target: Plan, runner: Runner) -> str:
         _git(runner, target.root, "rebase", "--abort")
         msg = f"the autosquash rebase stopped; it has been aborted.\n{rebased.output}"
         raise FinishError(msg)
-    gate = runner(["prek", "run", "--all-files"], target.root)
-    if not gate.ran or gate.code != 0:
-        msg = f"the full gate failed after the rebase; fix it on {target.branch}.\n{gate.output}"
-        raise FinishError(msg)
     return target.branch
+
+
+def _messages(target: Plan, runner: Runner) -> list[str]:
+    """Return every message merging HEAD adds to the base: each commit's, then the merge's own."""
+    shas = _require(
+        _git(runner, target.root, "rev-list", "--reverse", f"{target.base}..HEAD"), "listing"
+    )
+    messages = []
+    for sha in shas.splitlines():
+        body = _git(runner, target.root, "log", "-1", "--format=%B", sha)
+        messages.append(_require(body, f"reading {sha}'s message"))
+    messages.append(target.message)
+    return list(dict.fromkeys(messages))
+
+
+def _check_message(target: Plan, runner: Runner, path: Path, message: str) -> None:
+    """Run the commit-msg stage on `message`, as git would, by way of the file at `path`."""
+    path.write_text(f"{message}\n", encoding="utf-8")
+    stage = ("--stage", "commit-msg", "--commit-msg-filename", str(path))
+    checked = runner(["prek", "run", "--quiet", *stage], target.root)
+    if checked.ran and checked.code == 0:
+        return
+    subject = message.splitlines()[0]
+    msg = (
+        f"the message check rejected {subject!r}; reword it as `type(scope): summary` "
+        f"(git rebase -i {target.base} for a commit, or pass a new MESSAGE).\n{checked.output}"
+    )
+    raise FinishError(msg)
+
+
+def verify(target: Plan, runner: Runner) -> None:
+    """Run the full gate on HEAD and the message check on every message merging it adds.
+
+    The git hooks would do this only if every shim is installed, and a missing shim is silent.
+    """
+    gate = runner(["prek", "run", "--quiet", "--all-files"], target.root)
+    if not gate.ran or gate.code != 0:
+        msg = f"the full gate failed; fix it on {target.branch} and run this again.\n{gate.output}"
+        raise FinishError(msg)
+    found = _git(runner, target.root, "rev-parse", "--git-path", MESSAGE_FILE)
+    path = target.root / _require(found, "locating the git directory")
+    for message in _messages(target, runner):
+        _check_message(target, runner, path, message)
 
 
 def merge(target: Plan, source: str, runner: Runner, *, log: bool) -> str:
@@ -202,6 +244,12 @@ def finish(args: argparse.Namespace, root: Path, runner: Runner) -> str:
         raise FinishError(msg)
     target = plan(root, args.base, args.message, runner)
     source = rebase_in_place(target, runner) if args.keep_commits else squash(target, runner)
+    try:
+        verify(target, runner)
+    except FinishError:
+        if source != target.branch:
+            _restore(target, runner, source)
+        raise
     if args.no_merge:
         return f"{source} is ready to merge into {target.base} as {target.message!r}"
     sha = merge(target, source, runner, log=args.keep_commits)
