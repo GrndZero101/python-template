@@ -56,17 +56,17 @@ Rules and workflow live in [CLAUDE.md](CLAUDE.md); this file is only what is *no
   path). Neither adapter can pass the program arguments, so the skill sends commands through
   their tests.
 - **Dogfood:** `GrndZero101/template-dogfood`, a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`. It has taken three `copier update`s, to `ba78c6d`,
-  `31e9fa8` and `de20fe3`; gate green, 115 tests, pushed. A fresh session there confirmed the
-  exec-form hooks on a consumer: `SessionStart` reports, the guard blocks a write on `main`, and
-  on a branch the gate blocks a nested def after the save. The guard also refuses when run from
-  outside the repository, so `--directory ${CLAUDE_PROJECT_DIR}` holds. A rehearsal on a scratch
-  clone (`_src_path` edited, `copier update --trust --defaults --vcs-ref <branch>`) predicted the
-  real `31e9fa8` run exactly, so it is a trustworthy dry run. **Drive it from a session started
-  in its own directory** — Claude Code loads hooks and skills from the session's project, so from
-  here its guard, gate and skills are all inert. It exists to test what no test here can: the
-  guard on the first edit, the gate's stderr on save, whether the skills steer, and how
-  `CLAUDE.md` reads mid-task.
+  `weather` command and script `tdf-cli`. It has taken four `copier update`s, to `ba78c6d`,
+  `31e9fa8`, `de20fe3` and `b22dacd`; gate green, 193 tests, pushed. A fresh session there
+  confirmed the exec-form hooks on a consumer: `SessionStart` reports, the guard blocks a write
+  on `main`, and on a branch the gate blocks a nested def after the save. The guard also refuses
+  when run from outside the repository, so `--directory ${CLAUDE_PROJECT_DIR}` holds. A rehearsal
+  on a scratch clone (`_src_path` edited, `copier update --trust --defaults --vcs-ref <branch>`)
+  predicted the real `31e9fa8` run exactly, so it is a trustworthy dry run. **Drive it from a
+  session started in its own directory** — Claude Code loads hooks and skills from the session's
+  project, so from here its guard, gate and skills are all inert. It exists to test what no test
+  here can: the guard on the first edit, the gate's stderr on save, whether the skills steer, and
+  how `CLAUDE.md` reads mid-task.
 
 ## The plan
 
@@ -105,15 +105,10 @@ fixer before its formatter; F5 through `tools/debug_module.py`; `python_version`
 3.12–3.14 rendered into `.python-version`, with every type proven at 3.12; and the `T20` and
 `from None` table rows corrected.
 
-- [ ] **`copier update` the dogfood** to the phase 3 merge commit (it covers phase 1 too), by hand
-  as the README describes. Phase 1's part touches `.python-version` (now rendered), the prek config
-  (hook order), `launch.json`, CLAUDE.md and three skills; phase 3 adds four `tools/` modules and
-  their tests, and new `Stop` and `SessionStart` hooks in `.claude/settings.json`. Expect conflicts
-  only where the dogfood edited those files. Its `weather.py` has three `raise ... from None`, which
-  CLAUDE.md now names as a violation: line 69 drops a `JSONDecodeError`, and lines 134 and 137 raise
-  `typer.Exit`. All three become `from exc`. For an exit signal that changes nothing at runtime,
-  which is why phase 5's check needs no exemption for it. Fix them in the dogfood, from a session
-  started there.
+The dogfood took phases 1–6 in one `copier update`, to `b22dacd`, on 2026-10-03. Its one conflict
+was `README.md`'s `tools/` list, which the dogfood had extended with `weather`. Its three
+`raise ... from None` in `weather.py` became `from exc` in the same commit, since the update's own
+`raise-from-none` check rejects them. Gate green, 193 tests, merged with `finish_branch.py`, pushed.
 
 ### Phase 2 — A benchmark harness and a baseline
 
@@ -150,8 +145,18 @@ applied its own fixes. With prek missing it says so to the agent and the user. A
 per stop. `tools/session_doctor.py` reports a missing `prek` or git shim at session start.
 Notebook edits are guarded and gated. Every gate and stop-gate run appends a line to `.gate.log`.
 
-Left for the dogfood update below: a fresh session there should show the doctor's status line, a
-`sed` edit caught by the stop gate, and a `.gate.log` filling up.
+The doctor earned its place on its first run in the dogfood, after the `b22dacd` update: it
+reported all three git shims missing. They really were, so the update's commit and its merge into
+`main` had run no hook at all. `prek run --all-files` had been run by hand before the commit, and
+re-run afterwards over the merged range, with the message check on both commits, everything
+passed. `prek install` restored the shims. Still unproven on a consumer: a `sed` edit caught by the
+stop gate, and a `.gate.log` filling up.
+
+- [ ] **`finish_branch.py` does not gate a branch that is already one commit.** It merges the
+  commit as it is, trusting that the commit was made through the hooks. In the dogfood the shims
+  were missing, so nothing checked that merge. Before merging, either refuse when the
+  `pre-commit` or `commit-msg` shim is absent, or run `prek run --from-ref <base> --to-ref HEAD`
+  and the message check on the commit itself.
 
 ### Phase 4 — Stabilise the toolchain
 
