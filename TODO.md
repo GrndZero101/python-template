@@ -152,11 +152,12 @@ re-run afterwards over the merged range, with the message check on both commits,
 passed. `prek install` restored the shims. Still unproven on a consumer: a `sed` edit caught by the
 stop gate, and a `.gate.log` filling up.
 
-- [ ] **`finish_branch.py` does not gate a branch that is already one commit.** It merges the
-  commit as it is, trusting that the commit was made through the hooks. In the dogfood the shims
-  were missing, so nothing checked that merge. Before merging, either refuse when the
-  `pre-commit` or `commit-msg` shim is absent, or run `prek run --from-ref <base> --to-ref HEAD`
-  and the message check on the commit itself.
+`finish_branch.py` merged the dogfood's one-commit branch unchecked, trusting that its commit had
+gone through the hooks. Fixed on `fix/finish-branch-gate`, 2026-10-03: every path now runs
+`prek run --all-files` and the `commit-msg` stage (`--commit-msg-filename`) on each message it will
+add to `main`, before merging and whatever the shims are doing. The squashed commit is made with
+`--no-verify`, so the gate still runs once, not twice. Proven in a generated project with all
+three shims deleted: a lint failure and a bad message are both refused, and a clean branch merges.
 
 ### Phase 4 — Stabilise the toolchain
 

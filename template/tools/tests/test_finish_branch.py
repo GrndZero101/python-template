@@ -1,10 +1,11 @@
 """Tests for finish_branch, against real git repositories under `tmp_path`.
 
 git is the thing being driven, so these run it for real. Only prek is stood in for, because a
-throwaway repository has no hooks or gate config; the script's own commits therefore run unhooked.
+throwaway repository has no hooks or gate config. That is also the case the script must survive: a
+repository whose commits ran no hook, so its own check is the only one.
 """
 
-import functools
+import dataclasses
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -25,11 +26,25 @@ def _git(root: Path, *args: str) -> str:
     return result.output
 
 
-def _routing(prek: GateResult, command: Sequence[str], cwd: Path) -> GateResult:
-    """Run git for real; answer prek with `prek`."""
-    if command[0] == "prek":
-        return prek
-    return run_subprocess(command, cwd)
+@dataclasses.dataclass
+class _Prek:
+    """Runs git for real and stands in for prek, recording each message it is asked to check."""
+
+    gate: GateResult = PASS
+    message_check: GateResult = PASS
+    gate_runs: int = 0
+    messages: list[str] = dataclasses.field(default_factory=list)
+
+    def __call__(self, command: Sequence[str], cwd: Path) -> GateResult:
+        """Answer one command the way the runner would."""
+        if command[0] != "prek":
+            return run_subprocess(command, cwd)
+        if "commit-msg" not in command:
+            self.gate_runs += 1
+            return self.gate
+        message = Path(command[-1]).read_text(encoding="utf-8").strip()
+        self.messages.append(message)
+        return self.message_check
 
 
 def _commit(root: Path, name: str, message: str) -> None:
@@ -63,7 +78,10 @@ def test_squashes_several_commits_into_one_merged_with_no_ff(
     root = _repo(tmp_path, monkeypatch)
     _commit(root, "a.py", "chore(x): wip")
     _commit(root, "b.py", "chore(x): wip again")
-    assert main(["feat(x): add a and b"]) == 0
+    prek = _Prek()
+    assert main(["feat(x): add a and b"], runner=prek) == 0
+    assert prek.gate_runs == 1
+    assert prek.messages == ["feat(x): add a and b"]
     assert _first_parent_subjects(root) == ["feat(x): add a and b", "chore: start"]
     merged = _git(root, "log", "--format=%s", "main^2")
     assert merged.splitlines()[0] == "feat(x): add a and b", "the branch side is one commit"
@@ -75,7 +93,7 @@ def test_a_one_commit_branch_reuses_its_subject(
 ) -> None:
     root = _repo(tmp_path, monkeypatch)
     _commit(root, "a.py", "feat(x): add a")
-    assert main([]) == 0
+    assert main([], runner=_Prek()) == 0
     assert _first_parent_subjects(root)[0] == "feat(x): add a"
     assert _git(root, "rev-list", "--count", "main^1..main^2") == "1"
 
@@ -133,7 +151,7 @@ def test_no_merge_stops_with_the_squashed_branch(
     root = _repo(tmp_path, monkeypatch)
     _commit(root, "a.py", "chore(x): wip")
     _commit(root, "b.py", "chore(x): wip again")
-    assert main(["--no-merge", "feat(x): add a and b"]) == 0
+    assert main(["--no-merge", "feat(x): add a and b"], runner=_Prek()) == 0
     assert _first_parent_subjects(root) == ["chore: start"]
     assert _branches(root) == {"main", "feat/x", "feat/x-squashed"}
 
@@ -145,8 +163,10 @@ def test_keep_commits_folds_fixups_and_merges_with_a_log(
     _commit(root, "a.py", "feat(x): add a")
     _commit(root, "a2.py", "fixup! feat(x): add a")
     _commit(root, "b.py", "feat(x): add b")
-    runner = functools.partial(_routing, PASS)
-    assert main(["--keep-commits", "feat(x): add a and b"], runner=runner) == 0
+    prek = _Prek()
+    assert main(["--keep-commits", "feat(x): add a and b"], runner=prek) == 0
+    assert prek.gate_runs == 1
+    assert prek.messages == ["feat(x): add a", "feat(x): add b", "feat(x): add a and b"]
     arrived = _git(root, "log", "--format=%s", "main^1..main^2").splitlines()
     assert arrived == ["feat(x): add b", "feat(x): add a"]
     body = _git(root, "log", "-1", "--format=%b", "main")
@@ -158,7 +178,41 @@ def test_keep_commits_stops_when_the_full_gate_fails(
 ) -> None:
     root = _repo(tmp_path, monkeypatch)
     _commit(root, "a.py", "feat(x): add a")
-    runner = functools.partial(_routing, FAIL)
-    assert main(["--keep-commits", "feat(x): add a"], runner=runner) == 1
+    assert main(["--keep-commits", "feat(x): add a"], runner=_Prek(gate=FAIL)) == 1
     assert "full gate failed" in capsys.readouterr().err
+    assert _first_parent_subjects(root) == ["chore: start"]
+
+
+def test_a_one_commit_branch_is_gated_before_it_is_merged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "feat(x): add a")
+    assert main([], runner=_Prek(gate=FAIL)) == 1
+    assert "full gate failed" in capsys.readouterr().err
+    assert _first_parent_subjects(root) == ["chore: start"]
+    assert _git(root, "branch", "--show-current") == "feat/x"
+
+
+def test_a_squash_the_gate_refuses_returns_to_the_untouched_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "chore(x): wip")
+    _commit(root, "b.py", "chore(x): wip again")
+    before = _git(root, "rev-parse", "HEAD")
+    assert main(["feat(x): add a and b"], runner=_Prek(gate=FAIL)) == 1
+    assert _first_parent_subjects(root) == ["chore: start"]
+    assert _git(root, "branch", "--show-current") == "feat/x"
+    assert _git(root, "rev-parse", "HEAD") == before
+    assert _branches(root) == {"main", "feat/x"}
+
+
+def test_a_commit_message_that_fails_the_check_is_not_merged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "added a")
+    assert main([], runner=_Prek(message_check=FAIL)) == 1
+    assert "rejected 'added a'" in capsys.readouterr().err
     assert _first_parent_subjects(root) == ["chore: start"]

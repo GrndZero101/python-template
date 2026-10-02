@@ -68,8 +68,10 @@ uv run python tools/finish_branch.py "feat(geo): add coordinate lookup"
 
 From the branch being finished, with a clean tree. It:
 
-1. squashes the branch onto a fresh branch cut from the current `main`;
-2. commits that with your message, so **the full gate and the message check run on it**;
+1. squashes the branch onto a fresh branch cut from the current `main`, and commits it with your
+   message;
+2. runs **the full gate and the message check itself**, on every path — never trusting that the
+   git hooks ran, since a missing shim skips them silently;
 3. merges it into `main` with `--no-ff` and the same subject;
 4. deletes both branches.
 
@@ -82,10 +84,9 @@ left out to reuse that commit's subject.
 | It genuinely holds several changes, one commit each | `finish_branch.py --keep-commits "type(scope): summary of all"` |
 | Stop before `main`, for someone to review | add `--no-merge` |
 
-`--keep-commits` folds `fixup!` commits in with an autosquash rebase, runs
-`prek run --all-files` (no hook runs during a rebase, so this is the only check the rebased tree
-gets), and merges with `--log`, so the merge body lists the commits that arrived. Use it only when
-squashing would produce an "and" commit.
+`--keep-commits` folds `fixup!` commits in with an autosquash rebase, checks every commit's
+message as well as the merge's, and merges with `--log`, so the merge body lists the commits that
+arrived. Use it only when squashing would produce an "and" commit.
 
 **When it fails, nothing is lost.** Your branch is never rewritten on the default path. The
 script returns you to it and says what to fix: the gate's findings, a rejected message, or a
