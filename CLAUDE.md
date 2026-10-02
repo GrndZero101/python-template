@@ -26,10 +26,12 @@ decide:
 - the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
   `.copier-answers.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
-- `conftest.py` and the three test modules, which import the package by name.
+- `conftest.py` and the test modules under `tests/`, which import the package by name;
+- the reference tests in `.claude/skills/python-cli-modern/reference/`, for the same reason: they
+  are copied into `tests/` unchanged, so they must already name the package.
 
-Everything else — `CLAUDE.md`, all of `tools/`, every skill, and the other source modules — ships
-literally. The source modules manage it because their internal imports are **relative**, so
+Everything else — `CLAUDE.md`, all of `tools/`, every other skill file, and the other source modules
+— ships literally. The source modules manage it because their internal imports are **relative**, so
 nothing inside `src/` names the package and copier only has to render the directory name. Keep it
 that way: an absolute import there would force another file to become a template. Anything that
 needs the script name should import it from `config.py` rather than render it again.
@@ -97,3 +99,11 @@ resolve the wrong script. Prefer `git -C <dir>` anyway: it keeps every command's
 
 Identical to the imported rules: never edit on `main`, branch first, `main` receives only merge
 commits. The `PreToolUse` guard runs from the root and covers the whole repo, `template/` included.
+
+Finish a branch here with the template's own script, which runs unchanged from the root:
+
+```bash
+uv run python template/tools/finish_branch.py "feat(x): summary"
+```
+
+Its gate is the root's, so the squashed commit runs the generation suite: about a minute.

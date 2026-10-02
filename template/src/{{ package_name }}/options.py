@@ -1,21 +1,11 @@
 """Typer glue between command-line flags and `Settings`.
 
-Every option that maps to a setting defaults to `None`, meaning "not given on the command line",
-so `load_settings` can tell an absent flag from an explicit one and let the environment through.
-A typer default of `False` or `table` would be indistinguishable from the user typing it, and the
-environment variable could then never win.
+Every option that maps to a setting defaults to `None`, meaning "not given", and names its
+environment variable in its help as `(env: NAME)`, built with `env_var`. Global options
+(`--verbose`, `--version`) live on the app callback and go before the command; the callback stores
+them in a `GlobalOptions`, which each command reads back with `global_options(ctx)`.
 
-The help text names each environment variable, built from `env_var` so it cannot drift from the
-name `Settings` actually reads. It is written `(env: NAME)` rather than typer's own
-`[env var: NAME]`, because typer renders help as rich markup and a square-bracketed phrase is
-taken for a style tag and silently dropped.
-
-typer's own `envvar=` is deliberately not used: it would parse the variable a second time, with
-click's rules rather than pydantic's, and the two could disagree.
-
-Global options (`--verbose`, `--version`) live on the app callback and go *before* the command.
-The callback stores what it was given in a `GlobalOptions` on the typer context, and each command
-reads it back with `global_options(ctx)` to resolve its own settings.
+Why `None`, why not typer's `envvar=`, and why not `[env var: NAME]`: .claude/skills/python-cli-modern/reference/configuration.md.
 """
 
 import dataclasses

@@ -22,14 +22,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_TYPES = ["cli-modern", "cli-stdlib", "fastapi", "tui", "data"]
 
 # The scaffold CLI travels only with cli-modern; every other type gets infrastructure and its
-# own skill. The debugging skill is infrastructure, so every type gets it. Keep this table in
+# own skill. The debugging and git-workflow skills are infrastructure, so every type gets them. Keep this table in
 # step with `_exclude` in copier.yml.
+INFRA_SKILLS = {"git-workflow", "python-debug"}
 SKILLS_BY_TYPE = {
-    "cli-modern": {"python-cli", "python-cli-modern", "python-debug"},
-    "cli-stdlib": {"python-cli", "python-cli-stdlib", "python-debug"},
-    "fastapi": {"python-fastapi", "python-debug"},
-    "tui": {"python-tui", "python-debug"},
-    "data": {"python-data", "python-debug"},
+    "cli-modern": {"python-cli", "python-cli-modern"} | INFRA_SKILLS,
+    "cli-stdlib": {"python-cli", "python-cli-stdlib"} | INFRA_SKILLS,
+    "fastapi": {"python-fastapi"} | INFRA_SKILLS,
+    "tui": {"python-tui"} | INFRA_SKILLS,
+    "data": {"python-data"} | INFRA_SKILLS,
 }
 
 # What each project type's src/ and tests/ hold. Keep in step with `_exclude` in copier.yml.
@@ -43,11 +44,15 @@ CLI_MODULES = {
     "output.py",
     "typer_entrypoint.py",
 }
-BASE_TESTS = {
+BASE_TESTS = {"test_package.py"}
+# The template's machinery is tested under tools/tests/, the same for every type, so tests/ holds
+# only the product's own suite.
+TOOLS_TESTS = {
     "test_branch_guard.py",
     "test_check_conventions.py",
     "test_debug_module.py",
     "test_debug_pytest.py",
+    "test_finish_branch.py",
     "test_gate.py",
     "test_gate_log.py",
     "test_hook_payload.py",
@@ -199,6 +204,8 @@ def test_scaffold_cli_travels_only_with_cli_modern(copie: Copie, project_type: s
     assert modules == (BASE_MODULES | CLI_MODULES if is_cli else BASE_MODULES)
     tests = {path.name for path in (project / "tests").glob("*.py")}
     assert tests == (BASE_TESTS | CLI_TESTS if is_cli else BASE_TESTS)
+    tools_tests = {path.name for path in (project / "tools" / "tests").glob("*.py")}
+    assert tools_tests == TOOLS_TESTS
     assert (
         f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"'
         in (project / "pyproject.toml").read_text(encoding="utf-8")
@@ -307,6 +314,52 @@ def test_generated_project_works_at_the_python_floor(copie: Copie, project_type:
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
     version = _run(["uv", "run", "python", "--version"], project)
     assert version.stdout.startswith(f"Python {PYTHON_FLOOR}."), version.stdout
+
+
+# The skill's reference files, and where its "call an HTTP API" recipe says to copy them.
+REFERENCE_DIR = Path(".claude") / "skills" / "python-cli-modern" / "reference"
+REFERENCE_MODULES = ["http_client.py", "status.py"]
+REFERENCE_TESTS = ["test_http_client.py", "test_status.py"]
+# The registration the "add a command" recipe shows, and the scaffold lines it goes beside.
+REGISTRATIONS = {
+    "from .typer_entrypoint import run_app\n": "from .status import status_command\n",
+    'app.command("about")(about_command)\n': 'app.command("status")(status_command)\n',
+}
+
+
+def _register_status_command(cli: Path) -> None:
+    """Make the recipe's two-line edit to cli.py, failing loudly if the scaffold has moved on."""
+    source = cli.read_text(encoding="utf-8")
+    for anchor, line in REGISTRATIONS.items():
+        assert anchor in source, f"cli.py no longer has {anchor!r}; update the skill's recipe"
+        before, after = (line, anchor) if line.startswith("from") else (anchor, line)
+        source = source.replace(anchor, before + after)
+    cli.write_text(source, encoding="utf-8")
+
+
+@requires_uv
+@requires_prek
+def test_skill_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Copie) -> None:
+    """Skill code is checked code: follow the recipe literally, then run the project's gate.
+
+    Every defect phase 1 found in a skill was an example nobody had run. These files are meant to
+    be copied unchanged, so they must pass the gate and their own tests exactly as shipped.
+    """
+    project = _generate(copie, "cli-modern")
+    _run(["git", "switch", "--quiet", "-c", "feat/status"], project)
+    added = _run(["uv", "add", "httpx"], project)
+    assert added.returncode == 0, added.stderr
+    reference = project / REFERENCE_DIR
+    for name in REFERENCE_MODULES:
+        shutil.copy(reference / name, project / "src" / PACKAGE_NAME / name)
+    for name in REFERENCE_TESTS:
+        shutil.copy(reference / name, project / "tests" / name)
+    _register_status_command(project / "src" / PACKAGE_NAME / "cli.py")
+    _run(["git", "add", "-A"], project)
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
+    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
+    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
 
 
 @requires_uv

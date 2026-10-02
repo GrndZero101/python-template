@@ -105,9 +105,9 @@ which rest on your own discipline.
 | No turn ends with a changed file failing the gate, or a failing test | `tools/stop_gate.py` via `Stop` — blocks once, then lets you stop and explain |
 | No direct commits to `main` (merges allowed) | `no-commit-to-branch` at `pre-commit` stage only |
 | Conventional Commit format, every branch | `conventional-pre-commit` (prek, `commit-msg` stage) |
-| Branch consolidated to one commit before merge | *convention — review only* |
-| `main` receives merge commits, never fast-forwards | *convention — review only* |
-| Merge subject describes the work, never `Merge branch '...'` | *convention — `Merge` is exempt from the message check* |
+| Branch consolidated to one commit before merge | `tools/finish_branch.py`, when the branch is finished with it |
+| `main` receives merge commits, never fast-forwards | `tools/finish_branch.py`, when the branch is finished with it |
+| Merge subject describes the work, never `Merge branch '...'` | `tools/finish_branch.py`, when the branch is finished with it — by hand, review only: `Merge` is exempt from the message check |
 | Clean tree before starting work | *convention — `SessionStart` reports it, does not block* |
 | `prek` installed and all three git shims present | `tools/session_doctor.py` via `SessionStart` — reports, does not block |
 | Commit summary ≤72 chars, imperative | *convention — review only* |
@@ -126,151 +126,20 @@ Each `check_conventions.py` rule has an id, and a line opts out of one with `# n
 `# noqa: nested-def` on the `def` line of a closure that genuinely cannot be returned, say. Name
 several ids with commas. Use it rarely and say why in a comment beside it.
 
-## Branching
+## Git
 
-**Never edit on `main`.** Before starting any work, check the branch and the tree:
-
-```bash
-git status --short --branch
-```
-
-- If the tree is dirty, resolve it first — commit it, stash it, or ask. Never start new work on top
-  of someone else's uncommitted changes, because the next commit cannot then be split cleanly.
-- If on `main`, branch before the first edit: `git switch -c <type>/<short-name>`, using the same
-  types as the commit list below (`feat/fetch-retry`, `fix/hook-stderr`, `chore/bump-ruff`).
-
-This is enforced twice, deliberately, because the two catch different mistakes:
-
-| Guard | Fires when | Effect |
-|---|---|---|
-| `PreToolUse` branch guard | `Edit`/`Write` to a file **inside the repo** while on `main` | blocks the edit before it lands |
-| `no-commit-to-branch` | `git commit` on `main` | blocks the commit |
-
-The edit-time guard is the one that matters. Without it, work lands in `main`'s working tree and only
-gets caught at commit, when the fix is a `stash`/`branch`/`pop` dance rather than one command.
-
-*Why: `main` should always be a state you can return to. A dirty `main` working tree means you
-cannot check out anything else without carrying changes along, and you lose the ability to tell what
-was already good from what you are in the middle of.*
-
-**Override**, for a genuine one-line emergency: `touch .allow-main-edit` (gitignored). It disables
-only the edit guard; the commit guard still needs `git commit --no-verify`, which also skips every
-other check. Prefer branching — it costs one command.
-
-## Merging
-
-`main` only ever receives **merge commits** — never a direct commit, never a fast-forward. The merge
-commit is what records that a branch existed and what it was for, so `git log --first-parent main`
-reads as one entry per piece of work while `git log` still has the detail for `bisect`.
-
-Consolidate the branch to a single commit *before* merging. Two paths; prefer the first.
-
-### Squash into a clean branch (default)
-
-```bash
-git switch -c feat/x-wip                  # scratch: commit as often as you like
-# ...work...
-git switch main
-git switch -c feat/x                      # clean branch cut from current main
-git merge --squash feat/x-wip
-git commit -m "feat(x): ..."              # full gate + message check run HERE
-git rebase main                           # resolve conflicts HERE, never on main
-git switch main
-git merge --no-ff -m "feat(x): ..." feat/x   # subject repeats the branch commit's summary
-git branch -D feat/x feat/x-wip
-```
-
-Nothing is rewritten anywhere: `feat/x-wip` sits untouched until you delete it, so a botched
-consolidation costs nothing. And because the consolidation is an ordinary commit on a branch, the
-commit that reaches `main` is exactly the one the full gate inspected.
-
-### Rebase in place (only when the branch holds more than one change)
-
-Squashing forces everything into one commit, which produces exactly the "and" commit the rule below
-forbids when a branch genuinely did two things. Consolidate with autosquash instead:
-
-```bash
-git commit --fixup=HEAD                             # corrections, as you go
-GIT_SEQUENCE_EDITOR=true git rebase --autosquash main
-prek run --all-files                                # REQUIRED — see below
-git switch main && git merge --no-ff --log -m "feat(x): ..." feat/x
-```
-
-**No hooks run during a rebase** — not the gate, not the message check. A rebase that resolved a
-conflict produces a tree nothing has ever checked, so `prek run --all-files` afterwards is not
-optional. For the same reason, never consolidate with an interactive-rebase squash and assume the
-result was verified. It was not.
-
-### The merge message
-
-Always pass `-m`. Git's default subject is `Merge branch 'feat/x'`, which is the one form this repo
-does not use — and also the one form nothing will catch. `commit-msg` *does* fire on
-`git merge --no-ff`, but `conventional-pre-commit` exempts any message beginning with `Merge`, so
-the default sails through while `adds a probe file` is correctly rejected. The convention below is
-therefore review-only in practice, however enforced the rest of the commit rules look.
-
-That is deliberate. The checker's `--strict` flag would close the gap, but it also rejects every
-`fixup!` commit, which the rebase path above depends on. Both merges and fixups stay allowed.
-
-It matters because the merge commit is the only place the work is described. Git records the branch
-name nowhere in the commit — only in the reflog, which is local and expires — so once
-`feat/geo-get-coordinates` is deleted, the merge subject is all that is left.
-
-- **Squash path** (the branch is one commit): the merge subject repeats that commit's conventional
-  summary verbatim. The body carries anything the branch commit does not already say, and nothing
-  otherwise — do not manufacture prose to fill it.
-
-  ```bash
-  git merge --no-ff -m "feat(geo): add coordinate lookup" feat/geo
-  ```
-
-- **Rebase path** (the branch holds several commits): the merge subject summarises the branch as a
-  whole, and `--log` populates the body with the commits that arrived, so the "and" the subject
-  cannot contain lands in the body instead.
-
-  ```bash
-  git merge --no-ff --log -m "feat(geo): add lookup and caching" feat/geo
-  ```
-
-Once there is a remote and PRs exist, add a `Refs: #N` trailer. Footers are part of the Conventional
-Commits spec; branch names are not.
-
-### Never resolve conflicts on `main`
-
-Bring `main` into the branch and resolve there, so the merge into `main` is always clean. This is not
-just hygiene: git runs `pre-commit` rather than `pre-merge-commit` when you commit a *resolved*
-merge, so `no-commit-to-branch` blocks you mid-merge and leaves it half-applied. The `PreToolUse`
-guard stops you editing the conflicted file on `main` in the first place.
-
-### Checkpointing broken work
-
-Scratch commits still use Conventional Commit form — `chore(x): wip` costs nothing and keeps the
-history readable while it exists. But half-written code will not pass `ty`, so skip the *code* gate
-without skipping the *message* check:
-
-```bash
-SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,conventions git commit -m "chore(x): wip"
-```
-
-`git commit --no-verify` is the wrong tool here — it skips the message check too. Worth an alias:
-
-```bash
-git config alias.wip '!SKIP=ruff-check,ruff-format,ty,rumdl-fmt,rumdl,conventions git commit'
-```
-
-## Commits
-
-[Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary`.
-
-- Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `revert`.
-- Summary in the imperative, lower case, no trailing period, ≤72 characters.
-- Scope is optional and is a module or area, e.g. `feat(cli): add --output csv`.
-- Breaking changes get a `!` before the colon *and* a `BREAKING CHANGE:` footer.
-- Body explains **why**, not what — the diff already says what.
-- One logical change per commit. If the summary needs "and", split it.
-
-*Why: the type prefix is what makes history greppable and changelogs derivable, and it forces
-the "is this one change?" question at the point where it is cheap to fix.*
+- **Never edit on `main`.** Check `git status --short --branch` first. On `main`, branch before the
+  first edit: `git switch -c <type>/<short-name>`, e.g. `feat/fetch-retry`. A dirty tree you did
+  not make: resolve it or ask before starting.
+- **Conventional Commits:** `type(scope): summary` — imperative, lower case, no period, at most 72
+  characters; the body says why. Types: `feat` `fix` `docs` `refactor` `test` `chore` `build` `ci`
+  `perf` `style` `revert`. One logical change per commit: if the summary needs "and", split it.
+- **Finish a branch with the script, never by hand:**
+  `uv run python tools/finish_branch.py "feat(x): summary"`. It squashes, gates, and merges into
+  `main` with `--no-ff`; `--keep-commits` keeps several commits when the branch holds several
+  changes.
+- Checkpointing broken work, a conflict with `main`, the merge message, and the reasons for all of
+  it: the **git-workflow** skill.
 
 ## Commands
 

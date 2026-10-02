@@ -76,5 +76,6 @@ repos:
       - id: conventions
         name: CLAUDE.md conventions (tools/check_conventions.py)
         entry: uv run python tools/check_conventions.py
+        exclude: ^\.claude/  # skill reference files; see extend-exclude in pyproject.toml
         language: system
         types: [python]

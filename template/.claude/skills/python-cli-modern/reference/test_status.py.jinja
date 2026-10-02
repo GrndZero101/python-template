@@ -1,0 +1,108 @@
+"""The `status` command, piece by piece and end to end through `main`.
+
+The pieces take a client, so they get one backed by `httpx.MockTransport`. Through `main` the
+command builds its own client, so the test replaces the factory it calls — `status.build_client` —
+with one that returns a mock-backed client.
+"""
+
+import functools
+import json
+
+import httpx
+import pytest
+
+from {{ package_name }} import status
+from {{ package_name }}.cli import main
+from {{ package_name }}.http_client import build_client
+from {{ package_name }}.status import Probe, probe, probe_all
+
+ROUTES = {
+    "https://up.example.test/": 200,
+    "https://missing.example.test/": 404,
+}
+
+
+def _route(request: httpx.Request) -> httpx.Response:
+    """MockTransport handler: answer from ROUTES, and refuse to connect to anything else."""
+    code = ROUTES.get(str(request.url))
+    if code is None:
+        msg = "connection refused"
+        raise httpx.ConnectError(msg, request=request)
+    return httpx.Response(code)
+
+
+def _no_wait(_seconds: float) -> None:
+    """Stand in for time.sleep, so retries cost nothing."""
+
+
+def _mock_client() -> httpx.Client:
+    return build_client(transport=httpx.MockTransport(_route), sleep=_no_wait)
+
+
+# --- the pieces ---------------------------------------------------------------------------
+
+
+def test_a_url_that_answers_is_ok() -> None:
+    with _mock_client() as client:
+        assert probe(client, "https://up.example.test/") == Probe(
+            url="https://up.example.test/", status=200, ok=True
+        )
+
+
+def test_an_error_status_is_not_ok() -> None:
+    with _mock_client() as client:
+        result = probe(client, "https://missing.example.test/")
+    assert (result.status, result.ok) == (404, False)
+
+
+def test_an_unreachable_url_is_reported_not_raised() -> None:
+    with _mock_client() as client:
+        result = probe(client, "https://down.example.test/")
+    assert result.status is None
+    assert result.error is not None
+    assert "ConnectError" in result.error
+
+
+def test_every_url_is_probed_in_order() -> None:
+    urls = ["https://missing.example.test/", "https://up.example.test/"]
+    with _mock_client() as client:
+        assert [result.url for result in probe_all(client, urls)] == urls
+
+
+# --- through main -------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mocked_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the command's own client one backed by the routes above."""
+    factory = functools.partial(build_client, transport=httpx.MockTransport(_route), sleep=_no_wait)
+    monkeypatch.setattr(status, "build_client", factory)
+
+
+@pytest.mark.usefixtures("mocked_network")
+def test_json_is_one_array_with_one_object_per_url(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["status", "https://up.example.test/", "-o", "json"]) == 0
+    assert json.loads(capsys.readouterr().out) == [
+        {"url": "https://up.example.test/", "status": 200, "ok": True, "error": None}
+    ]
+
+
+@pytest.mark.usefixtures("mocked_network")
+def test_any_failure_exits_1_and_still_reports_every_url(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    urls = ["https://up.example.test/", "https://missing.example.test/"]
+    assert main(["status", *urls, "-o", "json"]) == 1
+    statuses = [result["status"] for result in json.loads(capsys.readouterr().out)]
+    assert statuses == [200, 404]
+
+
+@pytest.mark.usefixtures("mocked_network")
+def test_the_default_is_a_table(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["status", "https://up.example.test/"]) == 0
+    assert "Status" in capsys.readouterr().out
+
+
+def test_no_url_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["status"]) == 2
+    assert not capsys.readouterr().out

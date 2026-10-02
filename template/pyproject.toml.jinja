@@ -46,6 +46,10 @@ dev = [
 # ---------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
+# Skill reference files are templates for code that lives elsewhere: they import modules that
+# exist only once copied, and tests there need tests/'s exemptions. The generation tests copy them
+# where they belong and gate them there; the conventions hook and ty skip them likewise.
+extend-exclude = [".claude"]
 target-version = "py{{ python_version | replace('.', '') }}"
 preview = true  # required: several rules below are preview rules, and `ignore` names rules
 
@@ -115,6 +119,7 @@ max-returns = 6
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use bare literals, and poke at internals — all fine there.
 "tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
+"tools/tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
 # The checker's whole job is printing findings, to stderr.
 "tools/**" = ["T20"]
 # Invoking an external tool IS this module's purpose, so the subprocess warnings cannot be
@@ -140,6 +145,9 @@ tables = false
 # ---------------------------------------------------------------------------
 # ty — replaces mypy
 # ---------------------------------------------------------------------------
+[tool.ty.src]
+exclude = [".claude"]  # see extend-exclude under [tool.ruff]
+
 [tool.ty.environment]
 # tools/ is not a package, so ty needs it named explicitly to resolve its tests.
 extra-paths = ["tools"]
@@ -157,5 +165,7 @@ strict_parametrization_ids = true   # two parametrized cases with the same id ar
 # the code breaking at the dependency's next major version. Silence a specific, understood warning
 # with its own "ignore:..." line below this one; never remove this line.
 filterwarnings = ["error"]
-testpaths = ["tests"]
+# tests/ is the product's suite. tools/tests/ tests the template's machinery — the hooks and the
+# conventions checker — kept apart so tests/ holds only what a new test should be modelled on.
+testpaths = ["tests", "tools/tests"]
 pythonpath = ["tools"]  # so the hooks and the conventions checker are importable by their tests
