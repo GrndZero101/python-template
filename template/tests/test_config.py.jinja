@@ -103,7 +103,7 @@ SETTINGS_FIELDS = sorted(Settings.model_fields)
 
 
 def test_overrides_declare_every_setting() -> None:
-    """Step 1 of config.py's recipe: a field in `Settings` must also be in `_Overrides`."""
+    """Step 1 of the add-a-setting recipe: a field in `Settings` must also be in `_Overrides`."""
     assert sorted(config._Overrides.__annotations__) == SETTINGS_FIELDS
 
 
