@@ -15,18 +15,18 @@ def deploy(
     """Deploy to an environment."""
 ```
 
-Never the older default-value form (`retries: int = typer.Option(3)`). The lint story is a partial
-trap:
+Never the older default-value form (`retries: int = typer.Option(3)`). The convention hook's
+`typer-default` rule refuses it, whatever the annotation. Ruff alone would not:
 
-- **`B008`** fires on `typer.Option()` in a default slot — but *only* when the annotation is mutable
-  or non-stdlib. `str` and `int` escape it. So a codebase in the old style lints clean until the
-  first `list[str]` option, and by then the fix is a signature rewrite.
+- **`B008`** fires on `typer.Option()` in a default slot only when the annotation is mutable or
+  non-stdlib, so `str` and `int` escape it — and its advice, a module-level singleton, is the wrong
+  fix for typer. `typer.Argument` and `typer.Option` are therefore listed in bugbear's
+  `extend-immutable-calls`, which leaves `B008` on for everything else.
 - **`FAST002` does not help.** It is FastAPI-specific and does not fire on typer code, despite the
-  shapes looking identical. Do not expect the linter to catch this.
+  shapes looking identical.
 
-With `Annotated` the call sits inside the annotation rather than the default slot, so `B008` cannot
-fire. Do **not** relax `B008` for a CLI module to permit the old style — it is a real bug detector
-for ordinary code in the same file, and `Annotated` removes the need entirely.
+With `Annotated` the call sits inside the annotation, and the real default after `=`:
+`typer.Option(3)` becomes `= 3`, and `typer.Argument(...)` becomes no default at all.
 
 Command bodies unpack and delegate. The decorated function belongs to typer; the work belongs in a
 plain annotated function you can call with literal arguments.

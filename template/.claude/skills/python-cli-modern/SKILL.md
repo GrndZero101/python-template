@@ -26,7 +26,8 @@ a command that calls an API, start from `reference/status.py` instead — the ne
    - a renderer: a rich table for `table`, `sys.stdout.write` of JSON for `json`;
    - `<name>_command(ctx: typer.Context, ..., output: OutputOption = None) -> None`, which calls
      `load_settings(verbose=global_options(ctx).verbose, output=output)`, delegates, and raises
-     `typer.Exit(1)` on a runtime failure. Nothing else.
+     `typer.Exit(1)` on a runtime failure. Nothing else. A positional argument is
+     `names: Annotated[list[str], typer.Argument(help="...")]`, with no default.
 2. **Register it in `src/<package>/cli.py`**, beside `about`:
 
    ```python
@@ -56,7 +57,9 @@ cp .claude/skills/python-cli-modern/reference/test_status.py tests/
 They pass the gate and their tests exactly as copied (a generation test proves it). Then rename
 `status` to your command and register it as in the first recipe. `build_client()` gives per-phase
 timeouts, a User-Agent, retries on 429 and 5xx honouring `Retry-After`, `HTTPS_PROXY` and
-`NO_PROXY`, and a debug line per request. Tests replace the network with `httpx.MockTransport`;
+`NO_PROXY`, and a debug line per request. An API with a rate policy needs the first retry no
+sooner than it allows: `build_client(backoff=1.0)` for one request per second, or `attempts=1` to
+never retry. Tests replace the network with `httpx.MockTransport`;
 `test_status.py` shows both ways — passing a client to a function, and replacing `build_client`
 for a test through `main`.
 

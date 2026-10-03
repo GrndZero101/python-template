@@ -207,6 +207,24 @@ VIOLATIONS = {
                 raise SystemExit(1)
         """,
     ),
+    "typer option as a default": (
+        "typer-default",
+        """
+        import typer
+
+        def command(count: int = typer.Option(3, help="how many")):
+            return count
+        """,
+    ),
+    "typer argument as a keyword-only default": (
+        "typer-default",
+        """
+        from typer import Argument as Arg
+
+        def command(*, urls: list[str] = Arg(...)):
+            return urls
+        """,
+    ),
 }
 
 EXEMPTIONS = {
@@ -354,6 +372,23 @@ EXEMPTIONS = {
         def command(names):
             if not names:
                 raise typer.Exit(2)
+    """,
+    "typer calls in the annotation": """
+        from typing import Annotated
+
+        import typer
+
+        def command(
+            urls: Annotated[list[str], typer.Argument(help="URLs")],
+            count: Annotated[int, typer.Option(help="how many")] = 3,
+        ):
+            return urls, count
+    """,
+    "an Option that is not typer's": """
+        from optparse import Option
+
+        def make(option=Option("-x")):
+            return option
     """,
     "noqa naming several rules": """
         def parse(text):

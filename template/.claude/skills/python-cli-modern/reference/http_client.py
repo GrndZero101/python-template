@@ -11,7 +11,8 @@ What `build_client` sets up, and why each one:
 - **A descriptive User-Agent**, `<script>/<version>`, so the API's operators can see who is calling.
 - **Retry on 429 and 5xx, honouring `Retry-After`.** httpx's own `retries=` covers only failures
   to *connect*, never a status code. Only idempotent methods are retried: repeating a POST that
-  the server may already have acted on is not safe.
+  the server may already have acted on is not safe. `backoff=` sets the first wait, for an API
+  with a rate policy.
 - **A debug line per request and response**, visible with `-v`, on stderr through loguru.
 - **Proxies from the environment**: `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, a
   `NO_PROXY` entry exempting its host and every host under it. httpx ignores those variables as soon as a client is given
@@ -38,7 +39,7 @@ DEFAULT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 MAX_ATTEMPTS = 3
-BACKOFF_SECONDS = 0.5  # doubled after each failed attempt
+BACKOFF_SECONDS = 0.5  # the first wait, doubled after each failed attempt; see build_client
 MAX_DELAY_SECONDS = 30.0  # a Retry-After longer than this is capped, not obeyed
 CONNECT_RETRIES = 2  # httpx's own retries, for failures to connect only
 
@@ -66,11 +67,16 @@ def parse_retry_after(value: str, now: datetime) -> float | None:
     return max((when - now).total_seconds(), 0.0)
 
 
-def retry_delay(response: httpx.Response, attempt: int, now: datetime) -> float:
-    """Return how long to wait before the next attempt, preferring the server's `Retry-After`."""
+def retry_delay(
+    response: httpx.Response, attempt: int, now: datetime, *, backoff: float = BACKOFF_SECONDS
+) -> float:
+    """Return how long to wait before the next attempt, preferring the server's `Retry-After`.
+
+    Without one, the wait is `backoff` after the first attempt, doubling after each one after.
+    """
     header = response.headers.get("Retry-After")
     asked = parse_retry_after(header, now) if header is not None else None
-    delay = asked if asked is not None else BACKOFF_SECONDS * 2 ** (attempt - 1)
+    delay = asked if asked is not None else backoff * 2 ** (attempt - 1)
     return min(delay, MAX_DELAY_SECONDS)
 
 
@@ -82,11 +88,13 @@ class RetryTransport(httpx.BaseTransport):
         inner: httpx.BaseTransport,
         *,
         attempts: int = MAX_ATTEMPTS,
+        backoff: float = BACKOFF_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._inner = inner
         self._attempts = attempts
+        self._backoff = backoff
         self._sleep = sleep
         self._now = now
 
@@ -95,7 +103,7 @@ class RetryTransport(httpx.BaseTransport):
         attempt = 1
         response = self._inner.handle_request(request)
         while self._should_retry(request, response, attempt):
-            delay = retry_delay(response, attempt, self._now())
+            delay = retry_delay(response, attempt, self._now(), backoff=self._backoff)
             logger.debug(
                 "{} {} -> {}; retrying in {:.1f}s",
                 request.method,
@@ -189,17 +197,22 @@ def build_client(
     transport: httpx.BaseTransport | None = None,
     timeout: httpx.Timeout = DEFAULT_TIMEOUT,
     attempts: int = MAX_ATTEMPTS,
+    backoff: float = BACKOFF_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
 ) -> httpx.Client:
     """Return a client with timeouts, a User-Agent, status retries, proxies and debug logging.
 
     Use it as a context manager at the command boundary and pass it down. `transport` is for
     tests: an `httpx.MockTransport` there means nothing touches the network.
+
+    A retry waits `backoff` seconds, then twice that, unless the server sends `Retry-After`. An API
+    with a rate policy needs it no shorter than the policy allows: Nominatim's one request per
+    second means `backoff=1.0`. `attempts=1` turns retries off altogether.
     """
     if transport is None:
         transport = EnvironmentProxyTransport(urllib.request.getproxies_environment())
     return httpx.Client(
-        transport=RetryTransport(transport, attempts=attempts, sleep=sleep),
+        transport=RetryTransport(transport, attempts=attempts, backoff=backoff, sleep=sleep),
         timeout=timeout,
         headers={"User-Agent": user_agent()},
         event_hooks={"request": [_log_request], "response": [_log_response]},
