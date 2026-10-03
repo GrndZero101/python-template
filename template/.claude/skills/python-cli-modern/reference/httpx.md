@@ -1,9 +1,9 @@
 # httpx
 
 **Start from `http_client.py` in this directory** rather than building a client yourself: it is
-tested, and sets per-phase timeouts, a User-Agent, status retries honouring `Retry-After`, and debug
-logging. `status.py` shows a command using it. What follows is why, and how to test code that takes
-a client.
+tested, and sets per-phase timeouts, a User-Agent, status retries honouring `Retry-After`, proxies
+from the environment, and debug logging. `status.py` shows a command using it. What follows is
+why, and how to test code that takes a client.
 
 ```python
 def fetch_records(client: httpx.Client, *, page_size: int = 100) -> Iterator[Record]:
@@ -20,6 +20,10 @@ Sequential and synchronous by default. Reach for `httpx.AsyncClient` only for fa
 - **`HTTPTransport(retries=N)` retries connection failures only — not 429 or 5xx.** Nearly
   everyone assumes otherwise. `http_client.py`'s `RetryTransport` adds status retries, honouring
   `Retry-After`, for idempotent methods only.
+- **Any `transport=` switches off `HTTPS_PROXY` and `NO_PROXY`.** httpx reads the proxy variables
+  only when it builds its own transports, so a client given one silently connects direct — behind
+  a corporate proxy, it simply fails. `http_client.py`'s `EnvironmentProxyTransport` reads them
+  back; keep it under any transport you add in production.
 - **Test through `httpx.MockTransport`**, never the network. A handler is a plain module-level
   function, bound with `functools.partial` rather than a lambda or a nested `def`:
 

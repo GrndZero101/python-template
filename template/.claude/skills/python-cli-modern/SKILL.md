@@ -55,9 +55,10 @@ cp .claude/skills/python-cli-modern/reference/test_status.py tests/
 
 They pass the gate and their tests exactly as copied (a generation test proves it). Then rename
 `status` to your command and register it as in the first recipe. `build_client()` gives per-phase
-timeouts, a User-Agent, retries on 429 and 5xx honouring `Retry-After`, and a debug line per
-request. Tests replace the network with `httpx.MockTransport`; `test_status.py` shows both ways —
-passing a client to a function, and replacing `build_client` for a test through `main`.
+timeouts, a User-Agent, retries on 429 and 5xx honouring `Retry-After`, `HTTPS_PROXY` and
+`NO_PROXY`, and a debug line per request. Tests replace the network with `httpx.MockTransport`;
+`test_status.py` shows both ways — passing a client to a function, and replacing `build_client`
+for a test through `main`.
 
 Prefer a credible vendor SDK (`boto3`, `google-cloud-*`, `azure-*`, `PyGithub`, `kubernetes`) when
 one covers the service: it already handles auth refresh, pagination and retries. Either way, the
