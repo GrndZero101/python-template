@@ -33,7 +33,9 @@ Every rule here exists so a human can stop the program and inspect it.
   for module-level mutable state.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
 - Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
-  `raise ... from None`, which discards the cause just as surely.
+  `raise ... from None`, which discards the cause just as surely. That includes an exit:
+  `raise typer.Exit(1) from e` on its own still swallows `e`, because nothing prints an exit's
+  cause. Name `e` in the error message and log it too.
   *Why: a bare `except: pass` destroys the traceback that tells you where it started.*
 - Diagnostics go to a configured logger writing to **stderr**; data goes out with
   `sys.stdout.write`. Never `print`, not even in a `__main__` block. Stdlib `logging` by default;
@@ -90,6 +92,9 @@ which rest on your own discipline.
 | Never `raise ... from None` | `tools/check_conventions.py` `raise-from-none` — `B904` accepts it |
 | No `getattr`/`setattr`/`delattr` with a computed name | `tools/check_conventions.py` `dynamic-attribute` |
 | A module defining `main` has an `if __name__ == "__main__":` block | `tools/check_conventions.py` `missing-main-guard` |
+| An exit from an `except` reports what it caught | `tools/check_conventions.py` `silent-exit` |
+| An HTTP client comes from `build_client`, never a bare `httpx.Client()` | `tools/check_conventions.py` `raw-httpx-client` |
+| Tests replace the network with `httpx.MockTransport`, never by patching httpx | `tools/check_conventions.py` `patched-httpx` |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |

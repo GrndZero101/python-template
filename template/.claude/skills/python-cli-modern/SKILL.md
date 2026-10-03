@@ -92,6 +92,9 @@ defaults to `None` and typer's `envvar=` is not used: `reference/configuration.m
   captured stderr; `caplog` sees nothing. `reference/logging.md`.
 - **`main` returns an exit code** through `run_app`; never `sys.exit` below the `__main__` block,
   and never `import click` — typer 0.27 vendors it. `reference/typer.md`.
+- **A runtime failure names its cause.** In the `except` that exits, put the exception in the
+  stderr message and log it, as `status.py` does: `logger.opt(exception=exc).debug(...)`, then
+  `raise typer.Exit(1) from exc`. typer never prints an exit's cause, so `from exc` alone hides it.
 - **pydantic `BaseModel` at the edges** (API responses, output shapes), dataclasses inside.
   `reference/models.md`.
 

@@ -12,13 +12,17 @@ listed, separated by commas — and the comment beside it should say why.
 | `raise-from-none` | `raise ... from None` |
 | `dynamic-attribute` | `getattr`, `setattr` or `delattr` with a computed attribute name |
 | `missing-main-guard` | a module that defines `main` with no `if __name__ == "__main__":` |
+| `raw-httpx-client` | an httpx client, or an `httpx.get`-style call, built outside `build_client` |
+| `patched-httpx` | `patch`, `patch.object` or `setattr` aimed at httpx itself |
+| `silent-exit` | an exit raised from an `except` that never reports the exception it caught |
 """
 
 import ast
 import dataclasses
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import TypeGuard
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
@@ -26,6 +30,22 @@ DYNAMIC_ATTRIBUTE_CALLS = frozenset({"getattr", "setattr", "delattr"})
 ATTRIBUTE_NAME_ARG = 1  # getattr(obj, name, ...): the name is the second positional argument
 NOQA_MARK = "# noqa:"
 NOQA_SEPARATORS = re.compile(r"[,\s]+")
+HTTPX_CLIENTS = frozenset({"Client", "AsyncClient"})
+# httpx's module-level shortcuts, each of which builds a throwaway client with the defaults.
+HTTPX_SHORTCUTS = frozenset({
+    "get",
+    "post",
+    "put",
+    "patch",
+    "delete",
+    "head",
+    "options",
+    "request",
+    "stream",
+})
+CLIENT_FACTORY = "build_client"
+PATCHERS = frozenset({"patch", "object", "setattr"})
+EXIT_EXCEPTIONS = frozenset({"Exit", "Abort", "SystemExit"})
 
 
 @dataclasses.dataclass(frozen=True)
@@ -219,12 +239,189 @@ def main_guard_hits(tree: ast.Module) -> list[Hit]:
     return [Hit(main_def.lineno, "missing-main-guard", message)]
 
 
+@dataclasses.dataclass(frozen=True)
+class HttpxNames:
+    """How a module refers to httpx: the names bound to the module, and to its members."""
+
+    modules: frozenset[str]
+    members: dict[str, str]  # local name -> the httpx attribute it was imported as
+
+
+def httpx_names(tree: ast.Module) -> HttpxNames:
+    """Collect `import httpx [as h]` and `from httpx import Client [as C]` bindings."""
+    modules: set[str] = set()
+    members: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            aliases = [alias for alias in node.names if alias.name == "httpx"]
+            modules.update(alias.asname or "httpx" for alias in aliases)
+        elif isinstance(node, ast.ImportFrom) and node.module == "httpx":
+            members.update({alias.asname or alias.name: alias.name for alias in node.names})
+    return HttpxNames(frozenset(modules), members)
+
+
+def _httpx_attribute(node: ast.expr, names: HttpxNames) -> str | None:
+    """Return the httpx attribute `node` names, as `httpx.Client` or an imported `Client`."""
+    if isinstance(node, ast.Name):
+        return names.members.get(node.id)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        return node.attr if node.value.id in names.modules else None
+    return None
+
+
+def _rooted_in_httpx(node: ast.expr, names: HttpxNames) -> bool:
+    """Return whether `node` is httpx or something reached from it, e.g. `httpx.Client.get`."""
+    root = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name):
+        return False
+    return root.id in names.modules or root.id in names.members
+
+
+def _calls_outside(tree: ast.Module, factory: str) -> Iterator[ast.Call]:
+    """Yield every call in `tree` that is not inside a function named `factory`."""
+    pending: list[ast.AST] = [tree]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, FunctionNode) and node.name == factory:
+            continue
+        if isinstance(node, ast.Call):
+            yield node
+        pending.extend(ast.iter_child_nodes(node))
+
+
+def _real_client(call: ast.Call, names: HttpxNames) -> str | None:
+    """Return what `call` builds if it is an httpx client that would reach the network.
+
+    A client given `transport=` is a test double — `MockTransport`, `ASGITransport` — so it
+    passes, as does one given `**kwargs`, where the transport cannot be seen.
+    """
+    attribute = _httpx_attribute(call.func, names)
+    if attribute in HTTPX_SHORTCUTS:
+        return f"httpx.{attribute}()"
+    if attribute not in HTTPX_CLIENTS:
+        return None
+    keywords = {keyword.arg for keyword in call.keywords}
+    if "transport" in keywords or None in keywords:
+        return None
+    return f"httpx.{attribute}()"
+
+
+def client_hits(tree: ast.Module) -> list[Hit]:
+    """Return `raw-httpx-client` hits: clients built anywhere but `build_client`."""
+    names = httpx_names(tree)
+    if not names.modules and not names.members:
+        return []
+    hits: list[Hit] = []
+    for call in _calls_outside(tree, CLIENT_FACTORY):
+        built = _real_client(call, names)
+        if built is None:
+            continue
+        message = (
+            f"`{built}` builds a client with no retries, no User-Agent and default timeouts. "
+            f"Call `{CLIENT_FACTORY}()` from `http_client.py` in the command, and pass the client "
+            "down. No `http_client.py` yet? Copy it and its test from "
+            "`.claude/skills/python-cli-modern/reference/` — the python-cli-modern skill, "
+            '"Recipe: call an HTTP API".'
+        )
+        hits.append(Hit(call.lineno, "raw-httpx-client", message))
+    return hits
+
+
+def _called_name(func: ast.expr) -> str | None:
+    """Return the last name in `func`: `patch`, `object` in `mock.patch.object`, `Exit`."""
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return None
+
+
+def _patches_httpx(call: ast.Call, names: HttpxNames) -> bool:
+    """Return whether `call` patches httpx itself, by object or by dotted string."""
+    if _called_name(call.func) not in PATCHERS or not call.args:
+        return False
+    target = call.args[0]
+    if isinstance(target, ast.Constant) and isinstance(target.value, str):
+        return target.value.split(".")[0] == "httpx"
+    return _rooted_in_httpx(target, names)
+
+
+def patch_hits(tree: ast.Module) -> list[Hit]:
+    """Return `patched-httpx` hits."""
+    names = httpx_names(tree)
+    message = (
+        "this patches httpx itself, for every caller at once, and hides what the code under test "
+        "sends. Give it a client built with `transport=httpx.MockTransport(handler)` instead: "
+        "pass one to the function, or replace the command module's `build_client` for a test "
+        "through `main`. `.claude/skills/python-cli-modern/reference/test_status.py` shows both."
+    )
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    patches = [call for call in calls if _patches_httpx(call, names)]
+    return [Hit(call.lineno, "patched-httpx", message) for call in patches]
+
+
+def _raises_exit(node: ast.AST) -> TypeGuard[ast.Raise]:
+    """Return whether `node` raises `typer.Exit`, `typer.Abort` or `SystemExit`."""
+    if not isinstance(node, ast.Raise) or node.exc is None:
+        return False
+    raised = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+    return _called_name(raised) in EXIT_EXCEPTIONS
+
+
+def _reports(handler: ast.ExceptHandler) -> bool:
+    """Return whether the handler uses the exception it caught anywhere but a `from` clause."""
+    if handler.name is None:
+        return False
+    causes: set[int] = set()
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Raise) and node.cause is not None:
+            causes.add(id(node.cause))
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Name) and node.id == handler.name and id(node) not in causes:
+            return True
+    return False
+
+
+def _is_interrupt(handler: ast.ExceptHandler) -> bool:
+    """Return whether the handler catches only Ctrl-C, whose cause the user already knows."""
+    return isinstance(handler.type, ast.Name) and handler.type.id == "KeyboardInterrupt"
+
+
+def exit_hits(tree: ast.Module) -> list[Hit]:
+    """Return `silent-exit` hits: an exit from an `except` that drops what it caught."""
+    hits: list[Hit] = []
+    reported: set[int] = set()  # a raise inside nested handlers is reported once, by the outer
+    for handler in ast.walk(tree):
+        if not isinstance(handler, ast.ExceptHandler) or _is_interrupt(handler):
+            continue
+        if _reports(handler):
+            continue
+        caught = handler.name or "exc"
+        message = (
+            "this exit drops the exception it caught: typer never prints an exit's cause, so the "
+            f"user sees no reason and `-v` shows nothing. Bind it (`except ... as {caught}`), put "
+            f"it in the stderr message (`{{{caught}}}`) and log it with "
+            f'`logger.opt(exception={caught}).debug("...")` before exiting.'
+        )
+        exits = [node for node in ast.walk(handler) if _raises_exit(node)]
+        for exit_raise in exits:
+            if id(exit_raise) not in reported:
+                reported.add(id(exit_raise))
+                hits.append(Hit(exit_raise.lineno, "silent-exit", message))
+    return hits
+
+
 RULES: tuple[Callable[[ast.Module], list[Hit]], ...] = (
     scope_hits,
     comprehension_hits,
     raise_hits,
     attribute_hits,
     main_guard_hits,
+    client_hits,
+    patch_hits,
+    exit_hits,
 )
 
 
