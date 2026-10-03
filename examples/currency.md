@@ -24,8 +24,11 @@ GET https://api.frankfurter.dev/v1/latest?base=<BASE>&symbols=<QUOTE>
 
 - Use the `.dev` host directly. `api.frankfurter.app` answers with a 301, and `httpx` does not
   follow redirects by default.
-- The response is `{"base": ..., "date": "YYYY-MM-DD", "rates": {"<QUOTE>": <number>}}`. A quote
-  currency it does not publish is simply absent from `rates`.
+- The response is `{"amount": 1.0, "base": ..., "date": "YYYY-MM-DD", "rates": {"<QUOTE>":
+  <number>}}`.
+- A currency code it does not publish, as base or quote, is a **404** with
+  `{"message": "not found"}`. The same code on both sides is a **422** with
+  `{"message": "bad currency pair"}`.
 
 ## Arithmetic
 
@@ -52,8 +55,8 @@ The conversion itself should be a pure function of the rate, the amount and the 
 | Situation | Exit | stdout | stderr |
 |---|---|---|---|
 | `PAIR` is not `XXX/YYY`, or `AMOUNT` / `--margin` is not a number | 2 | empty | names the bad value and the expected form |
-| Quote currency not published against the base | 1 | empty | names both currencies |
-| Service unreachable or HTTP error | 1 | empty | names the URL that failed |
+| Currency not published (404), or base equal to quote (422) | 1 | empty | names both currencies and the service's message |
+| Service unreachable, or any other HTTP error | 1 | empty | names the URL that failed |
 | `AMOUNT` or `PAIR` missing | 2 | empty | the command's help, then the error |
 
 ## Tests that should exist
@@ -65,7 +68,8 @@ All offline — no test may reach the network.
 - Zero margin leaves the interbank amount untouched; a positive margin reduces what is received.
 - The margin cost reconciles exactly, and amounts round to cents.
 - A rate in the response body never becomes a float, e.g. a long rate survives digit for digit.
-- An unpublished quote currency is an error; an HTTP error status propagates.
+- An unpublished currency (404) and a same-currency pair (422) are errors naming both currencies;
+  any other HTTP error status propagates.
 - A client passed in by the caller is not closed.
 - JSON keeps decimals as strings.
 - Each failure row above: correct exit code, empty stdout.

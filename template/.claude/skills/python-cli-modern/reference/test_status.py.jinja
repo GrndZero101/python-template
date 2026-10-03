@@ -10,11 +10,12 @@ import json
 
 import httpx
 import pytest
+import typer
 
 from {{ package_name }} import status
 from {{ package_name }}.cli import main
 from {{ package_name }}.http_client import build_client
-from {{ package_name }}.status import Probe, probe, probe_all
+from {{ package_name }}.status import Probe, parse_url, probe, probe_all
 
 ROUTES = {
     "https://up.example.test/": 200,
@@ -40,6 +41,17 @@ def _mock_client() -> httpx.Client:
 
 
 # --- the pieces ---------------------------------------------------------------------------
+
+
+def test_an_http_or_https_url_is_accepted() -> None:
+    assert parse_url("https://up.example.test/") == "https://up.example.test/"
+    assert parse_url("http://up.example.test/") == "http://up.example.test/"
+
+
+@pytest.mark.parametrize("raw", ["up.example.test", "ftp://up.example.test/", ""])
+def test_anything_else_is_a_bad_parameter_naming_it(raw: str) -> None:
+    with pytest.raises(typer.BadParameter, match=repr(raw)):
+        parse_url(raw)
 
 
 def test_a_url_that_answers_is_ok() -> None:
@@ -106,3 +118,11 @@ def test_the_default_is_a_table(capsys: pytest.CaptureFixture[str]) -> None:
 def test_no_url_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["status"]) == 2
     assert not capsys.readouterr().out
+
+
+def test_a_bad_url_is_a_usage_error_naming_it(capsys: pytest.CaptureFixture[str]) -> None:
+    """Rejected while parsing, so no client is built and nothing is probed."""
+    assert main(["status", "https://up.example.test/", "up.example.test"]) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "'up.example.test'" in captured.err

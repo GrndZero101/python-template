@@ -207,16 +207,17 @@ From the currency run with sonnet, reviewed in
   edit, so every run prompted on its first step. `Bash(git switch:*)`, `Bash(git add:*)` and
   `Bash(git commit:*)` added to `template/.claude/settings.json`; the commit hooks gate commits
   anyway. `python3` left off: its prompt is the one nudge towards Write and Edit, which are gated.
-- [ ] **No recipe for a validated argument.** AMOUNT, PAIR and `--margin` were typed `str` and
-  checked by a hand-rolled `_usage_error`, giving `<str>` metavars and an ad-hoc message.
-  `Annotated[Decimal, typer.Argument(parser=_dec, metavar="AMOUNT")]`, `_dec` raising
-  `typer.BadParameter`, exits 2 with "Invalid value for 'AMOUNT': …" (verified on typer 0.27.2).
-  A recipe in `SKILL.md` and `reference/typer.md`, and a worked parser with its test in
-  `reference/status.py` — a `--timeout`, say.
-- [ ] **`examples/currency.md` disagrees with Frankfurter.** It says an unpublished quote is
-  absent from `rates`; live, an unknown code is a 404 and `GBP/GBP` a 422. Fix the spec and its
-  failure table. In "Recipe: call an HTTP API", one step: run each failure case once against the
-  real service and mock what it returns.
+- [x] **No recipe for a validated argument.** AMOUNT, PAIR and `--margin` were typed `str` and
+  checked by a hand-rolled `_usage_error`, giving `<str>` metavars and an ad-hoc message. Now
+  "Recipe: a validated argument" in `SKILL.md`: a `parse_<thing>` raising `typer.BadParameter`,
+  wired with `parser=` and a metavar, the annotation typed as what it returns, tested directly
+  and through `main`. `reference/status.py` has a worked one, `parse_url`, with its tests. Probed
+  on typer 0.27.2 first: `parser=` works on a `list[str]` argument and a `Decimal` option, exit 2
+  through typer's own message; an argument's help shows the parser's name as its type.
+- [x] **`examples/currency.md` disagreed with Frankfurter.** Probed live: an unknown code, base or
+  quote, is a 404 `{"message": "not found"}`; `GBP/GBP` a 422 `{"message": "bad currency
+  pair"}`. The spec, its failure table and its test list now say so. "Recipe: call an HTTP API"
+  says to provoke each failure once against the real service and mock what it returns.
 - [x] **`reference/test_status.py` patches `status.build_client`**, which the model copied,
   while `CLAUDE.md` says to inject dependencies. `CLAUDE.md` now names it as the one sanctioned
   patch, for a command's end-to-end test through `main`.
