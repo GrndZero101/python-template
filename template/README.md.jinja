@@ -21,7 +21,7 @@ by lint config and a `prek` gate — not just documented and hoped for.
   re-checks every changed file and runs the tests before a turn ends), `gate_log.py` (one line per
   gate run in the gitignored `.gate.log`), `session_doctor.py` (the `SessionStart` hook that
   reports the branch, and any guard switched off by a missing `prek` or git shim),
-  `finish_branch.py` (consolidates, gates and merges a finished branch into `main`; see the
+  `finish_branch.py` (consolidates, gates, tests and merges a finished branch into `main`; see the
   `git-workflow` skill), `hook_payload.py` (shared parsing), and
   `debug_module.py` and `debug_pytest.py` (let the DebugMCP CLI debug a source module and a test
   file; see below).

@@ -189,23 +189,20 @@ Still open from these runs:
 From the currency run with sonnet, reviewed in
 `~/.claude/plans/review-a-spec-cheeky-octopus.md`. Most valuable first:
 
-- [ ] **Bash file writes escape both gates.** Sonnet wrote 8 of 11 files through `cat > <<EOF`,
-  `python3 -` heredocs and `sed -i`, as the geo run did; the `PostToolUse` gate matches only
-  `Edit|Write|NotebookEdit`. The stop gate, the backstop for exactly this, measures from the
-  merge-base with `main`, so a branch finished onto `main` within the turn leaves it nothing to
-  check: it ran in 72 ms. Two changes, the first the cheaper and more fundamental:
-  - The stop gate measures from the `HEAD` recorded at `SessionStart` (by `session_doctor.py`,
-    next to `.gate.log`), falling back to the merge-base, so work merged in-session is still
-    checked.
-  - A `PostToolUse` hook on `Bash` gating files whose content changed since the last gate run —
-    `git status --porcelain` plus stored hashes, reusing `gate.py`'s `check` and `stop_gate.py`'s
-    `changed_files`. Measure its cost per Bash call first; it fires on every one.
-- [ ] **`finish_branch.py` on a dirty tree says "tree is not clean" and nothing else.** It failed
+- [x] **Bash file writes escaped the edit-time gate**, and nothing ran the tests on work merged
+  within the turn. Sonnet wrote 8 of 11 files through heredocs and `sed -i`, as in the geo run.
+  The review overstated it: `finish_branch.py` already ran `prek run --all-files` before merging,
+  so every file was linted before `main`; only the **tests** were never run. Fixed on
+  `fix/finish-branch-tests-and-recovery`: `finish_branch.py` runs the suite after the gate
+  (`--no-tests` at this repo's root, whose gate is the suite). **Decided against**, 2026-10-04:
+  a `PostToolUse` hook on `Bash` would only move feedback earlier, at a cost on every Bash call;
+  and a per-session stop-gate checkpoint (`tools/session_base.py`, built and discarded) closed
+  the same test gap with a module and session state where three lines in `finish_branch.py` do.
+- [x] **`finish_branch.py` on a dirty tree said "tree is not clean" and nothing else.** It failed
   twice: nothing committed, then a commit the hook aborted after reformatting files, which
-  `-q | tail` hid. Since the branch is squashed anyway, `--commit-all` stages and commits leftovers
-  first, and the error names it. When a staged file was rewritten by a hook (`AM`/`MM`), say so:
-  "the commit hook reformatted files and the commit did not happen; `git add -A` and commit
-  again". Tested in `tools/tests/test_finish_branch.py`.
+  `-q | tail` hid. The error now lists the files and says how to carry on, and names a staged
+  file modified since (`MM`/`AM`) as a commit the hook aborted. No `--commit-all` flag: the
+  message names the two commands instead.
 - [ ] **The allowlist omits `git switch`,** which `CLAUDE.md`'s first rule requires before any
   edit, so every run prompts on its first step. Add `Bash(git switch:*)`, `Bash(git add:*)` and
   `Bash(git commit:*)` to `template/.claude/settings.json`; the commit hooks gate commits anyway.

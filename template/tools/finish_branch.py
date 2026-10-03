@@ -17,9 +17,12 @@ it is, and MESSAGE may be omitted to reuse its subject.
 `--no-ff --log`, so the body lists the commits that arrived.
 
 **Every path is checked here, not by the git hooks.** Before anything reaches `main`,
-`prek run --all-files` runs on the branch's tip and the commit-message check runs on every message
-it will add. The hooks cannot be trusted with this: a commit made while the shims were missing ran
-none of them, a rebase runs none, and nothing about the commit shows it.
+`prek run --all-files` and the test suite run on the branch's tip, and the commit-message check
+runs on every message it will add. The hooks cannot be trusted with this: a commit made while the
+shims were missing ran none of them, a rebase runs none, and nothing about the commit shows it.
+Nor would anything else run the tests: the gate does not, and the stop gate sees nothing once the
+branch is merged. `--no-tests` skips them where the gate already runs them, as in the template
+repository, whose gate is its generation suite.
 
 **`--no-merge`** stops before touching `main`, leaving the checked branch for review.
 
@@ -35,9 +38,13 @@ from pathlib import Path
 
 from gate import GateResult, Runner, run_subprocess
 from hook_payload import find_repo_root
+from stop_gate import TEST_COMMAND, clip_tail, run_tests
 
 USAGE = 2
 FAILED = 1
+# `git status --porcelain` marks a file modified after it was staged with `M` in the second
+# column: what a commit hook that reformats leaves behind when it aborts the commit.
+REWRITTEN_AFTER_STAGING = "M"
 SQUASH_SUFFIX = "-squashed"
 MESSAGE_FILE = "FINISH_BRANCH_MSG"
 
@@ -77,9 +84,9 @@ def plan(root: Path, base: str, message: str | None, runner: Runner) -> Plan:
     if not branch or branch == base:
         msg = f"run this from the branch being finished, not {branch or 'a detached HEAD'}"
         raise FinishError(msg)
-    if _require(_git(runner, root, "status", "--porcelain"), "reading the tree"):
-        msg = "the tree is not clean; commit or stash everything first"
-        raise FinishError(msg)
+    status = _require(_git(runner, root, "status", "--porcelain"), "reading the tree")
+    if status:
+        raise FinishError(dirty_tree_message(branch, status))
     count = _require(_git(runner, root, "rev-list", "--count", f"{base}..HEAD"), "counting")
     commits = int(count)
     if commits == 0:
@@ -93,6 +100,28 @@ def plan(root: Path, base: str, message: str | None, runner: Runner) -> Plan:
             raise FinishError(msg)
         message = _require(_git(runner, root, "log", "-1", "--format=%s"), "reading the subject")
     return Plan(root, branch, base, message, commits, on_base_tip=fork == tip)
+
+
+def dirty_tree_message(branch: str, status: str) -> str:
+    """Say what is uncommitted, and how to carry on.
+
+    A file staged and then modified usually means a commit hook reformatted it and aborted the
+    commit, which a quiet commit's output easily hides.
+    """
+    lines = status.splitlines()
+    rewritten = [line for line in lines if line[:1] not in {" ", "?"} and line[1:2] == "M"]
+    if rewritten:
+        advice = (
+            "a commit hook reformatted staged files, so the last commit did not happen. "
+            "`git add -A`, commit again, then run this again"
+        )
+    else:
+        advice = (
+            f"commit it on {branch} (`git add -A` and `git commit`; the squash folds it in) or "
+            "stash it, then run this again"
+        )
+    listing = "\n".join(f"  {line}" for line in lines)
+    return f"the tree is not clean: {advice}.\n{listing}"
 
 
 def _restore(target: Plan, runner: Runner, scratch: str) -> None:
@@ -172,14 +201,21 @@ def _check_message(target: Plan, runner: Runner, path: Path, message: str) -> No
     raise FinishError(msg)
 
 
-def verify(target: Plan, runner: Runner) -> None:
-    """Run the full gate on HEAD and the message check on every message merging it adds.
+def verify(target: Plan, runner: Runner, *, tests: bool) -> None:
+    """Run the full gate and the tests on HEAD, and the message check on every message it adds.
 
-    The git hooks would do this only if every shim is installed, and a missing shim is silent.
+    The git hooks would do the gate only if every shim is installed, and a missing shim is silent.
     """
     gate = runner(["prek", "run", "--quiet", "--all-files"], target.root)
     if not gate.ran or gate.code != 0:
         msg = f"the full gate failed; fix it on {target.branch} and run this again.\n{gate.output}"
+        raise FinishError(msg)
+    suite = run_tests(target.root, runner) if tests else None
+    if suite is not None and (not suite.ran or suite.code != 0):
+        msg = (
+            f"the tests failed ({' '.join(TEST_COMMAND)}); fix them on {target.branch} and run "
+            f"this again.\n{clip_tail(suite.output)}"
+        )
         raise FinishError(msg)
     found = _git(runner, target.root, "rev-parse", "--git-path", MESSAGE_FILE)
     path = target.root / _require(found, "locating the git directory")
@@ -234,6 +270,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-merge", action="store_true", help="stop before main, leaving the branch for review"
     )
     parser.add_argument("--base", default="main", help="the branch to merge into (default: main)")
+    parser.add_argument(
+        "--no-tests",
+        action="store_true",
+        help="skip the test suite, where the gate runs it already",
+    )
     return parser
 
 
@@ -245,7 +286,7 @@ def finish(args: argparse.Namespace, root: Path, runner: Runner) -> str:
     target = plan(root, args.base, args.message, runner)
     source = rebase_in_place(target, runner) if args.keep_commits else squash(target, runner)
     try:
-        verify(target, runner)
+        verify(target, runner, tests=not args.no_tests)
     except FinishError:
         if source != target.branch:
             _restore(target, runner, source)

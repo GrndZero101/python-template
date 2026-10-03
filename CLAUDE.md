@@ -103,7 +103,8 @@ commits. The `PreToolUse` guard runs from the root and covers the whole repo, `t
 Finish a branch here with the template's own script, which runs unchanged from the root:
 
 ```bash
-uv run python template/tools/finish_branch.py "feat(x): summary"
+uv run python template/tools/finish_branch.py --no-tests "feat(x): summary"
 ```
 
 It runs the root's whole gate before merging, generation suite included: about a minute.
+`--no-tests` because that suite *is* this repo's tests, so running them again would double it.
