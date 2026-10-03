@@ -8,12 +8,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Update the dogfood** (`GrndZero101/template-dogfood`) to current `main`. It is at `b22dacd`,
-   25 commits behind, and "done" for phases 2–6 requires it. Expect its `weather.py` to trip the
-   new `raw-httpx-client`, `silent-exit` and perhaps `typer-default` rules; fix them in the update
-   commit, as the `from None` lines were last time. While there, prove the two behaviours only
-   generation tests cover so far: a `sed` edit caught by the stop gate, and `.gate.log` filling.
-   Drive it from a session started in the dogfood's own directory (see the snapshot).
+1. **Prove two behaviours in the dogfood** that only generation tests cover so far: a `sed` edit
+   caught by the stop gate, and `.gate.log` filling (it does not exist yet). The dogfood itself is
+   updated — see the snapshot. Drive it from a session started in the dogfood's own directory.
 2. **Phase 7 — secrets** (`SecretStr`). The most serious open gap: the recipe as written leaks a
    token.
 3. **Phase 7 — the config-file layer**, once D8 is settled.
@@ -80,9 +77,11 @@ In order. Spec runs are paused by choice (2026-10-04) until more phases land.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
 - **The dogfood**, `GrndZero101/template-dogfood`: a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`, at `b22dacd`. **Drive it from a session started in its
-  own directory**: Claude Code loads hooks and skills from the session's project, so from here
-  they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
+  `weather` command and script `tdf-cli`, at `6f84873` (2026-10-04), which closes "done" for
+  phases 2–6. That update tripped `raw-httpx-client` and `silent-exit` in `weather.py`, fixed in
+  the update commit by adopting the reference `http_client.py`. **Drive it from a session started
+  in its own directory**: Claude Code loads hooks and skills from the session's project, so from
+  here they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
   `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After the
   `b22dacd` update `session_doctor` found all three git shims missing; `prek install -t pre-commit
   -t commit-msg -t pre-merge-commit` restored them.
