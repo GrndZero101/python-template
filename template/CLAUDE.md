@@ -1,8 +1,9 @@
 # Python rules
 
 Enforced by a PostToolUse hook that auto-formats, then blocks on anything left. Violations block
-the edit — fix them, don't work around them. A Stop hook checks every changed file again, and runs
-the tests, before a turn can end, so a file changed by `sed` or a heredoc is caught too.
+the edit — fix them, don't work around them. A Stop hook checks every file the branch has changed
+again, and runs the tests, before a turn can end, so a file changed by `sed` or a heredoc, or
+already committed, is caught too.
 
 ## Structure
 
