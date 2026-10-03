@@ -10,6 +10,9 @@
       "Bash(ty:*)",
       "Bash(rumdl:*)",
       "Bash(prek:*)",
+      "Bash(git switch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
       "mcp__context7__query-docs",
       "mcp__context7__resolve-library-id"
     ]

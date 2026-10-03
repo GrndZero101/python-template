@@ -203,10 +203,10 @@ From the currency run with sonnet, reviewed in
   `-q | tail` hid. The error now lists the files and says how to carry on, and names a staged
   file modified since (`MM`/`AM`) as a commit the hook aborted. No `--commit-all` flag: the
   message names the two commands instead.
-- [ ] **The allowlist omits `git switch`,** which `CLAUDE.md`'s first rule requires before any
-  edit, so every run prompts on its first step. Add `Bash(git switch:*)`, `Bash(git add:*)` and
-  `Bash(git commit:*)` to `template/.claude/settings.json`; the commit hooks gate commits anyway.
-  Leave `python3` off: its prompt is the one nudge towards Write and Edit, which are gated.
+- [x] **The allowlist omitted `git switch`,** which `CLAUDE.md`'s first rule requires before any
+  edit, so every run prompted on its first step. `Bash(git switch:*)`, `Bash(git add:*)` and
+  `Bash(git commit:*)` added to `template/.claude/settings.json`; the commit hooks gate commits
+  anyway. `python3` left off: its prompt is the one nudge towards Write and Edit, which are gated.
 - [ ] **No recipe for a validated argument.** AMOUNT, PAIR and `--margin` were typed `str` and
   checked by a hand-rolled `_usage_error`, giving `<str>` metavars and an ad-hoc message.
   `Annotated[Decimal, typer.Argument(parser=_dec, metavar="AMOUNT")]`, `_dec` raising
@@ -217,13 +217,14 @@ From the currency run with sonnet, reviewed in
   absent from `rates`; live, an unknown code is a 404 and `GBP/GBP` a 422. Fix the spec and its
   failure table. In "Recipe: call an HTTP API", one step: run each failure case once against the
   real service and mock what it returns.
-- [ ] **`reference/test_status.py` patches `status.build_client`**, which the model copied,
-  while `CLAUDE.md` says to inject dependencies. Name it in `CLAUDE.md` as the one sanctioned seam
-  for a command's end-to-end test.
-- [ ] **The `__main__` rule cannot hold for package modules**: with relative imports, `python
-  src/<pkg>/status.py` fails whatever block it has, and the reference files have none. Narrow the
-  rule in `CLAUDE.md` to modules runnable as scripts, and say `python -m <pkg>.<module>` for the
-  rest, or `tools/debug_module.py`.
+- [x] **`reference/test_status.py` patches `status.build_client`**, which the model copied,
+  while `CLAUDE.md` says to inject dependencies. `CLAUDE.md` now names it as the one sanctioned
+  patch, for a command's end-to-end test through `main`.
+- [x] **The `__main__` rule** was read as broken by the reference files. **The review's fix was
+  wrong**: `tools/debug_module.py` runs a `src/` module as `python -m`, so relative imports do not
+  stop one running, and narrowing the rule would have been a mistake. The modules flagged reach
+  their entry point through `cli.py` and have none of their own; one clause in `CLAUDE.md` now
+  says so.
 
 Not template problems, per the review: a four-letter test code, a heredoc that broke its own
 parentheses, `1e3` echoed as `"1E+3"`, and "check the network" on a 4xx.

@@ -31,7 +31,8 @@ Every rule here exists so a human can stop the program and inspect it.
 - No lambda beyond a trivial attribute or index access.
   *Why: it shows as `<lambda>` in stack traces with no source context.*
 - Inject dependencies — clock, rng, HTTP client, paths — as parameters with defaults. Never reach
-  for module-level mutable state.
+  for module-level mutable state. The one sanctioned patch: a command's end-to-end test through
+  `main` replaces `<module>.build_client` with `monkeypatch.setattr`, since the command builds it.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
 - Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
   `raise ... from None`, which discards the cause just as surely. That includes an exit:
@@ -43,7 +44,8 @@ Every rule here exists so a human can stop the program and inspect it.
   `loguru` where a stack skill says so.
   *Why: stdout is reserved for a command's data, so it stays pipeable. Diagnostics that land there
   corrupt the output a caller is parsing.*
-- Every module that can run standalone gets `if __name__ == "__main__":`.
+- Every module that can run standalone gets `if __name__ == "__main__":`. A command module reached
+  only through `cli.py` has no entry point of its own, and needs none.
 
 ## Agent-friendliness
 
