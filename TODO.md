@@ -127,8 +127,8 @@ the model in an interactive session, the gate and tests run by hand, then a revi
 `opus` session in plan mode, driven by [examples/evaluate.md](examples/evaluate.md). What a run
 teaches is in the review's template findings, not in a score.
 
-- [ ] **A baseline**: both specs with `sonnet` at the current `main` — geo is done, currency is
-  not. Then again after any phase that changes what a skill or the gate tells a model.
+- [x] **A baseline**: both specs with `sonnet` — geo at `354b24f`, currency at `2b06886`.
+- [ ] **Again after any phase** that changes what a skill or the gate tells a model.
 - [ ] **Each template finding becomes an item** in the phase it belongs to.
 
 | Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
@@ -136,6 +136,7 @@ teaches is in the review's template findings, not in a score.
 | 2026-10-03 | geo | haiku | `354b24f` | pass | 215 pass | 68 calls, 26k out | Works live, but two required tests are wrong or missing (status error, multi-word join). Never loaded `python-cli-modern`: hand-rolled `httpx.Client()`, patched `httpx.Client.get` in every test, no response model, cause dropped on exit. |
 | 2026-10-03 | geo | sonnet | `354b24f` | pass | 212 pass | 9 calls, 10k out | Meets every row. Loaded the skill second, copied `http_client.py` verbatim, `MockTransport` throughout. Wrote every file through one Bash heredoc, so the edit-time gate never ran, and committed before stopping, so the stop gate saw a clean tree. |
 | 2026-10-03 | geo | haiku | `f6c03ff` | pass | pass | 68 calls, 31k out | Close. Grepped for `build_client` (named in the new `CLAUDE.md` row) and copied the reference client; `MockTransport` throughout; a real 404 for the status test. Still never loaded the skill: parsed the response by hand, tested the join on an already-joined string, and reported `exc.request.url` instead of the cause, which slipped past `silent-exit`. |
+| 2026-10-03 | currency | sonnet | `2b06886` | pass | 276 pass | 15 requests, 17.7k out, $0.65 | Meets the spec; every value a `Decimal`, `parse_float=Decimal` on the response. Branched unprompted, loaded the skill second, copied the client, `Annotated` throughout. But only 3 of its 11 file writes went through the edit-time gate — the rest were heredocs and `sed -i` — and the stop gate checked nothing, because it finished onto `main` in the same turn. `finish_branch.py` failed twice on an uncommitted tree. Prompted for `git switch` and `python3`. |
 
 The two runs together: the skill's content works and its discovery does not. A pointer in a
 docstring reaches sonnet and not haiku. Fixed on `fix/spec-run-geo-findings`:
@@ -184,6 +185,51 @@ Still open from these runs:
 - [ ] Carried over: the original demo code is at `d8e26b0` for comparison. The gate's pause on
   conflict markers and the conflicted-`pyproject.toml` guard are still proven only by the
   generation tests, not by a consumer update with a real conflict.
+
+From the currency run with sonnet, reviewed in
+`~/.claude/plans/review-a-spec-cheeky-octopus.md`. Most valuable first:
+
+- [ ] **Bash file writes escape both gates.** Sonnet wrote 8 of 11 files through `cat > <<EOF`,
+  `python3 -` heredocs and `sed -i`, as the geo run did; the `PostToolUse` gate matches only
+  `Edit|Write|NotebookEdit`. The stop gate, the backstop for exactly this, measures from the
+  merge-base with `main`, so a branch finished onto `main` within the turn leaves it nothing to
+  check: it ran in 72 ms. Two changes, the first the cheaper and more fundamental:
+  - The stop gate measures from the `HEAD` recorded at `SessionStart` (by `session_doctor.py`,
+    next to `.gate.log`), falling back to the merge-base, so work merged in-session is still
+    checked.
+  - A `PostToolUse` hook on `Bash` gating files whose content changed since the last gate run —
+    `git status --porcelain` plus stored hashes, reusing `gate.py`'s `check` and `stop_gate.py`'s
+    `changed_files`. Measure its cost per Bash call first; it fires on every one.
+- [ ] **`finish_branch.py` on a dirty tree says "tree is not clean" and nothing else.** It failed
+  twice: nothing committed, then a commit the hook aborted after reformatting files, which
+  `-q | tail` hid. Since the branch is squashed anyway, `--commit-all` stages and commits leftovers
+  first, and the error names it. When a staged file was rewritten by a hook (`AM`/`MM`), say so:
+  "the commit hook reformatted files and the commit did not happen; `git add -A` and commit
+  again". Tested in `tools/tests/test_finish_branch.py`.
+- [ ] **The allowlist omits `git switch`,** which `CLAUDE.md`'s first rule requires before any
+  edit, so every run prompts on its first step. Add `Bash(git switch:*)`, `Bash(git add:*)` and
+  `Bash(git commit:*)` to `template/.claude/settings.json`; the commit hooks gate commits anyway.
+  Leave `python3` off: its prompt is the one nudge towards Write and Edit, which are gated.
+- [ ] **No recipe for a validated argument.** AMOUNT, PAIR and `--margin` were typed `str` and
+  checked by a hand-rolled `_usage_error`, giving `<str>` metavars and an ad-hoc message.
+  `Annotated[Decimal, typer.Argument(parser=_dec, metavar="AMOUNT")]`, `_dec` raising
+  `typer.BadParameter`, exits 2 with "Invalid value for 'AMOUNT': …" (verified on typer 0.27.2).
+  A recipe in `SKILL.md` and `reference/typer.md`, and a worked parser with its test in
+  `reference/status.py` — a `--timeout`, say.
+- [ ] **`examples/currency.md` disagrees with Frankfurter.** It says an unpublished quote is
+  absent from `rates`; live, an unknown code is a 404 and `GBP/GBP` a 422. Fix the spec and its
+  failure table. In "Recipe: call an HTTP API", one step: run each failure case once against the
+  real service and mock what it returns.
+- [ ] **`reference/test_status.py` patches `status.build_client`**, which the model copied,
+  while `CLAUDE.md` says to inject dependencies. Name it in `CLAUDE.md` as the one sanctioned seam
+  for a command's end-to-end test.
+- [ ] **The `__main__` rule cannot hold for package modules**: with relative imports, `python
+  src/<pkg>/status.py` fails whatever block it has, and the reference files have none. Narrow the
+  rule in `CLAUDE.md` to modules runnable as scripts, and say `python -m <pkg>.<module>` for the
+  rest, or `tools/debug_module.py`.
+
+Not template problems, per the review: a four-letter test code, a heredoc that broke its own
+parentheses, `1e3` echoed as `"1E+3"`, and "check the network" on a 4xx.
 
 ### Phase 3 — Make the gate precise and unavoidable
 
