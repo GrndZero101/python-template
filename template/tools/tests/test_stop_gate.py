@@ -217,3 +217,43 @@ def test_changed_files_finds_modified_and_untracked_but_not_deleted(tmp_path: Pa
     (tmp_path / "new file.py").write_text("x = 3\n", encoding="utf-8")
     found = changed_files(tmp_path, run_subprocess)
     assert sorted(found) == [Path("edited.py"), Path("new file.py")]
+
+
+def _repo_on_main(tmp_path: Path, *names: str) -> None:
+    """Make `tmp_path` a real repository on `main` with `names` committed."""
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    _git(tmp_path, "init", "--quiet", "-b", "main")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "T")
+    for name in names:
+        (tmp_path / name).write_text("x = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "--quiet", "-m", "init")
+
+
+def test_a_commit_made_on_the_branch_is_still_checked(tmp_path: Path) -> None:
+    """Committing before stopping must not leave the stop gate nothing to look at."""
+    _repo_on_main(tmp_path, "kept.py", "committed.py")
+    _git(tmp_path, "switch", "--quiet", "-c", "feat/x")
+    (tmp_path / "committed.py").write_text("x = 2\n", encoding="utf-8")
+    _git(tmp_path, "commit", "--quiet", "-am", "change")
+    (tmp_path / "uncommitted.py").write_text("x = 3\n", encoding="utf-8")
+    found = changed_files(tmp_path, run_subprocess)
+    assert sorted(found) == [Path("committed.py"), Path("uncommitted.py")]
+
+
+def test_on_main_only_uncommitted_work_counts(tmp_path: Path) -> None:
+    _repo_on_main(tmp_path, "kept.py")
+    (tmp_path / "kept.py").write_text("x = 2\n", encoding="utf-8")
+    _git(tmp_path, "commit", "--quiet", "-am", "change")
+    assert changed_files(tmp_path, run_subprocess) == []
+
+
+def test_another_base_branch_can_be_named(tmp_path: Path) -> None:
+    _repo_on_main(tmp_path, "kept.py")
+    _git(tmp_path, "switch", "--quiet", "-c", "develop")
+    (tmp_path / "kept.py").write_text("x = 2\n", encoding="utf-8")
+    _git(tmp_path, "commit", "--quiet", "-am", "change")
+    assert changed_files(tmp_path, run_subprocess, base="develop") == []
+    assert changed_files(tmp_path, run_subprocess) == [Path("kept.py")]

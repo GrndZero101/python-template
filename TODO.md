@@ -128,8 +128,41 @@ teaches is in the review's template findings, not in a score.
 
 | Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
 |---|---|---|---|---|---|---|---|
-| | | | | | | | |
+| 2026-10-03 | geo | haiku | `354b24f` | pass | 215 pass | 68 calls, 26k out | Works live, but two required tests are wrong or missing (status error, multi-word join). Never loaded `python-cli-modern`: hand-rolled `httpx.Client()`, patched `httpx.Client.get` in every test, no response model, cause dropped on exit. |
+| 2026-10-03 | geo | sonnet | `354b24f` | pass | 212 pass | 9 calls, 10k out | Meets every row. Loaded the skill second, copied `http_client.py` verbatim, `MockTransport` throughout. Wrote every file through one Bash heredoc, so the edit-time gate never ran, and committed before stopping, so the stop gate saw a clean tree. |
 
+The two runs together: the skill's content works and its discovery does not. A pointer in a
+docstring reaches sonnet and not haiku. Fixed on `fix/spec-run-geo-findings`:
+
+- [x] Convention rules that route a model to the skill from the code it writes: `raw-httpx-client`
+  (a client built outside `build_client`), `patched-httpx` (patching httpx in a test) and
+  `silent-exit` (an exit from an `except` that drops the exception). Each message names the
+  reference file to copy. A repeated message is now printed once, then only its location: haiku's
+  test file alone would have cost 7 KB per block.
+- [x] The stop gate measured "changed" from `HEAD`, so a commit made before stopping escaped it,
+  tests included. It now measures from the merge-base with `main`.
+- [x] `logging_setup.py` credited every stdlib record to `logging` (an outdated frame-walking
+  recipe), and `-v` printed httpcore's twenty-line wire trace per request. Loguru's current recipe,
+  and httpcore held at INFO.
+- [x] `build_client` passes its own transport, which makes httpx ignore `HTTPS_PROXY` and
+  `NO_PROXY`: behind a proxy, every generated tool connected direct. `EnvironmentProxyTransport`
+  routes by the environment.
+
+Still open from these runs:
+
+- [ ] Re-run haiku on geo against the fixed template, the measure of whether the rules reach it.
+- [ ] `B008` on `= typer.Argument(...)` tells the model to use a module-level singleton, the wrong
+  fix for typer. A `typer-default` convention rule naming `Annotated`, with `typer.Argument` and
+  `typer.Option` added to bugbear's `extend-immutable-calls`. The scaffold has no positional
+  argument to copy from either.
+- [ ] `build_client` retries a 5xx after 0.5 s, which breaks an API's one-request-per-second
+  policy, Nominatim's for one. Say in the docstring to pass `attempts=1`, or make the minimum
+  backoff a parameter.
+- [ ] `examples/README.md`: step 3's `prek run --all-files` always fails `no-commit-to-branch` on
+  `main` (use `SKIP=no-commit-to-branch`), and step 2 should `unset VIRTUAL_ENV`, whose mismatch
+  warning landed in some 25 of haiku's tool results.
+- [ ] The dogfood's `weather.py` will likely trip `raw-httpx-client` or `silent-exit` on its next
+  `copier update`.
 - [ ] Carried over: the original demo code is at `d8e26b0` for comparison. The gate's pause on
   conflict markers and the conflicted-`pyproject.toml` guard are still proven only by the
   generation tests, not by a consumer update with a real conflict.

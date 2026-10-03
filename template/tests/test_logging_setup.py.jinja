@@ -1,0 +1,33 @@
+"""Stdlib logging reaches loguru's sink, credited to the code that logged it."""
+
+import logging
+
+import pytest
+
+from {{ package_name }}.logging_setup import configure_logging
+
+
+def test_a_stdlib_record_names_the_module_that_logged_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With `-v`, a dependency's line must say where it came from, not `logging`."""
+    configure_logging(verbose=True)
+    logging.getLogger("some.dependency").warning("disk nearly full")
+    assert f"{__name__}: disk nearly full" in capsys.readouterr().err
+
+
+def test_records_below_the_threshold_are_dropped(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=False)
+    logging.getLogger("some.dependency").info("routine")
+    assert not capsys.readouterr().err
+
+
+def test_httpcore_wire_trace_stays_out_of_verbose_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    configure_logging(verbose=True)
+    logging.getLogger("httpcore.connection").debug("connect_tcp.started host='example.test'")
+    logging.getLogger("httpcore.connection").info("worth seeing")
+    err = capsys.readouterr().err
+    assert "connect_tcp" not in err
+    assert "worth seeing" in err

@@ -59,7 +59,13 @@ TOOLS_TESTS = {
     "test_session_doctor.py",
     "test_stop_gate.py",
 }
-CLI_TESTS = {"conftest.py", "test_about.py", "test_config.py", "test_typer_entrypoint.py"}
+CLI_TESTS = {
+    "conftest.py",
+    "test_about.py",
+    "test_config.py",
+    "test_logging_setup.py",
+    "test_typer_entrypoint.py",
+}
 
 # DELIBERATELY LONGER than the template's own `python_template`. A shorter name cannot overflow
 # a line that was formatted against the template's name, so it silently proves nothing: the

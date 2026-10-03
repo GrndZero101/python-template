@@ -69,7 +69,8 @@ repos:
       - id: uv-lock
 
   # The CLAUDE.md conventions no native linter covers: `def` or `class` inside a function, complex
-  # comprehensions, `raise ... from None`, computed `getattr`, a `main` with no guard.
+  # comprehensions, `raise ... from None`, computed `getattr`, a `main` with no guard, an exit that
+  # drops its cause, and an httpx client built or patched outside `build_client`.
   # language: system so it shares the project interpreter and needs no isolated env.
   - repo: local
     hooks:

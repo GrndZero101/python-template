@@ -13,6 +13,10 @@ What `build_client` sets up, and why each one:
   to *connect*, never a status code. Only idempotent methods are retried: repeating a POST that
   the server may already have acted on is not safe.
 - **A debug line per request and response**, visible with `-v`, on stderr through loguru.
+- **Proxies from the environment**: `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and `NO_PROXY`, a
+  `NO_PROXY` entry exempting its host and every host under it. httpx ignores those variables as soon as a client is given
+  its own transport, which this one always is, so `EnvironmentProxyTransport` routes each request
+  itself. The Windows registry and macOS system proxy settings are not read.
 
 The client is built by the command and passed down; never keep one at module level. Tests pass
 `transport=httpx.MockTransport(...)` and `sleep=` a recorder, so nothing waits or touches the network.
@@ -20,7 +24,8 @@ The client is built by the command and passed down; never keep one at module lev
 
 import email.utils
 import time
-from collections.abc import Callable
+import urllib.request
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from importlib import metadata
 
@@ -115,6 +120,55 @@ class RetryTransport(httpx.BaseTransport):
         self._inner.close()
 
 
+def bypasses_proxy(host: str, no_proxy: str) -> bool:
+    """Return whether `NO_PROXY` exempts `host`: `*`, the host itself, or a domain it is under."""
+    host = host.lower()
+    for entry in no_proxy.split(","):
+        name = entry.strip().lstrip(".").lower()
+        if name == "*" or (name and (host == name or host.endswith(f".{name}"))):
+            return True
+    return False
+
+
+def proxy_for(url: httpx.URL, proxies: Mapping[str, str]) -> str | None:
+    """Return the proxy `proxies` names for `url`, or None to connect directly.
+
+    `proxies` is what `urllib.request.getproxies_environment()` returns: lower-case schemes, plus
+    `all` for `ALL_PROXY` and `no` for `NO_PROXY`.
+    """
+    if bypasses_proxy(url.host, proxies.get("no", "")):
+        return None
+    proxy = proxies.get(url.scheme) or proxies.get("all")
+    if not proxy:
+        return None
+    return proxy if "://" in proxy else f"http://{proxy}"
+
+
+class EnvironmentProxyTransport(httpx.BaseTransport):
+    """Sends each request directly, or through the proxy the environment names for its URL."""
+
+    def __init__(self, proxies: Mapping[str, str], *, retries: int = CONNECT_RETRIES) -> None:
+        self._proxies = proxies
+        self._retries = retries
+        self._direct = httpx.HTTPTransport(retries=retries)
+        self._proxied: dict[str, httpx.HTTPTransport] = {}
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        """Send `request` over the connection its URL calls for."""
+        proxy = proxy_for(request.url, self._proxies)
+        if proxy is None:
+            return self._direct.handle_request(request)
+        if proxy not in self._proxied:
+            self._proxied[proxy] = httpx.HTTPTransport(proxy=proxy, retries=self._retries)
+        return self._proxied[proxy].handle_request(request)
+
+    def close(self) -> None:
+        """Close the direct transport and every proxy transport opened."""
+        self._direct.close()
+        for transport in self._proxied.values():
+            transport.close()
+
+
 def _log_request(request: httpx.Request) -> None:
     """Event hook: one debug line per request sent."""
     logger.debug("{} {}", request.method, request.url)
@@ -137,14 +191,15 @@ def build_client(
     attempts: int = MAX_ATTEMPTS,
     sleep: Callable[[float], None] = time.sleep,
 ) -> httpx.Client:
-    """Return a client with timeouts, a User-Agent, status retries and debug logging.
+    """Return a client with timeouts, a User-Agent, status retries, proxies and debug logging.
 
     Use it as a context manager at the command boundary and pass it down. `transport` is for
     tests: an `httpx.MockTransport` there means nothing touches the network.
     """
-    inner = transport if transport is not None else httpx.HTTPTransport(retries=CONNECT_RETRIES)
+    if transport is None:
+        transport = EnvironmentProxyTransport(urllib.request.getproxies_environment())
     return httpx.Client(
-        transport=RetryTransport(inner, attempts=attempts, sleep=sleep),
+        transport=RetryTransport(transport, attempts=attempts, sleep=sleep),
         timeout=timeout,
         headers={"User-Agent": user_agent()},
         event_hooks={"request": [_log_request], "response": [_log_response]},

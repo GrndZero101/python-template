@@ -7,7 +7,7 @@ legitimate decorators and factories gets disabled, and then it protects nothing.
 from pathlib import Path
 
 import pytest
-from check_conventions import check_file, format_finding, main
+from check_conventions import check_file, format_finding, format_findings, main
 from convention_rules import suppressed
 
 NESTED_DEFS = {
@@ -109,6 +109,90 @@ VIOLATIONS = {
             return 0
         """,
     ),
+    "a bare httpx client": (
+        "raw-httpx-client",
+        """
+        import httpx
+
+        def lookup(query, client=None):
+            client = client or httpx.Client()
+            return client.get("https://example.test/", params={"q": query})
+        """,
+    ),
+    "an imported AsyncClient": (
+        "raw-httpx-client",
+        """
+        from httpx import AsyncClient as Http
+
+        async def fetch():
+            async with Http(timeout=5) as client:
+                return await client.get("https://example.test/")
+        """,
+    ),
+    "an httpx shortcut": (
+        "raw-httpx-client",
+        """
+        import httpx
+
+        def status():
+            return httpx.get("https://example.test/").status_code
+        """,
+    ),
+    "patch.object on an httpx class": (
+        "patched-httpx",
+        """
+        from unittest.mock import patch
+
+        import httpx
+
+        def test_it():
+            with patch.object(httpx.Client, "get"):
+                pass
+        """,
+    ),
+    "patch by dotted string": (
+        "patched-httpx",
+        """
+        from unittest import mock
+
+        def test_it():
+            with mock.patch("httpx.Client.send"):
+                pass
+        """,
+    ),
+    "monkeypatch.setattr on httpx": (
+        "patched-httpx",
+        """
+        import httpx
+
+        def test_it(monkeypatch):
+            monkeypatch.setattr(httpx, "get", None)
+        """,
+    ),
+    "exit whose cause is only chained": (
+        "silent-exit",
+        """
+        import httpx
+        import typer
+
+        def command(client):
+            try:
+                client.get("https://example.test/")
+            except httpx.HTTPError as exc:
+                typer.echo("request failed", err=True)
+                raise typer.Exit(1) from exc
+        """,
+    ),
+    "exit from an unbound handler": (
+        "silent-exit",
+        """
+        def command(path):
+            try:
+                return path.read_text(encoding="utf-8")
+            except OSError:
+                raise SystemExit(1)
+        """,
+    ),
 }
 
 EXEMPTIONS = {
@@ -199,6 +283,64 @@ EXEMPTIONS = {
             def main(self):
                 return 0
     """,
+    "a client from the factory": """
+        import httpx
+
+        def build_client(transport=None):
+            return httpx.Client(timeout=5)
+    """,
+    "a test double passes its transport": """
+        import httpx
+
+        def test_it(handler):
+            with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+                assert client.get("https://example.test/").status_code == 200
+    """,
+    "a client whose keywords cannot be seen": """
+        import httpx
+
+        def make(**options):
+            return httpx.Client(**options)
+    """,
+    "a get that is not httpx's": """
+        import requests
+
+        def status(session):
+            return session.get("https://example.test/"), requests.get("https://example.test/")
+    """,
+    "patching the module's own factory": """
+        def test_it(monkeypatch, status, factory):
+            monkeypatch.setattr(status, "build_client", factory)
+    """,
+    "exit that reports what it caught": """
+        import httpx
+        import typer
+        from loguru import logger
+
+        def command(client):
+            try:
+                client.get("https://example.test/")
+            except httpx.HTTPError as exc:
+                logger.opt(exception=exc).debug("request failed")
+                typer.echo(f"request failed: {exc}", err=True)
+                raise typer.Exit(1) from exc
+    """,
+    "exit on Ctrl-C": """
+        import typer
+
+        def command(work):
+            try:
+                work()
+            except KeyboardInterrupt:
+                raise typer.Exit(130)
+    """,
+    "an exit outside any handler": """
+        import typer
+
+        def command(names):
+            if not names:
+                raise typer.Exit(2)
+    """,
     "noqa naming several rules": """
         def parse(text):
             try:
@@ -277,6 +419,15 @@ def test_message_names_location_rule_and_opt_out(tmp_path: Path) -> None:
     assert rendered.startswith(f"{path}:5: raise-from-none: ")
     assert "from exc" in rendered
     assert "# noqa: raise-from-none" in rendered
+
+
+def test_a_repeated_message_is_shown_once(tmp_path: Path) -> None:
+    case = VIOLATIONS["patch.object on an httpx class"][1]
+    path = write_module(tmp_path, case + case)
+    rendered = format_findings(check_file(path))
+    assert len(rendered) == 2
+    assert "MockTransport" in rendered[0]
+    assert rendered[1].endswith("patched-httpx: as above")
 
 
 def test_syntax_errors_are_left_to_ruff(tmp_path: Path) -> None:
