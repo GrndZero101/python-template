@@ -183,6 +183,20 @@ VIOLATIONS = {
                 raise typer.Exit(1) from exc
         """,
     ),
+    "exit that reports only a part of what it caught": (
+        "silent-exit",
+        """
+        import httpx
+        import typer
+
+        def command(client):
+            try:
+                client.get("https://example.test/")
+            except httpx.HTTPError as exc:
+                typer.echo(f"request to {exc.request.url} failed", err=True)
+                raise typer.Exit(1) from exc
+        """,
+    ),
     "exit from an unbound handler": (
         "silent-exit",
         """
@@ -395,8 +409,8 @@ def test_reports_immediate_parent_once(tmp_path: Path) -> None:
         (2, "nested-def"),
         (3, "nested-def"),
     ]
-    assert "inside `outer`" in findings[0].message
-    assert "inside `_helper`" in findings[1].message
+    assert "inside `outer`" in findings[0].detail
+    assert "inside `_helper`" in findings[1].detail
 
 
 def test_reports_only_the_outermost_of_nested_comprehensions(tmp_path: Path) -> None:
@@ -427,7 +441,24 @@ def test_a_repeated_message_is_shown_once(tmp_path: Path) -> None:
     rendered = format_findings(check_file(path))
     assert len(rendered) == 2
     assert "MockTransport" in rendered[0]
-    assert rendered[1].endswith("patched-httpx: as above")
+    assert rendered[1].endswith("patched-httpx: (fix as above)")
+
+
+def test_repeated_advice_keeps_each_hits_names(tmp_path: Path) -> None:
+    source = """
+        def first():
+            def _a():
+                return 1
+            return _a()
+
+        def second():
+            def _b():
+                return 2
+            return _b()
+    """
+    rendered = format_findings(check_file(write_module(tmp_path, source)))
+    assert "functools.partial" in rendered[0]
+    assert rendered[1].endswith("`_b` is defined inside `second`. (fix as above)")
 
 
 def test_syntax_errors_are_left_to_ruff(tmp_path: Path) -> None:

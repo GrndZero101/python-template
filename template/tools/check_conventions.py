@@ -36,10 +36,16 @@ def check_file(path: Path) -> list[Finding]:
     return check_source(path, path.read_text(encoding="utf-8"))
 
 
+def _location(finding: Finding) -> str:
+    """Return `path:line: rule:`, followed by what is particular to this finding, if anything."""
+    head = f"{finding.path}:{finding.line}: {finding.rule}:"
+    return f"{head} {finding.detail}" if finding.detail else head
+
+
 def format_finding(finding: Finding) -> str:
     """Render a finding as its location, rule id and a message that states the fix."""
     return (
-        f"{finding.path}:{finding.line}: {finding.rule}: {finding.message}\n"
+        f"{_location(finding)} {finding.message}\n"
         f"  If it is genuinely needed, add `# noqa: {finding.rule}` to that line and say why."
     )
 
@@ -55,7 +61,7 @@ def format_findings(findings: list[Finding]) -> list[str]:
     for finding in findings:
         key = (finding.rule, finding.message)
         if key in shown:
-            rendered.append(f"{finding.path}:{finding.line}: {finding.rule}: as above")
+            rendered.append(f"{_location(finding)} (fix as above)")
             continue
         shown.add(key)
         rendered.append(format_finding(finding))
