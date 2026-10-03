@@ -8,13 +8,10 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Prove two behaviours in the dogfood** that only generation tests cover so far: a `sed` edit
-   caught by the stop gate, and `.gate.log` filling (it does not exist yet). The dogfood itself is
-   updated — see the snapshot. Drive it from a session started in the dogfood's own directory.
-2. **Phase 7 — secrets** (`SecretStr`). The most serious open gap: the recipe as written leaks a
+1. **Phase 7 — secrets** (`SecretStr`). The most serious open gap: the recipe as written leaks a
    token.
-3. **Phase 7 — the config-file layer**, once D8 is settled.
-4. The rest of phase 7, then phase 8.
+2. **Phase 7 — the config-file layer**, once D8 is settled.
+3. The rest of phase 7, then phase 8.
 
 ## How work is judged
 
@@ -67,7 +64,9 @@ In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 - Hooks are **exec form** with `${CLAUDE_PROJECT_DIR}` paths and launch through
   `uv run --no-project --no-config`, so neither a `cd` nor a conflicted `pyproject.toml` breaks
   them. Bash writes (heredocs, `sed -i`) skip the edit-time gate by design; the stop gate and
-  `finish_branch.py` are the backstop, and both run the tests.
+  `finish_branch.py` are the backstop, and both run the tests. Proven in the dogfood on
+  2026-10-04: a `sed -i` `print` passed the edit-time gate and the stop gate blocked it on
+  `ruff-check` and `pytest`; both hooks wrote `.gate.log`, the stop gate as `stop-gate`.
 - `cli-modern` ships a **scaffold**, not a demo: an `about` command, global `--verbose`/`--version`,
   a per-command `--output`, each resolving flag, then `<SCRIPT>_*` environment variable, then
   default through pydantic-settings. `python-cli-modern` is recipe-first — add a command, call an
