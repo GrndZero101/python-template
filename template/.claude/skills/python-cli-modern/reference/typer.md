@@ -28,6 +28,11 @@ Never the older default-value form (`retries: int = typer.Option(3)`). The conve
 With `Annotated` the call sits inside the annotation, and the real default after `=`:
 `typer.Option(3)` becomes `= 3`, and `typer.Argument(...)` becomes no default at all.
 
+A value that needs validating is parsed by `parser=` (SKILL.md, "Recipe: a validated argument").
+Two details: the parameter's annotation is what the parser *returns*, not `str`; and an
+argument's help line shows the parser's function name as its type (`<parse_url>`), which is why
+the recipe names them `parse_<thing>`.
+
 Command bodies unpack and delegate. The decorated function belongs to typer; the work belongs in a
 plain annotated function you can call with literal arguments.
 

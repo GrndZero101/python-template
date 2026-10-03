@@ -27,7 +27,8 @@ a command that calls an API, start from `reference/status.py` instead — the ne
    - `<name>_command(ctx: typer.Context, ..., output: OutputOption = None) -> None`, which calls
      `load_settings(verbose=global_options(ctx).verbose, output=output)`, delegates, and raises
      `typer.Exit(1)` on a runtime failure. Nothing else. A positional argument is
-     `names: Annotated[list[str], typer.Argument(help="...")]`, with no default.
+     `names: Annotated[list[str], typer.Argument(help="...")]`, with no default; one that must be
+     validated or is not a string: "Recipe: a validated argument".
 2. **Register it in `src/<package>/cli.py`**, beside `about`:
 
    ```python
@@ -63,9 +64,37 @@ never retry. Tests replace the network with `httpx.MockTransport`;
 `test_status.py` shows both ways — passing a client to a function, and replacing `build_client`
 for a test through `main`.
 
+**Mock what the service really returns.** Before writing a test for a failure — an unknown id, a
+bad parameter — provoke it once against the real service (`curl -s -w ' [%{http_code}]\n' URL`)
+and mock that status and body. Docs and specs are often wrong about failures: an "absent" key can
+be a 404, and the command must handle the one that actually arrives.
+
 Prefer a credible vendor SDK (`boto3`, `google-cloud-*`, `azure-*`, `PyGithub`, `kubernetes`) when
 one covers the service: it already handles auth refresh, pagination and retries. Either way, the
 client is a parameter with a default, never a module-level singleton.
+
+## Recipe: a validated argument
+
+For any value that is not a plain `str`, `int` or `Path` — an amount, a `BASE/QUOTE` pair, a URL —
+parse it in a function typer calls, so a bad value is typer's own usage error (exit 2, "Invalid
+value for 'AMOUNT': ...") before the command body runs. `reference/status.py` has `parse_url`.
+
+1. **Write `parse_<thing>(raw: str) -> <Type>`** in the command's module. It returns the parsed
+   value or raises `typer.BadParameter` naming the value and the expected form; for a `Decimal`,
+   `raise typer.BadParameter(msg) from exc` on `InvalidOperation`.
+2. **Declare it**, typed as what the parser returns, with a metavar for the help:
+
+   ```python
+   amount: Annotated[Decimal, typer.Argument(parser=parse_amount, metavar="AMOUNT")]
+   margin: Annotated[Decimal, typer.Option("--margin", "-m", parser=parse_amount)] = Decimal(0)
+   ```
+
+3. **Test both halves**, as `test_status.py` does: the parser directly, with each malformed form
+   (`pytest.raises(typer.BadParameter)`), and one bad value through `main`, asserting exit 2,
+   empty stdout and the value named on stderr.
+
+Never check the value in the command body and raise `typer.Exit(2)` by hand: typer then prints no
+usage line, and the message format differs from every other usage error.
 
 ## Recipe: add a setting
 

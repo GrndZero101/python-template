@@ -6,6 +6,8 @@
 
 It has the shape every command here should have, the same as the scaffold's `about`:
 
+- `parse_url` validates each argument as typer parses it: a bad one is a usage error, exit 2,
+  through typer's own message, before any work starts.
 - `probe` and `probe_all` do the work. They take the client as a parameter, so a test passes one
   backed by `httpx.MockTransport`, and a debugger can call them with literal arguments.
 - `build_status_table` and `emit_status` render; JSON is written straight to stdout.
@@ -31,6 +33,7 @@ from .output import OutputFormat, out
 
 FIRST_ERROR_STATUS = 400
 RUNTIME_FAILURE = 1
+URL_SCHEMES = ("http://", "https://")
 
 
 class Probe(BaseModel):
@@ -40,6 +43,18 @@ class Probe(BaseModel):
     status: int | None
     ok: bool
     error: str | None = None
+
+
+def parse_url(raw: str) -> str:
+    """Return `raw` if it is an http(s) URL. typer calls this for each URL argument.
+
+    `typer.BadParameter` is a usage error: typer prints "Invalid value for 'URL': ..." after the
+    usage line and exits 2. Any other exception here would be a crash, not a usage error.
+    """
+    if not raw.startswith(URL_SCHEMES):
+        msg = f"expected an http:// or https:// URL, got {raw!r}"
+        raise typer.BadParameter(msg)
+    return raw
 
 
 def probe(client: httpx.Client, url: str) -> Probe:
@@ -84,7 +99,10 @@ def emit_status(probes: list[Probe], fmt: OutputFormat) -> None:
 
 def status_command(
     ctx: typer.Context,
-    urls: Annotated[list[str], typer.Argument(help="One or more URLs to check.")],
+    urls: Annotated[
+        list[str],
+        typer.Argument(parser=parse_url, metavar="URL", help="One or more URLs to check."),
+    ],
     output: OutputOption = None,
 ) -> None:
     """Check that each URL answers without an error status."""
