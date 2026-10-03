@@ -89,7 +89,7 @@ project's gate, not just read. A phase that changes what generated projects rece
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
 | D1 | Python floor: render `.python-version` from the answer, or keep 3.14 and test the floor in CI only | Phase 1 | **Decided:** render it from the answer, keeping 3.14 as the question's default. The gate and the tests then prove the floor on every run. |
-| D2 | Benchmark: which models, how many runs per spec | Phase 2 | **Decided:** by hand, no harness. Haiku and Sonnet, one run each, on both specs, reviewed by Opus. |
+| D2 | Benchmark: which models, how many runs per spec | Phase 2 | **Decided, revised 2026-10-03:** by hand, no harness. Sonnet is the baseline: one run per spec, reviewed by Opus. Haiku runs now and then as a stretch measure; a haiku-only finding is recorded, not acted on, unless its fix is a cheap mechanical check that helps any model. |
 | D3 | Git ritual: prose in a skill, or a script the skill calls | Phase 6 | A script. A multi-step ritual in prose is where weaker models slip. |
 | D4 | `cli-stdlib`: finish it with an argparse scaffold, or replace it with a PEP 723 single-file `scripts` type | Phase 7 | Finish it; reconsider once the spec runs have findings. |
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Unchanged: tag `v0.1.0` once the dogfood settles. |
@@ -113,8 +113,13 @@ was `README.md`'s `tools/` list, which the dogfood had extended with `weather`. 
 ### Phase 2 — Spec runs and a baseline
 
 Moved ahead of the improvements so each later phase is measured against a baseline rather than
-judged by feel. Nothing has yet run this template with a lower-reasoning model, which is the claim
-goal three makes.
+judged by feel.
+
+**Sonnet is the baseline (D2, revised 2026-10-03).** Sonnet met every row of the geo spec on the
+template as it stood, in 9 calls. Two haiku runs took 68 calls each; the second, after the fixes
+below, came close, but what it still missed was judgement — a test aimed at the wrong function,
+a response parsed by hand — not knowledge the template lacked. Chasing that adds rules and prose
+without end, against goal three itself. Haiku stays as an occasional stretch run.
 
 **Decided 2026-10-03: no bespoke harness.** Each run is done by hand, as
 [examples/README.md](examples/README.md) describes: a fresh project, the spec handed unedited to
@@ -122,14 +127,15 @@ the model in an interactive session, the gate and tests run by hand, then a revi
 `opus` session in plan mode, driven by [examples/evaluate.md](examples/evaluate.md). What a run
 teaches is in the review's template findings, not in a score.
 
-- [ ] **A baseline**: both specs, with `haiku` and with `sonnet`, at the current `main`. Then again
-  after any phase that changes what a skill or the gate tells a model.
+- [ ] **A baseline**: both specs with `sonnet` at the current `main` — geo is done, currency is
+  not. Then again after any phase that changes what a skill or the gate tells a model.
 - [ ] **Each template finding becomes an item** in the phase it belongs to.
 
 | Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
 |---|---|---|---|---|---|---|---|
 | 2026-10-03 | geo | haiku | `354b24f` | pass | 215 pass | 68 calls, 26k out | Works live, but two required tests are wrong or missing (status error, multi-word join). Never loaded `python-cli-modern`: hand-rolled `httpx.Client()`, patched `httpx.Client.get` in every test, no response model, cause dropped on exit. |
 | 2026-10-03 | geo | sonnet | `354b24f` | pass | 212 pass | 9 calls, 10k out | Meets every row. Loaded the skill second, copied `http_client.py` verbatim, `MockTransport` throughout. Wrote every file through one Bash heredoc, so the edit-time gate never ran, and committed before stopping, so the stop gate saw a clean tree. |
+| 2026-10-03 | geo | haiku | `f6c03ff` | pass | pass | 68 calls, 31k out | Close. Grepped for `build_client` (named in the new `CLAUDE.md` row) and copied the reference client; `MockTransport` throughout; a real 404 for the status test. Still never loaded the skill: parsed the response by hand, tested the join on an already-joined string, and reported `exc.request.url` instead of the cause, which slipped past `silent-exit`. |
 
 The two runs together: the skill's content works and its discovery does not. A pointer in a
 docstring reaches sonnet and not haiku. Fixed on `fix/spec-run-geo-findings`:
@@ -148,9 +154,19 @@ docstring reaches sonnet and not haiku. Fixed on `fix/spec-run-geo-findings`:
   `NO_PROXY`: behind a proxy, every generated tool connected direct. `EnvironmentProxyTransport`
   routes by the environment.
 
+Fixed after the second haiku run, on `fix/sonnet-baseline`, because they are wrong for any model:
+
+- [x] `silent-exit` counted any use of the exception as reporting it, so `exc.request.url` passed
+  while the reason was dropped. Only the whole exception now counts.
+- [x] `nested-def` ended by suggesting the closure be returned, and haiku turned its test handlers
+  into closure factories. It now leads with `functools.partial`.
+- [x] Advice that repeats is printed once even when names differ: the names moved into a
+  per-finding detail. Fourteen `nested-def` hits had cost about 5 KB in one block.
+- [x] `examples/README.md` defaults to sonnet, unsets `VIRTUAL_ENV`, and skips
+  `no-commit-to-branch` when checking a run on `main`.
+
 Still open from these runs:
 
-- [ ] Re-run haiku on geo against the fixed template, the measure of whether the rules reach it.
 - [ ] `B008` on `= typer.Argument(...)` tells the model to use a module-level singleton, the wrong
   fix for typer. A `typer-default` convention rule naming `Annotated`, with `typer.Argument` and
   `typer.Option` added to bugbear's `extend-immutable-calls`. The scaffold has no positional
@@ -158,9 +174,6 @@ Still open from these runs:
 - [ ] `build_client` retries a 5xx after 0.5 s, which breaks an API's one-request-per-second
   policy, Nominatim's for one. Say in the docstring to pass `attempts=1`, or make the minimum
   backoff a parameter.
-- [ ] `examples/README.md`: step 3's `prek run --all-files` always fails `no-commit-to-branch` on
-  `main` (use `SKIP=no-commit-to-branch`), and step 2 should `unset VIRTUAL_ENV`, whose mismatch
-  warning landed in some 25 of haiku's tool results.
 - [ ] The dogfood's `weather.py` will likely trip `raw-httpx-client` or `silent-exit` on its next
   `copier update`.
 - [ ] Carried over: the original demo code is at `d8e26b0` for comparison. The gate's pause on

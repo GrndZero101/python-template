@@ -1,7 +1,8 @@
 """The rules behind `check_conventions.py`: CLAUDE.md conventions that no Astral linter checks.
 
 Each rule is a function from a parsed module to `Hit`s, and each hit's message names the fix, not
-just the violation. A line opts out of one rule with `# noqa: <rule-id>` — several ids may be
+just the violation. What is particular to one hit — the names involved — goes in its `detail`, so
+the advice itself is identical across hits and the report can print it once. A line opts out of one rule with `# noqa: <rule-id>` — several ids may be
 listed, separated by commas — and the comment beside it should say why.
 
 | Rule id | Flags |
@@ -55,6 +56,7 @@ class Hit:
     line: int
     rule: str
     message: str
+    detail: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -65,6 +67,7 @@ class Finding:
     line: int
     rule: str
     message: str
+    detail: str = ""
 
 
 def _returned_names(func: FunctionNode) -> set[str]:
@@ -84,21 +87,24 @@ def _nested_def_hit(child: FunctionNode, enclosing: FunctionNode) -> Hit | None:
     if child.name in _returned_names(enclosing):
         return None
     message = (
-        f"`{child.name}` is defined inside `{enclosing.name}`. Move it to module level and pass "
-        "what it needs as arguments: a nested def cannot be breakpointed by name or called from "
-        "pdb, and its closure is invisible in the debugger. If the closure is the point, return "
-        f"it from `{enclosing.name}` (the decorator or factory pattern)."
+        "Move it to module level and pass what it needs as arguments; where it is handed over as "
+        "a callback, bind those arguments with `functools.partial(helper, value)`. A nested def "
+        "cannot be breakpointed by name or called from pdb, and its closure is invisible in the "
+        "debugger. Return a nested def only from a decorator or factory whose whole job is the "
+        "closure; a test handler is neither."
     )
-    return Hit(child.lineno, "nested-def", message)
+    detail = f"`{child.name}` is defined inside `{enclosing.name}`."
+    return Hit(child.lineno, "nested-def", message, detail)
 
 
 def _nested_class_hit(child: ast.ClassDef, enclosing: FunctionNode) -> Hit:
     """Return the hit for a class defined inside a function."""
     message = (
-        f"class `{child.name}` is defined inside `{enclosing.name}`. Move it to module level: a "
-        "class built per call is a new type each time, which breaks `isinstance` and pickling."
+        "Move it to module level: a class built per call is a new type each time, which breaks "
+        "`isinstance` and pickling."
     )
-    return Hit(child.lineno, "nested-class", message)
+    detail = f"class `{child.name}` is defined inside `{enclosing.name}`."
+    return Hit(child.lineno, "nested-class", message, detail)
 
 
 class _ScopeScanner:
@@ -164,10 +170,11 @@ def comprehension_hits(tree: ast.Module) -> list[Hit]:
             pending.extend(ast.iter_child_nodes(node))
             continue
         message = (
-            f"{problem}. Write an explicit loop with named intermediates, so a breakpoint inside "
-            "it has values to inspect."
+            "Write an explicit loop with named intermediates, so a breakpoint inside it has "
+            "values to inspect."
         )
-        hits.append(Hit(getattr(node, "lineno", 0), "complex-comprehension", message))
+        line = getattr(node, "lineno", 0)
+        hits.append(Hit(line, "complex-comprehension", message, f"{problem}."))
     return hits
 
 
@@ -206,11 +213,11 @@ def attribute_hits(tree: ast.Module) -> list[Hit]:
         if builtin is None:
             continue
         message = (
-            f"`{builtin}` with a computed attribute name. Name the attribute in the code, or "
-            "dispatch through an explicit dict of functions: grep and breakpoints cannot follow "
-            "a name built at runtime."
+            "Name the attribute in the code, or dispatch through an explicit dict of functions: "
+            "grep and breakpoints cannot follow a name built at runtime."
         )
-        hits.append(Hit(getattr(node, "lineno", 0), "dynamic-attribute", message))
+        detail = f"`{builtin}` with a computed attribute name."
+        hits.append(Hit(getattr(node, "lineno", 0), "dynamic-attribute", message, detail))
     return hits
 
 
@@ -371,15 +378,22 @@ def _raises_exit(node: ast.AST) -> TypeGuard[ast.Raise]:
 
 
 def _reports(handler: ast.ExceptHandler) -> bool:
-    """Return whether the handler uses the exception it caught anywhere but a `from` clause."""
+    """Return whether the handler passes on the exception it caught, whole.
+
+    `f"{exc}"`, `str(exc)` and `logger.opt(exception=exc)` count; `from exc` does not, since
+    nothing prints an exit's cause, and nor does `exc.request`, which reports a part and drops
+    the reason.
+    """
     if handler.name is None:
         return False
-    causes: set[int] = set()
+    hidden: set[int] = set()  # ids of uses that do not carry the exception anywhere visible
     for node in ast.walk(handler):
         if isinstance(node, ast.Raise) and node.cause is not None:
-            causes.add(id(node.cause))
+            hidden.add(id(node.cause))
+        elif isinstance(node, ast.Attribute):
+            hidden.add(id(node.value))
     for node in ast.walk(handler):
-        if isinstance(node, ast.Name) and node.id == handler.name and id(node) not in causes:
+        if isinstance(node, ast.Name) and node.id == handler.name and id(node) not in hidden:
             return True
     return False
 
@@ -398,12 +412,11 @@ def exit_hits(tree: ast.Module) -> list[Hit]:
             continue
         if _reports(handler):
             continue
-        caught = handler.name or "exc"
         message = (
-            "this exit drops the exception it caught: typer never prints an exit's cause, so the "
-            f"user sees no reason and `-v` shows nothing. Bind it (`except ... as {caught}`), put "
-            f"it in the stderr message (`{{{caught}}}`) and log it with "
-            f'`logger.opt(exception={caught}).debug("...")` before exiting.'
+            "This exit drops the exception it caught: typer never prints an exit's cause, so the "
+            "user sees no reason and `-v` shows nothing. Bind it (`except ... as exc`), put the "
+            "whole of it in the stderr message (`{exc}`) and log it with "
+            '`logger.opt(exception=exc).debug("...")` before exiting.'
         )
         exits = [node for node in ast.walk(handler) if _raises_exit(node)]
         for exit_raise in exits:
@@ -446,7 +459,7 @@ def check_source(path: Path, source: str) -> list[Finding]:
         for hit in rule(tree):
             text = lines[hit.line - 1] if 0 < hit.line <= len(lines) else ""
             if not suppressed(text, hit.rule):
-                findings.append(Finding(path, hit.line, hit.rule, hit.message))
+                findings.append(Finding(path, hit.line, hit.rule, hit.message, hit.detail))
     return sorted(findings, key=_line_order)
 
 

@@ -12,14 +12,15 @@ supply the structure, and a spec handed to an agent is how to find out whether t
 ## Running one
 
 Each run is one spec built by one model in a fresh project, then judged in a second session by a
-stronger model. Run each spec with `haiku` and with `sonnet`: the claim being tested is that a
-lower-reasoning model builds a good tool when the template carries the knowledge.
+stronger model. `sonnet` is the baseline: the claim being tested is that a mid-tier model builds a
+good tool cheaply when the template carries the knowledge. A `haiku` run now and then shows how far
+below that the template still reaches; act on what it finds only when the fix would help any model.
 
 The commands set `REPO` to this checkout and name the run after the spec and the model:
 
 ```bash
 REPO=~/projects/github/GrndZero101/python-template
-SPEC=geo MODEL=haiku                  # or currency; or sonnet
+SPEC=geo MODEL=sonnet                 # or currency; or haiku, for a stretch run
 RUN=~/scratch/spec-runs/$SPEC-$MODEL
 ```
 
@@ -39,6 +40,7 @@ the agent branches by itself is part of what is being observed.
 
 ```bash
 cd "$RUN"
+unset VIRTUAL_ENV    # one left over from another project makes uv warn in every tool result
 claude --model "$MODEL" --permission-mode acceptEdits "$(cat "$REPO/examples/$SPEC.md")"
 ```
 
@@ -55,7 +57,7 @@ that in mind when the agent does something the template does not teach.
 Still in `$RUN`:
 
 ```bash
-prek run --all-files
+SKIP=no-commit-to-branch prek run --all-files    # that hook always fails on main, by design
 uv run pytest
 ```
 
