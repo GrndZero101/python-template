@@ -9,7 +9,9 @@ mandatory.
 1. **Route stdlib logging into it.** Your dependencies — httpx, SDKs — still use `logging`, and
    without an `InterceptHandler` their output vanishes. Put the canonical handler in its own
    `logging_setup.py` and call it once from `main`. It is vendored boilerplate with a frame-walking
-   loop; it is not an example of house style.
+   loop; it is not an example of house style. It holds `httpcore` at INFO, because that library's
+   DEBUG is a wire trace of some twenty lines per request; add any other such library to
+   `CHATTY_LOGGERS` rather than lowering the whole threshold.
 2. **`caplog` does not work.** loguru does not propagate to pytest's handlers, so log assertions
    silently pass against empty text. Add the documented `propagate_logs` autouse fixture to
    `conftest.py`, or assert through a `logger.add(records.append)` sink.

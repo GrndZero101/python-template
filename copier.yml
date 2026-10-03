@@ -119,6 +119,7 @@ _exclude:
   - "{% if project_type != 'cli-modern' %}tests/conftest.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}tests/test_about.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}tests/test_config.py{% endif %}"
+  - "{% if project_type != 'cli-modern' %}tests/test_logging_setup.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}tests/test_typer_entrypoint.py{% endif %}"
   - "{% if project_type != 'cli-modern' %}.claude/skills/python-cli-modern{% endif %}"
   - "{% if project_type != 'cli-stdlib' %}.claude/skills/python-cli-stdlib{% endif %}"
