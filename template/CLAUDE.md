@@ -142,8 +142,8 @@ several ids with commas. Use it rarely and say why in a comment beside it.
   characters; the body says why. Types: `feat` `fix` `docs` `refactor` `test` `chore` `build` `ci`
   `perf` `style` `revert`. One logical change per commit: if the summary needs "and", split it.
 - **Finish a branch with the script, never by hand:**
-  `uv run python tools/finish_branch.py "feat(x): summary"`. It squashes, gates, and merges into
-  `main` with `--no-ff`; `--keep-commits` keeps several commits when the branch holds several
+  `uv run python tools/finish_branch.py "feat(x): summary"`. It squashes, gates, tests, and merges
+  into `main` with `--no-ff`; `--keep-commits` keeps several commits when the branch holds several
   changes.
 - Checkpointing broken work, a conflict with `main`, the merge message, and the reasons for all of
   it: the **git-workflow** skill.

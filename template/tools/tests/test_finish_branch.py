@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from finish_branch import main
 from gate import GateResult, run_subprocess
+from stop_gate import TEST_COMMAND
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 
@@ -28,15 +29,20 @@ def _git(root: Path, *args: str) -> str:
 
 @dataclasses.dataclass
 class _Prek:
-    """Runs git for real and stands in for prek, recording each message it is asked to check."""
+    """Runs git for real and stands in for prek and pytest, recording what it is asked to check."""
 
     gate: GateResult = PASS
     message_check: GateResult = PASS
+    tests: GateResult = PASS
     gate_runs: int = 0
+    test_runs: int = 0
     messages: list[str] = dataclasses.field(default_factory=list)
 
     def __call__(self, command: Sequence[str], cwd: Path) -> GateResult:
         """Answer one command the way the runner would."""
+        if list(command) == TEST_COMMAND:
+            self.test_runs += 1
+            return self.tests
         if command[0] != "prek":
             return run_subprocess(command, cwd)
         if "commit-msg" not in command:
@@ -116,7 +122,22 @@ def test_a_dirty_tree_is_refused_before_anything_changes(
     _commit(root, "a.py", "feat(x): add a")
     (root / "stray.txt").write_text("x\n", encoding="utf-8")
     assert main([]) == 1
-    assert "not clean" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "not clean: commit it on feat/x" in err
+    assert "?? stray.txt" in err
+
+
+def test_a_commit_a_hook_aborted_is_named_as_such(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The currency run: the hook reformatted staged files, and `-q` hid that nothing committed."""
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "feat(x): add a")
+    (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _git(root, "add", "a.py")
+    (root / "a.py").write_text("x = 1  # reformatted\n", encoding="utf-8")
+    assert main([]) == 1
+    assert "a commit hook reformatted staged files" in capsys.readouterr().err
 
 
 def test_running_on_main_is_refused(
@@ -216,3 +237,27 @@ def test_a_commit_message_that_fails_the_check_is_not_merged(
     assert main([], runner=_Prek(message_check=FAIL)) == 1
     assert "rejected 'added a'" in capsys.readouterr().err
     assert _first_parent_subjects(root) == ["chore: start"]
+
+
+def test_failing_tests_are_not_merged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The gate does not run the tests, and nothing else will once the branch is merged."""
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "feat(x): add a")
+    failing = GateResult(code=1, output="FAILED tests/test_a.py::test_a")
+    assert main([], runner=_Prek(tests=failing)) == 1
+    err = capsys.readouterr().err
+    assert "the tests failed" in err
+    assert "FAILED tests/test_a.py::test_a" in err
+    assert _first_parent_subjects(root) == ["chore: start"]
+    assert _git(root, "branch", "--show-current") == "feat/x"
+
+
+def test_no_tests_skips_the_suite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _repo(tmp_path, monkeypatch)
+    _commit(root, "a.py", "feat(x): add a")
+    prek = _Prek(tests=GateResult(code=1, output="never run"))
+    assert main(["--no-tests"], runner=prek) == 0
+    assert prek.test_runs == 0
+    assert _first_parent_subjects(root) == ["feat(x): add a", "chore: start"]
