@@ -167,13 +167,18 @@ Fixed after the second haiku run, on `fix/sonnet-baseline`, because they are wro
 
 Still open from these runs:
 
-- [ ] `B008` on `= typer.Argument(...)` tells the model to use a module-level singleton, the wrong
-  fix for typer. A `typer-default` convention rule naming `Annotated`, with `typer.Argument` and
-  `typer.Option` added to bugbear's `extend-immutable-calls`. The scaffold has no positional
-  argument to copy from either.
-- [ ] `build_client` retries a 5xx after 0.5 s, which breaks an API's one-request-per-second
-  policy, Nominatim's for one. Say in the docstring to pass `attempts=1`, or make the minimum
-  backoff a parameter.
+- [x] `B008` on `= typer.Argument(...)` told the model to use a module-level singleton, the wrong
+  fix for typer, and missed `str` and `int` annotations entirely. Fixed on
+  `fix/typer-default-and-backoff`: a `typer-default` convention rule names `Annotated` for any
+  annotation, and `typer.Argument` and `typer.Option` are in bugbear's `extend-immutable-calls`,
+  so `B008` stays silent on them and on for everything else. The scaffold still has no positional
+  argument; the rule's message and the "add a command" recipe now show one, and `status.py` has
+  one to copy. Proven in a generated project: a `list[str]` argument and an `int` option in the
+  old form give two `typer-default` hits and no `B008`.
+- [x] `build_client` retried a 5xx after 0.5 s, which breaks an API's one-request-per-second
+  policy, Nominatim's for one. `backoff=` now sets the first wait, through `RetryTransport` and
+  `retry_delay`; the docstring and the "call an HTTP API" recipe name `backoff=1.0` and
+  `attempts=1`.
 - [ ] The dogfood's `weather.py` will likely trip `raw-httpx-client` or `silent-exit` on its next
   `copier update`.
 - [ ] Carried over: the original demo code is at `d8e26b0` for comparison. The gate's pause on

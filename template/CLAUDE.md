@@ -96,6 +96,7 @@ which rest on your own discipline.
 | An exit from an `except` reports what it caught | `tools/check_conventions.py` `silent-exit` |
 | An HTTP client comes from `build_client`, never a bare `httpx.Client()` | `tools/check_conventions.py` `raw-httpx-client` |
 | Tests replace the network with `httpx.MockTransport`, never by patching httpx | `tools/check_conventions.py` `patched-httpx` |
+| typer parameters use `Annotated`, never `= typer.Option(...)` | `tools/check_conventions.py` `typer-default` |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |

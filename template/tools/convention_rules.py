@@ -16,6 +16,7 @@ listed, separated by commas — and the comment beside it should say why.
 | `raw-httpx-client` | an httpx client, or an `httpx.get`-style call, built outside `build_client` |
 | `patched-httpx` | `patch`, `patch.object` or `setattr` aimed at httpx itself |
 | `silent-exit` | an exit raised from an `except` that never reports the exception it caught |
+| `typer-default` | `typer.Option(...)` or `typer.Argument(...)` as a parameter's default |
 """
 
 import ast
@@ -47,6 +48,7 @@ HTTPX_SHORTCUTS = frozenset({
 CLIENT_FACTORY = "build_client"
 PATCHERS = frozenset({"patch", "object", "setattr"})
 EXIT_EXCEPTIONS = frozenset({"Exit", "Abort", "SystemExit"})
+TYPER_PARAMETERS = frozenset({"Option", "Argument"})
 
 
 @dataclasses.dataclass(frozen=True)
@@ -247,28 +249,28 @@ def main_guard_hits(tree: ast.Module) -> list[Hit]:
 
 
 @dataclasses.dataclass(frozen=True)
-class HttpxNames:
-    """How a module refers to httpx: the names bound to the module, and to its members."""
+class ImportedNames:
+    """How a module refers to another: the names bound to that module, and to its members."""
 
     modules: frozenset[str]
-    members: dict[str, str]  # local name -> the httpx attribute it was imported as
+    members: dict[str, str]  # local name -> the attribute it was imported as
 
 
-def httpx_names(tree: ast.Module) -> HttpxNames:
-    """Collect `import httpx [as h]` and `from httpx import Client [as C]` bindings."""
+def imported_names(tree: ast.Module, module: str) -> ImportedNames:
+    """Collect `import httpx [as h]` and `from httpx import Client [as C]` bindings of `module`."""
     modules: set[str] = set()
     members: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            aliases = [alias for alias in node.names if alias.name == "httpx"]
-            modules.update(alias.asname or "httpx" for alias in aliases)
-        elif isinstance(node, ast.ImportFrom) and node.module == "httpx":
+            aliases = [alias for alias in node.names if alias.name == module]
+            modules.update(alias.asname or module for alias in aliases)
+        elif isinstance(node, ast.ImportFrom) and node.module == module:
             members.update({alias.asname or alias.name: alias.name for alias in node.names})
-    return HttpxNames(frozenset(modules), members)
+    return ImportedNames(frozenset(modules), members)
 
 
-def _httpx_attribute(node: ast.expr, names: HttpxNames) -> str | None:
-    """Return the httpx attribute `node` names, as `httpx.Client` or an imported `Client`."""
+def _module_attribute(node: ast.expr, names: ImportedNames) -> str | None:
+    """Return the attribute `node` names, as `httpx.Client` or an imported `Client`."""
     if isinstance(node, ast.Name):
         return names.members.get(node.id)
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
@@ -276,7 +278,7 @@ def _httpx_attribute(node: ast.expr, names: HttpxNames) -> str | None:
     return None
 
 
-def _rooted_in_httpx(node: ast.expr, names: HttpxNames) -> bool:
+def _rooted_in_httpx(node: ast.expr, names: ImportedNames) -> bool:
     """Return whether `node` is httpx or something reached from it, e.g. `httpx.Client.get`."""
     root = node
     while isinstance(root, ast.Attribute):
@@ -298,13 +300,13 @@ def _calls_outside(tree: ast.Module, factory: str) -> Iterator[ast.Call]:
         pending.extend(ast.iter_child_nodes(node))
 
 
-def _real_client(call: ast.Call, names: HttpxNames) -> str | None:
+def _real_client(call: ast.Call, names: ImportedNames) -> str | None:
     """Return what `call` builds if it is an httpx client that would reach the network.
 
     A client given `transport=` is a test double — `MockTransport`, `ASGITransport` — so it
     passes, as does one given `**kwargs`, where the transport cannot be seen.
     """
-    attribute = _httpx_attribute(call.func, names)
+    attribute = _module_attribute(call.func, names)
     if attribute in HTTPX_SHORTCUTS:
         return f"httpx.{attribute}()"
     if attribute not in HTTPX_CLIENTS:
@@ -317,7 +319,7 @@ def _real_client(call: ast.Call, names: HttpxNames) -> str | None:
 
 def client_hits(tree: ast.Module) -> list[Hit]:
     """Return `raw-httpx-client` hits: clients built anywhere but `build_client`."""
-    names = httpx_names(tree)
+    names = imported_names(tree, "httpx")
     if not names.modules and not names.members:
         return []
     hits: list[Hit] = []
@@ -345,7 +347,7 @@ def _called_name(func: ast.expr) -> str | None:
     return None
 
 
-def _patches_httpx(call: ast.Call, names: HttpxNames) -> bool:
+def _patches_httpx(call: ast.Call, names: ImportedNames) -> bool:
     """Return whether `call` patches httpx itself, by object or by dotted string."""
     if _called_name(call.func) not in PATCHERS or not call.args:
         return False
@@ -357,7 +359,7 @@ def _patches_httpx(call: ast.Call, names: HttpxNames) -> bool:
 
 def patch_hits(tree: ast.Module) -> list[Hit]:
     """Return `patched-httpx` hits."""
-    names = httpx_names(tree)
+    names = imported_names(tree, "httpx")
     message = (
         "this patches httpx itself, for every caller at once, and hides what the code under test "
         "sends. Give it a client built with `transport=httpx.MockTransport(handler)` instead: "
@@ -426,6 +428,42 @@ def exit_hits(tree: ast.Module) -> list[Hit]:
     return hits
 
 
+def _defaulted_parameters(func: FunctionNode) -> Iterator[tuple[ast.arg, ast.expr]]:
+    """Yield each parameter of `func` that has a default, with that default."""
+    positional = [*func.args.posonlyargs, *func.args.args]
+    with_defaults = positional[len(positional) - len(func.args.defaults) :]
+    yield from zip(with_defaults, func.args.defaults, strict=True)
+    for parameter, default in zip(func.args.kwonlyargs, func.args.kw_defaults, strict=True):
+        if default is not None:
+            yield parameter, default
+
+
+def typer_default_hits(tree: ast.Module) -> list[Hit]:
+    """Return `typer-default` hits: `typer.Option` or `typer.Argument` as a parameter's default."""
+    names = imported_names(tree, "typer")
+    if not names.modules and not names.members:
+        return []
+    message = (
+        "Put the typer call in the annotation, and only the real default after `=`: "
+        "`count: Annotated[int, typer.Option(help=...)] = 3`, and for a required argument "
+        "`urls: Annotated[list[str], typer.Argument(help=...)]` with no default at all. "
+        "`options.py` has options, and `.claude/skills/python-cli-modern/reference/status.py` an "
+        "argument, in this form."
+    )
+    hits: list[Hit] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, FunctionNode):
+            continue
+        for parameter, default in _defaulted_parameters(node):
+            if not isinstance(default, ast.Call):
+                continue
+            called = _module_attribute(default.func, names)
+            if called in TYPER_PARAMETERS:
+                detail = f"`{parameter.arg}` defaults to `typer.{called}(...)`."
+                hits.append(Hit(default.lineno, "typer-default", message, detail))
+    return hits
+
+
 RULES: tuple[Callable[[ast.Module], list[Hit]], ...] = (
     scope_hits,
     comprehension_hits,
@@ -435,6 +473,7 @@ RULES: tuple[Callable[[ast.Module], list[Hit]], ...] = (
     client_hits,
     patch_hits,
     exit_hits,
+    typer_default_hits,
 )
 
 

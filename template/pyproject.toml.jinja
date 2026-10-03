@@ -116,6 +116,12 @@ max-args = 5
 max-branches = 10
 max-returns = 6
 
+# `B008` would tell a model to hoist `= typer.Option(...)` into a module-level singleton, which is
+# the wrong fix for typer. The convention hook's `typer-default` rule refuses that form instead and
+# names the right one, `Annotated`. `B008` stays on for everything else.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use bare literals, and poke at internals — all fine there.
 "tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
