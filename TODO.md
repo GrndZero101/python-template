@@ -192,7 +192,14 @@ Open from the runs:
   - **argparse with subparsers from the start**: an `about` subcommand, global `-v/--verbose`
     and `--version`, per-command `-o/--output table|json`, each resolving flag, then
     `<SCRIPT>_*` variable, then default. A JSON path is cheap in the stdlib; a rich table is
-    not, so `table` is plain aligned text.
+    not, so `table` is plain aligned text from a small `format_table` (`str.ljust`), as the aws
+    CLI renders its own.
+  - **`tabulate` as the sanctioned next step** (2026-10-04), not a scaffold dependency. Split the
+    skill's "colour, tables, progress" policy row: tables use `format_table` until cells wrap,
+    numbers need decimal alignment, or wide characters (CJK, emoji — `str.ljust` counts code
+    points, not columns) must line up, then `tabulate` (`tabulate[widechars]` for the last);
+    colour, progress and live layout stay manual ANSI until `rich`. `tabulate` 0.10.0
+    (2026-03) has no required dependencies.
   - **A stdlib `logging` setup** on stderr, since `logging_setup.py` is loguru and travels only
     with `cli-modern`. Phase 9 wants the same as the shared default for the other types.
   - **Tests** and a recipe-first skill ("add a subcommand", "add a setting"), as `cli-modern` has.
