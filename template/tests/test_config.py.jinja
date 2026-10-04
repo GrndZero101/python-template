@@ -3,7 +3,8 @@
 The last section checks the wiring. Adding a setting takes four coordinated edits — `Settings`,
 `_Overrides`, `load_settings` and an option in `options.py` — and a missed one fails silently: the
 flag is accepted and ignored, or the variable is read but never documented. These tests name
-whichever edit is missing.
+whichever edit is missing. A secret setting takes none of the three flag edits, and the tests
+check that a credential's field is typed `SecretStr`, so it is masked wherever it is shown.
 """
 
 import functools
@@ -21,6 +22,7 @@ from {{ package_name }}.config import (
     SettingsError,
     env_var,
     load_settings,
+    secret_fields,
 )
 from {{ package_name }}.output import OutputFormat
 
@@ -99,30 +101,52 @@ def _option_help(command: typer.main.TyperGroup) -> str:
     return "\n".join(texts)
 
 
-SETTINGS_FIELDS = sorted(Settings.model_fields)
+SECRET_FIELDS = secret_fields()
+# A secret has no flag, so it is not in `_Overrides` or `load_settings`: a flag's value is visible
+# in shell history and to anyone who can list processes.
+FLAG_FIELDS = sorted(field for field in Settings.model_fields if field not in SECRET_FIELDS)
+# A field whose name ends in one of these holds a credential. Extend it for your own naming.
+CREDENTIAL_SUFFIXES = ("token", "password", "secret", "api_key", "private_key")
+
+
+def test_every_credential_setting_is_secret() -> None:
+    """A token typed `str` leaks into `about` and the `-v` debug log; `SecretStr` masks it.
+
+    It runs before the flag steps below, which a credential skips, so their failures do not lead
+    a model to give a token a flag.
+    """
+    exposed = [
+        field
+        for field in Settings.model_fields
+        if field.endswith(CREDENTIAL_SUFFIXES) and field not in SECRET_FIELDS
+    ]
+    assert exposed == [], (
+        f"type {exposed} as SecretStr and drop their flags: "
+        'follow "Recipe: add a secret setting" in the python-cli-modern skill'
+    )
 
 
 def test_overrides_declare_every_setting() -> None:
     """Step 1 of the add-a-setting recipe: a field in `Settings` must also be in `_Overrides`."""
-    assert sorted(config._Overrides.__annotations__) == SETTINGS_FIELDS
+    assert sorted(config._Overrides.__annotations__) == FLAG_FIELDS
 
 
 def test_load_settings_takes_a_keyword_for_every_setting() -> None:
     """Step 2: without the keyword there is no way for a flag to reach the setting."""
     keywords = sorted(inspect.signature(load_settings).parameters)
-    assert keywords == SETTINGS_FIELDS
+    assert keywords == FLAG_FIELDS
 
 
 def test_load_settings_passes_every_given_flag_through(monkeypatch: pytest.MonkeyPatch) -> None:
     """Step 2 again: a keyword accepted but never copied into the overrides is silently ignored."""
     seen: dict[str, object] = {}
     monkeypatch.setattr(config, "Settings", functools.partial(_capture, seen))
-    given: dict[str, Any] = {field: f"value of {field}" for field in SETTINGS_FIELDS}
+    given: dict[str, Any] = {field: f"value of {field}" for field in FLAG_FIELDS}
     load_settings(**given)
     assert seen == given
 
 
-@pytest.mark.parametrize("field", SETTINGS_FIELDS)
+@pytest.mark.parametrize("field", FLAG_FIELDS)
 def test_every_setting_has_a_flag_naming_its_variable(field: str) -> None:
     """Step 3: a flag on some command must name the variable, or nobody can discover it."""
     command = typer.main.get_command(app)

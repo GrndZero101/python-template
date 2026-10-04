@@ -113,6 +113,29 @@ Then test the new setting's precedence in `tests/test_config.py`, as the `output
 the environment beats the default, and the flag beats the environment. Why every option
 defaults to `None` and typer's `envvar=` is not used: `reference/configuration.md`.
 
+## Recipe: add a secret setting
+
+A token, password or key. It resolves from `<PREFIX>_<FIELD>` only — **no flag**, since a flag's
+value lands in shell history and in any process listing. One edit:
+
+1. **`src/<package>/config.py`** — add the field to `Settings` as `SecretStr`, usually optional:
+   `api_token: SecretStr | None = None`. Not to `_Overrides`, `load_settings` or `options.py`.
+
+`SecretStr` masks it in `about`'s table and JSON and in the `-v` debug log. Unwrap it with
+`.get_secret_value()` only at the point of use — where the client is built, or in a command whose
+job is to output the secret, whose JSON then carries it raw:
+
+```python
+if settings.api_token is None:
+    raise SettingsError(f"no API token: set {env_var('api_token')}")  # exits 2
+with build_client() as client:
+    client.headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
+```
+
+Send it in a header, never the query string: the client logs every URL at debug. A field ending
+`token`, `password`, `secret`, `api_key` or `private_key` that is not `SecretStr` fails
+`tests/test_config.py`. Why: `reference/configuration.md`.
+
 ## Rules every command follows
 
 - **`Annotated` for every typer parameter**, never `= typer.Option(...)` defaults. `reference/typer.md`.

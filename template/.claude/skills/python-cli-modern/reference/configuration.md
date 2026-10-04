@@ -39,6 +39,21 @@ argument — and an absent flag must not arrive at all. Hence:
 - **Tests clear the prefix.** The scaffold's `conftest.py` deletes every `<PREFIX>_*` variable
   before each test, so a developer's shell cannot make a test pass or fail.
 
+**Secrets** are the one exception to "every setting has a flag":
+
+- **Environment only.** A flag's value is visible in shell history and to anyone who can list
+  processes, so a secret field is left out of `_Overrides`, `load_settings` and `options.py`. The
+  wiring tests find secret fields with `secret_fields()` and exempt them from those steps.
+- **`SecretStr`, so incidental exposure is masked.** Its `repr` is `SecretStr('**********')` and
+  `model_dump(mode="json")` gives `'**********'`, so the debug log of the resolved settings and
+  `about`'s table and JSON never show it. Discoverability comes from `about`, which still lists
+  the field and its variable.
+- **Unwrap once, at the point of use.** `.get_secret_value()` where the client is built, or in a
+  command that exists to output the secret. Such a command emits it raw, JSON included, as
+  `terraform output -json` and `gh auth token` do: there the reveal is the point, and the explicit
+  call makes it greppable.
+- **Never in a URL.** `http_client.py` logs each request's URL at debug; a header is not logged.
+
 Global options live on `@app.callback()`, which stores what it was given in a frozen
 `GlobalOptions` on `ctx.obj`. Each command reads it back with `global_options(ctx)` and calls
 `load_settings` once with its own flags added, so settings are validated in one place and the
