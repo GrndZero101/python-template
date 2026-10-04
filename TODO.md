@@ -8,10 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Phase 7 — secrets** (`SecretStr`). The most serious open gap: the recipe as written leaks a
-   token.
-2. **Phase 7 — the config-file layer**, once D8 is settled.
-3. The rest of phase 7, then phase 8.
+1. **Phase 7 — the config-file layer** (YAML, D10), once D8 is settled.
+2. The rest of phase 7, ending with a `copier update` of the dogfood, then phase 8.
 
 ## How work is judged
 
@@ -161,14 +159,12 @@ Open from the runs:
 
 ## Phase 7 — DevOps CLI features
 
-- [ ] **Secrets** (scope per D9). Following `config.py`'s own recipe with `api_token: str` leaks
-  the token twice: in the `-v` debug log on stderr (`about.py`'s `logger.debug("resolved {!r}",
-  settings)`, which reaches CI logs and pasted bug reports) and in `about -o json`. Nothing in
-  CLAUDE.md, the skills or the scaffold mentions `SecretStr`. Scope:
-  - The "add a setting" recipe types credentials as `SecretStr`, and calls `.get_secret_value()`
-    only where the client is built or where a command deliberately emits the secret.
-  - One test: a secret setting renders masked in `about`'s table, its JSON and the debug log.
-  - Not in scope: a `--show-secrets` flag on `about`, and anything specific to rich output.
+- [x] **Secrets** (D9), 2026-10-04. "Recipe: add a secret setting": `SecretStr`, environment
+  only (no flag), unwrapped at the point of use, sent in a header since URLs are logged.
+  `secret_fields()` in `config.py` exempts secrets from the flag wiring tests; a credential-named
+  field not typed `SecretStr` fails first under `-x`, so a model is not steered into adding a
+  flag; an `about` test, skipped until a secret exists, asserts masking in table, JSON and log.
+  Verified by applying the recipe in a generated project, both wrongly and rightly.
 - [ ] **A config-file layer** (needs D8). Today settings resolve flag, then environment variable,
   then default. The missing layer is a **user config file** between the environment and the
   defaults. Proposed shape:

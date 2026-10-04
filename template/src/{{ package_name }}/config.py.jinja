@@ -7,15 +7,16 @@ Why it is built this way: .claude/skills/python-cli-modern/reference/configurati
 Each field reads `{{ script_name | upper | replace('-', '_') }}_<FIELD>`, so `output` is
 `{{ script_name | upper | replace('-', '_') }}_OUTPUT`. To add a setting, follow "Recipe: add a
 setting" in the python-cli-modern skill; the wiring tests at the end of `tests/test_config.py` fail,
-naming the missed step, until it is done.
+naming the missed step, until it is done. A credential follows "Recipe: add a secret setting"
+instead: typed `SecretStr`, read from the environment only, and masked everywhere it is shown.
 
 No `.env` file is read, so a stray file in the working directory cannot change a test's outcome.
 Add `env_file=".env"` to `model_config` to opt in.
 """
 
-from typing import TypedDict
+from typing import TypedDict, get_args
 
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from pydantic_core import ErrorDetails
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -44,6 +45,15 @@ class Settings(BaseSettings):
 
     verbose: bool = False
     output: OutputFormat = OutputFormat.table
+
+
+def secret_fields() -> list[str]:
+    """Return the settings typed `SecretStr`, which take no flag and are masked wherever shown."""
+    names: list[str] = []
+    for name, info in Settings.model_fields.items():
+        if info.annotation is SecretStr or SecretStr in get_args(info.annotation):
+            names.append(name)
+    return names
 
 
 def env_var(field: str) -> str:

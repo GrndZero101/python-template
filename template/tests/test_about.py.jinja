@@ -6,10 +6,17 @@ import pytest
 
 from {{ package_name }}.about import About, build_about_table, collect_about
 from {{ package_name }}.cli import main
-from {{ package_name }}.config import PROG_NAME, Settings, env_var, load_settings
+from {{ package_name }}.config import (
+    PROG_NAME,
+    Settings,
+    env_var,
+    load_settings,
+    secret_fields,
+)
 
 OUTPUT_VAR = env_var("output")
 VERBOSE_VAR = env_var("verbose")
+PROBE_VALUE = "not-for-your-eyes"
 
 
 def _fixed_version(_dist_name: str) -> str:
@@ -61,7 +68,7 @@ def test_json_output_is_one_parseable_object(capsys: pytest.CaptureFixture[str])
     assert main(["about", "--output", "json"]) == 0
     decoded = json.loads(capsys.readouterr().out)
     assert decoded["name"] == PROG_NAME
-    assert decoded["settings"] == {"verbose": False, "output": "json"}
+    assert (decoded["settings"]["verbose"], decoded["settings"]["output"]) == (False, "json")
 
 
 def test_environment_selects_the_output_format(
@@ -110,6 +117,22 @@ def test_no_verbose_flag_beats_the_environment(
     monkeypatch.setenv(VERBOSE_VAR, "1")
     assert main(["--no-verbose", "about", "-o", "json"]) == 0
     assert not capsys.readouterr().err
+
+
+def test_secret_settings_are_masked_in_the_table_the_json_and_the_debug_log(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every `SecretStr` setting, given a value, shows only as asterisks on stdout and stderr."""
+    secrets = secret_fields()
+    if not secrets:
+        pytest.skip("no secret settings yet; this covers each one you add as SecretStr")
+    for field in secrets:
+        monkeypatch.setenv(env_var(field), PROBE_VALUE)
+    assert main(["-v", "about"]) == 0
+    assert main(["-v", "about", "-o", "json"]) == 0
+    captured = capsys.readouterr()
+    assert PROBE_VALUE not in captured.out + captured.err
+    assert "**********" in captured.out
 
 
 def test_invalid_environment_is_a_usage_error_naming_the_variable(
