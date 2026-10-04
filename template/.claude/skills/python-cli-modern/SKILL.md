@@ -2,7 +2,7 @@
 name: python-cli-modern
 description: >-
   Recipes and conventions for modern devops CLI tools that call APIs — typer with Annotated, httpx
-  clients, pydantic models, pydantic-settings configuration (flag, then env var, then default), rich
+  clients, pydantic models, pydantic-settings configuration (flag, env var, YAML file, default), rich
   output with a mandatory --output json path, loguru on stderr, shell completion, interactive
   prompts, and a switchable sequential/concurrent execution path. Use when the project depends on
   typer, httpx, rich, pydantic or loguru, when adding a command, a setting or an --output format,
@@ -25,7 +25,8 @@ a command that calls an API, start from `reference/status.py` instead — the ne
      parameter, so a test or a debugger can call them with literal arguments;
    - a renderer: a rich table for `table`, `sys.stdout.write` of JSON for `json`;
    - `<name>_command(ctx: typer.Context, ..., output: OutputOption = None) -> None`, which calls
-     `load_settings(verbose=global_options(ctx).verbose, output=output)`, delegates, and raises
+     `load_settings(verbose=options.verbose, config=options.config, output=output)` with
+     `options = global_options(ctx)`, delegates, and raises
      `typer.Exit(1)` on a runtime failure. Nothing else. A positional argument is
      `names: Annotated[list[str], typer.Argument(help="...")]`, with no default; one that must be
      validated or is not a string: "Recipe: a validated argument".
@@ -98,8 +99,10 @@ usage line, and the message format differs from every other usage error.
 
 ## Recipe: add a setting
 
-A setting resolves flag, then `<PREFIX>_<FIELD>` environment variable, then default. Four edits,
-and the wiring tests at the end of `tests/test_config.py` fail, naming the step, until all are done:
+A setting resolves flag, then `<PREFIX>_<FIELD>` environment variable, then the `<field>:` key in
+the YAML config file, then default. The file needs no edit: every field is read from it. Four
+edits, and the wiring tests at the end of `tests/test_config.py` fail, naming the step, until all
+are done:
 
 1. **`src/<package>/config.py`** — add the field to `Settings` with a default, *and* to
    `_Overrides`.
@@ -110,13 +113,14 @@ and the wiring tests at the end of `tests/test_config.py` fail, naming the step,
 4. **Put the option on each command that uses it** and pass it to `load_settings`.
 
 Then test the new setting's precedence in `tests/test_config.py`, as the `output` tests there do:
-the environment beats the default, and the flag beats the environment. Why every option
+the environment beats the default, and the flag beats the environment. A string setting in YAML
+needs quotes when its value looks like another type: an unquoted `no` loads as `false`. Why every option
 defaults to `None` and typer's `envvar=` is not used: `reference/configuration.md`.
 
 ## Recipe: add a secret setting
 
-A token, password or key. It resolves from `<PREFIX>_<FIELD>` only — **no flag**, since a flag's
-value lands in shell history and in any process listing. One edit:
+A token, password or key. It resolves from `<PREFIX>_<FIELD>` or the config file — **never a
+flag**, since a flag's value lands in shell history and in any process listing. One edit:
 
 1. **`src/<package>/config.py`** — add the field to `Settings` as `SecretStr`, usually optional:
    `api_token: SecretStr | None = None`. Not to `_Overrides`, `load_settings` or `options.py`.
@@ -127,7 +131,7 @@ job is to output the secret, whose JSON then carries it raw:
 
 ```python
 if settings.api_token is None:
-    raise SettingsError(f"no API token: set {env_var('api_token')}")  # exits 2
+    raise SettingsError(f"no API token: set {env_var('api_token')} or the config file")
 with build_client() as client:
     client.headers["Authorization"] = f"Bearer {settings.api_token.get_secret_value()}"
 ```

@@ -1,25 +1,31 @@
 """The tool's identity and its resolved configuration.
 
-Every setting resolves in one order: command-line flag, then environment variable, then the field
-default. pydantic-settings does the merge; `load_settings` passes only the flags actually given.
-Why it is built this way: .claude/skills/python-cli-modern/reference/configuration.md.
+Every setting resolves in one order: command-line flag, then environment variable, then the YAML
+config file (`config_file.py`), then the field default. pydantic-settings does the merge;
+`load_settings` passes only the flags actually given. Why it is built this way:
+.claude/skills/python-cli-modern/reference/configuration.md.
 
 Each field reads `{{ script_name | upper | replace('-', '_') }}_<FIELD>`, so `output` is
 `{{ script_name | upper | replace('-', '_') }}_OUTPUT`. To add a setting, follow "Recipe: add a
 setting" in the python-cli-modern skill; the wiring tests at the end of `tests/test_config.py` fail,
 naming the missed step, until it is done. A credential follows "Recipe: add a secret setting"
-instead: typed `SecretStr`, read from the environment only, and masked everywhere it is shown.
+instead: typed `SecretStr`, never a flag, and masked everywhere it is shown. Every field is also
+read from the config file under its own name, with no further edit.
 
 No `.env` file is read, so a stray file in the working directory cannot change a test's outcome.
-Add `env_file=".env"` to `model_config` to opt in.
+To opt in, add `env_file=".env"` to `model_config` and return `dotenv_settings` after
+`env_settings` from `settings_customise_sources`.
 """
 
+import functools
+from pathlib import Path
 from typing import TypedDict, get_args
 
-from pydantic import SecretStr, ValidationError
+from pydantic import Field, SecretStr, ValidationError
 from pydantic_core import ErrorDetails
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from .config_file import ConfigFileError, ConfigFileSource, default_config_path
 from .output import OutputFormat
 
 PROG_NAME = "{{ script_name }}"
@@ -28,13 +34,14 @@ ENV_PREFIX = "{{ script_name | upper | replace('-', '_') }}_"
 
 
 class SettingsError(ValueError):
-    """A setting failed validation. The message names both the flag and the variable."""
+    """A setting failed validation, or the config file could not be read. The message says where."""
 
 
 class _Overrides(TypedDict, total=False):
     """The flags actually given. A key is present only when its flag was."""
 
     verbose: bool
+    config: Path
     output: OutputFormat
 
 
@@ -44,7 +51,22 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, frozen=True, extra="forbid")
 
     verbose: bool = False
+    config: Path = Field(default_factory=functools.partial(default_config_path, PROG_NAME))
     output: OutputFormat = OutputFormat.table
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Read flags, then the environment, then the config file; skip `.env` and secrets dirs."""
+        del dotenv_settings, file_secret_settings
+        config_file = ConfigFileSource(settings_cls, default=default_config_path(PROG_NAME))
+        return init_settings, env_settings, config_file
 
 
 def secret_fields() -> list[str]:
@@ -62,24 +84,33 @@ def env_var(field: str) -> str:
 
 
 def _describe(error: ErrorDetails) -> str:
-    """Render one validation error as `field=value (--flag or VAR): reason`."""
+    """Render one validation error as `field=value (--flag, VAR or the config file): reason`.
+
+    A secret's value is masked, and it is offered no flag, since it has none.
+    """
     field = str(error["loc"][0]) if error["loc"] else "settings"
+    if field in secret_fields():
+        return f"{field}='**********' ({env_var(field)} or the config file): {error['msg']}"
     flag = f"--{field.replace('_', '-')}"
-    return f"{field}={error['input']!r} ({flag} or {env_var(field)}): {error['msg']}"
+    sources = f"{flag}, {env_var(field)} or the config file"
+    return f"{field}={error['input']!r} ({sources}): {error['msg']}"
 
 
 def load_settings(
     *,
     verbose: bool | None = None,
+    config: Path | None = None,
     output: OutputFormat | None = None,
 ) -> Settings:
-    """Resolve settings from the given flags, then the environment, then the defaults.
+    """Resolve settings from the given flags, then the environment, the config file and the defaults.
 
     A keyword left as `None` was not given on the command line and does not override anything.
     """
     given: _Overrides = {}
     if verbose is not None:
         given["verbose"] = verbose
+    if config is not None:
+        given["config"] = config
     if output is not None:
         given["output"] = output
     try:
@@ -87,6 +118,9 @@ def load_settings(
     except ValidationError as exc:
         problems = "; ".join(_describe(error) for error in exc.errors())
         msg = f"invalid configuration: {problems}"
+        raise SettingsError(msg) from exc
+    except ConfigFileError as exc:
+        msg = f"invalid configuration: {exc}"
         raise SettingsError(msg) from exc
 
 

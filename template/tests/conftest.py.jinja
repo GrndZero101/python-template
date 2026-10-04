@@ -1,7 +1,8 @@
-"""Fixtures every test gets: isolation from the developer's shell and from loguru's global state."""
+"""Fixtures every test gets: isolation from the developer's shell, config file and loguru state."""
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from loguru import logger
@@ -15,6 +16,15 @@ def _isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in list(os.environ):
         if name.upper().startswith(ENV_PREFIX):
             monkeypatch.delenv(name)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Point the default config file into `tmp_path`, so the developer's own is never read.
+
+    `XDG_CONFIG_HOME` wins on every platform, Windows included, so this one variable is enough.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config-home"))
 
 
 @pytest.fixture(autouse=True)

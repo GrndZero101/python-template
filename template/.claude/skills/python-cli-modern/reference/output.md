@@ -28,7 +28,8 @@ OutputOption = Annotated[
 
 def ls(ctx: typer.Context, output: OutputOption = None) -> None:
     """List records."""
-    settings = load_settings(verbose=global_options(ctx).verbose, output=output)
+    options = global_options(ctx)
+    settings = load_settings(verbose=options.verbose, config=options.config, output=output)
     emit(fetch_records(), settings.output)
 ```
 

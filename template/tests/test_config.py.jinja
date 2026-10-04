@@ -1,5 +1,7 @@
 """Settings precedence: command-line flag, then environment variable, then default.
 
+The config file's place between the environment and the default is in `tests/test_config_file.py`.
+
 The last section checks the wiring. Adding a setting takes four coordinated edits — `Settings`,
 `_Overrides`, `load_settings` and an option in `options.py` — and a missed one fails silently: the
 flag is accepted and ignored, or the variable is read but never documented. These tests name

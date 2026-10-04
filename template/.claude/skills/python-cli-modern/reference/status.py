@@ -106,7 +106,8 @@ def status_command(
     output: OutputOption = None,
 ) -> None:
     """Check that each URL answers without an error status."""
-    settings = load_settings(verbose=global_options(ctx).verbose, output=output)
+    options = global_options(ctx)
+    settings = load_settings(verbose=options.verbose, config=options.config, output=output)
     with build_client() as client:
         probes = probe_all(client, urls)
     emit_status(probes, settings.output)

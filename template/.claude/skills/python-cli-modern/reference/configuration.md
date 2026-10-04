@@ -1,9 +1,10 @@
-# Configuration: flag, then environment variable, then default
+# Configuration: flag, then environment variable, then config file, then default
 
 The one home for why settings work as they do in `config.py` and `options.py`. Read before adding a
 setting in an unusual way, or when a flag or variable does not win when it should.
 
 Every setting resolves in that order, and `pydantic-settings` does the merge — never hand-roll it.
+The config file is the subject of its own section below.
 The scaffold's `config.py` is the worked instance:
 
 ```python
@@ -41,9 +42,10 @@ argument — and an absent flag must not arrive at all. Hence:
 
 **Secrets** are the one exception to "every setting has a flag":
 
-- **Environment only.** A flag's value is visible in shell history and to anyone who can list
-  processes, so a secret field is left out of `_Overrides`, `load_settings` and `options.py`. The
-  wiring tests find secret fields with `secret_fields()` and exempt them from those steps.
+- **Never a flag.** A flag's value is visible in shell history and to anyone who can list
+  processes, so a secret field is left out of `_Overrides`, `load_settings` and `options.py`; it
+  comes from its variable or the config file. The wiring tests find secret fields with
+  `secret_fields()` and exempt them from those steps. A validation error masks its value.
 - **`SecretStr`, so incidental exposure is masked.** Its `repr` is `SecretStr('**********')` and
   `model_dump(mode="json")` gives `'**********'`, so the debug log of the resolved settings and
   `about`'s table and JSON never show it. Discoverability comes from `about`, which still lists
@@ -53,6 +55,30 @@ argument — and an absent flag must not arrive at all. Hence:
   `terraform output -json` and `gh auth token` do: there the reveal is the point, and the explicit
   call makes it greppable.
 - **Never in a URL.** `http_client.py` logs each request's URL at debug; a header is not logged.
+
+**The config file** (`config_file.py`) holds a user's standing preferences, below the
+environment so a variable can still override it for one run:
+
+- **YAML, keyed by field name**, parsed with `yaml.safe_load` by `ConfigFileSource`, which hands
+  the raw values to pydantic, so one validation pass covers every layer. Not pydantic-settings'
+  `YamlConfigSettingsSource`: it cannot take a path chosen at run time, and a file holding a list
+  escapes it as a bare `ValueError`. PyYAML is YAML 1.1: an unquoted
+  `no`, `off` or `yes` is a boolean. A field typed `str` rejects it rather than storing `"False"`,
+  but the fix is quoting, so say so in any example a user copies.
+- **Unknown keys are an error naming the file**, as `extra="forbid"` makes them for the other
+  sources. A typo in a config file must not be silently ignored.
+- **`config` is itself a setting**: `--config` beats `<PREFIX>CONFIG`, which beats the default
+  location. `ConfigFileSource` runs after the init and environment sources and reads the resolved
+  value from `current_state`; the file cannot name itself. A file named this way must exist; the
+  default need not, and `about` shows which path is in use.
+- **The default location is where CLI users look**: `$XDG_CONFIG_HOME/<script>/config.yaml` when
+  that is set and absolute, on every platform; otherwise `~/.config/<script>/config.yaml`, macOS
+  included, rather than `~/Library/Application Support`; and `%APPDATA%` on Windows, the roaming
+  profile, because settings should follow the user.
+- **Tests never read the developer's file.** `conftest.py` points `XDG_CONFIG_HOME` into
+  `tmp_path` for every test; a test that needs a file writes one there, or passes `--config`.
+- **No project-local file** (`./<script>.yaml`). It would make the working directory change a
+  command's behaviour, which is the surprise the `.env` default avoids.
 
 Global options live on `@app.callback()`, which stores what it was given in a frozen
 `GlobalOptions` on `ctx.obj`. Each command reads it back with `global_options(ctx)` and calls

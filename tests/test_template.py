@@ -39,6 +39,7 @@ CLI_MODULES = {
     "about.py",
     "cli.py",
     "config.py",
+    "config_file.py",
     "logging_setup.py",
     "options.py",
     "output.py",
@@ -63,6 +64,7 @@ CLI_TESTS = {
     "conftest.py",
     "test_about.py",
     "test_config.py",
+    "test_config_file.py",
     "test_logging_setup.py",
     "test_typer_entrypoint.py",
 }

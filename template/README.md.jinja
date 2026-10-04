@@ -79,15 +79,27 @@ uv run {{ script_name }} about --output json    # one JSON object on stdout
 uv run {{ script_name }} --verbose about        # global options go before the command
 ```
 
-Every setting resolves **flag, then environment variable, then default**:
+Every setting resolves **flag, then environment variable, then config file, then default**:
 
 | Setting | Flag | Environment variable | Default |
 |---|---|---|---|
+| Config file to read | `--config PATH` (global) | `{{ script_name | upper | replace('-', '_') }}_CONFIG` | see below |
 | Debug logging to stderr | `--verbose` / `--no-verbose` (global) | `{{ script_name | upper | replace('-', '_') }}_VERBOSE` | off |
 | Output format | `--output` / `-o` (per command) | `{{ script_name | upper | replace('-', '_') }}_OUTPUT` | `table` |
 
-The docstring of `config.py` says how to add a setting. An invalid value from either source exits
-2 with a message naming both the flag and the variable.
+The config file is YAML, keyed by setting name, and need not exist:
+
+```yaml
+output: json
+verbose: true
+```
+
+It lives at `$XDG_CONFIG_HOME/{{ script_name }}/config.yaml` when `XDG_CONFIG_HOME` is set, on any
+platform; otherwise at `~/.config/{{ script_name }}/config.yaml` on Linux and macOS, and
+`%APPDATA%\{{ script_name }}\config.yaml` on Windows. `{{ script_name }} about` shows the path in use.
+
+The docstring of `config.py` says how to add a setting. An invalid value from any source exits 2
+with a message naming the flag, the variable and the config file.
 
 Shell completion is emitted rather than installed:
 
