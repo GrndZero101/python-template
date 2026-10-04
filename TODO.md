@@ -8,8 +8,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. The rest of phase 7 — the `cli-stdlib` scaffold and the install story — ending with a
-   `copier update` of the dogfood, then phase 8.
+1. **Update the dogfood** to bring in secrets and the config file; expect to add
+   `config=options.config` to `weather.py`'s `load_settings` call.
+2. **The `cli-stdlib` scaffold**, which ends phase 7. Then phase 8.
 
 ## How work is judged
 
@@ -181,19 +182,26 @@ Open from the runs:
   by hand, as with `verbose`; one that forgets ignores `--config` silently.
 - [ ] **A `cli-stdlib` scaffold** (D4). The type is for tools expected to grow into full DevOps
   operator CLIs — several subcommands, real logic behind them — without third-party dependencies.
-  Today it generates an empty package and its skill. Scope:
+  **Not parity with `cli-modern`** (2026-10-04): good-quality tools in the style of the aws CLI,
+  doing whatever the standard library does well by default. A project may grow past that with
+  its user; the scaffold is the starting point. Today it generates an empty package and its
+  skill. Scope:
   - **An installable entry point.** Ask `script_name` for `cli-stdlib` too (copier.yml `when:`)
     and render `[project.scripts]` for both CLI types, so `uv tool install .` puts the command on
-    PATH.
+    PATH. Widen the README's "Installing it" and "Releasing a version" to `cli-stdlib` with it.
   - **argparse with subparsers from the start**: an `about` subcommand, global `-v/--verbose`
     and `--version`, per-command `-o/--output table|json`, each resolving flag, then
-    `<SCRIPT>_*` variable, then default — `cli-modern`'s behaviour in stdlib form.
+    `<SCRIPT>_*` variable, then default. A JSON path is cheap in the stdlib; a rich table is
+    not, so `table` is plain aligned text.
   - **A stdlib `logging` setup** on stderr, since `logging_setup.py` is loguru and travels only
     with `cli-modern`. Phase 9 wants the same as the shared default for the other types.
   - **Tests** and a recipe-first skill ("add a subcommand", "add a setting"), as `cli-modern` has.
   - **No config file at first.** D10 makes it TOML through `tomllib` when one is wanted.
-- [ ] **An install story in the generated README**: how a user puts the tool on their PATH
-  (`uv tool install .`, or from git) and how a version is bumped. Ties to phase 8.
+- [x] **An install story in the generated README**, 2026-10-04: "Installing it" (`uv tool
+  install .`, `--editable`, from git or a tag, `update-shell`, upgrade and uninstall by package
+  name) and "Releasing a version" (`uv version --bump` on a branch, `finish_branch.py`, tag the
+  merge). Verified in a generated project. An editable install keeps its old `--version` until
+  `--reinstall`; a plain one is a snapshot that `uv tool upgrade` rebuilds from its source.
 
 ## Phase 8 — CI, releases and updates
 
