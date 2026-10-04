@@ -107,6 +107,46 @@ Shell completion is emitted rather than installed:
 {{ completion_env_var }}=source_zsh {{ script_name }} > "${ZDOTDIR:-$HOME}/completions/_{{ script_name }}"
 ```
 
+## Installing it
+
+`uv run {{ script_name }}` works inside this project. To put `{{ script_name }}` on your PATH
+everywhere, in an isolated environment of its own:
+
+```bash
+uv tool install .                         # a snapshot of this checkout
+uv tool install --editable .              # while developing: source edits apply at once
+uv tool install git+https://github.com/<owner>/<repo>           # for anyone, from git
+uv tool install git+https://github.com/<owner>/<repo>@v0.2.0    # a tagged release
+uv tool update-shell                      # once, if uv warns its bin directory is not on PATH
+```
+
+The command lands in `uv tool dir --bin`. uv manages the tool by its package name,
+`{{ package_name | replace('_', '-') }}`:
+
+```bash
+uv tool upgrade {{ package_name | replace('_', '-') }}
+uv tool uninstall {{ package_name | replace('_', '-') }}
+```
+
+An upgrade rebuilds from where the tool was installed — this checkout or the git URL — so after
+pulling or editing, it picks up both the new code and the new version.
+
+## Releasing a version
+
+The version lives in `pyproject.toml` alone; `{{ script_name }} --version` reads it from the
+installed package. Bump it on a branch like any other change, finish the branch, then tag `main`:
+
+```bash
+git switch -c chore/release
+uv version --bump patch                   # or minor / major; updates pyproject.toml and uv.lock
+git commit -am "chore(release): bump to $(uv version --short)"
+uv run python tools/finish_branch.py "chore(release): bump to $(uv version --short)"
+git tag "v$(uv version --short)" && git push origin main --tags
+```
+
+An editable install reports the version it was installed at until it is reinstalled with
+`uv tool install --editable . --reinstall`; its code, unlike its version, is always current.
+
 {% endif %}## Updating from the template
 
 ```bash
