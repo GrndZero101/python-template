@@ -67,7 +67,7 @@ environment so a variable can still override it for one run:
   but the fix is quoting, so say so in any example a user copies.
 - **Unknown keys are an error naming the file**, as `extra="forbid"` makes them for the other
   sources. A typo in a config file must not be silently ignored.
-- **`config` is itself a setting**: `--config` beats `<PREFIX>CONFIG`, which beats the default
+- **`config` is itself a setting**: `--config` beats `<PREFIX>_CONFIG`, which beats the default
   location. `ConfigFileSource` runs after the init and environment sources and reads the resolved
   value from `current_state`; the file cannot name itself. A file named this way must exist; the
   default need not, and `about` shows which path is in use.
