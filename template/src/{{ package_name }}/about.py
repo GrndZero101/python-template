@@ -79,7 +79,6 @@ def emit_about(about: About, fmt: OutputFormat) -> None:
 
 def about_command(ctx: typer.Context, output: OutputOption = None) -> None:
     """Show this tool's version, runtime and resolved configuration."""
-    options = global_options(ctx)
-    settings = load_settings(verbose=options.verbose, config=options.config, output=output)
+    settings = load_settings(global_options(ctx), output=output)
     logger.debug("resolved {!r}", settings)
     emit_about(collect_about(settings), settings.output)

@@ -3,12 +3,14 @@
 The config file's place between the environment and the default is in `tests/test_config_file.py`.
 
 The last section checks the wiring. Adding a setting takes four coordinated edits — `Settings`,
-`_Overrides`, `load_settings` and an option in `options.py` — and a missed one fails silently: the
+`_Overrides`, a `load_settings` keyword (or, for a global option, a `GlobalOptions` field) and an
+option in `options.py` — and a missed one fails silently: the
 flag is accepted and ignored, or the variable is read but never documented. These tests name
 whichever edit is missing. A secret setting takes none of the three flag edits, and the tests
 check that a credential's field is typed `SecretStr`, so it is masked wherever it is shown.
 """
 
+import dataclasses
 import functools
 import inspect
 from typing import Any
@@ -20,6 +22,7 @@ from {{ package_name }} import config
 from {{ package_name }}.cli import app
 from {{ package_name }}.config import (
     ENV_PREFIX,
+    GlobalOptions,
     Settings,
     SettingsError,
     env_var,
@@ -33,28 +36,28 @@ VERBOSE_VAR = env_var("verbose")
 
 
 def test_defaults_apply_when_nothing_is_set() -> None:
-    assert load_settings() == Settings(verbose=False, output=OutputFormat.table)
+    assert load_settings(GlobalOptions()) == Settings(verbose=False, output=OutputFormat.table)
 
 
 def test_environment_overrides_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(OUTPUT_VAR, "json")
-    assert load_settings().output is OutputFormat.json
+    assert load_settings(GlobalOptions()).output is OutputFormat.json
 
 
 def test_flag_overrides_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(OUTPUT_VAR, "json")
-    assert load_settings(output=OutputFormat.table).output is OutputFormat.table
+    assert load_settings(GlobalOptions(), output=OutputFormat.table).output is OutputFormat.table
 
 
 def test_explicit_false_flag_overrides_a_true_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """`--no-verbose` must beat the variable: `False` is a value, only `None` means absent."""
     monkeypatch.setenv(VERBOSE_VAR, "1")
-    assert load_settings(verbose=False).verbose is False
+    assert load_settings(GlobalOptions(verbose=False)).verbose is False
 
 
 def test_absent_flag_does_not_mask_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(VERBOSE_VAR, "1")
-    assert load_settings(verbose=None).verbose is True
+    assert load_settings(GlobalOptions(verbose=None)).verbose is True
 
 
 @pytest.mark.parametrize("raw", ["1", "true", "yes", "on", "TRUE"])
@@ -62,7 +65,7 @@ def test_boolean_variables_accept_common_spellings(
     monkeypatch: pytest.MonkeyPatch, raw: str
 ) -> None:
     monkeypatch.setenv(VERBOSE_VAR, raw)
-    assert load_settings().verbose is True
+    assert load_settings(GlobalOptions()).verbose is True
 
 
 def test_invalid_variable_names_the_value_the_flag_and_the_variable(
@@ -70,7 +73,7 @@ def test_invalid_variable_names_the_value_the_flag_and_the_variable(
 ) -> None:
     monkeypatch.setenv(OUTPUT_VAR, "xml")
     with pytest.raises(SettingsError, match=OUTPUT_VAR) as raised:
-        load_settings()
+        load_settings(GlobalOptions())
     message = str(raised.value)
     assert "'xml'" in message
     assert "--output" in message
@@ -78,7 +81,7 @@ def test_invalid_variable_names_the_value_the_flag_and_the_variable(
 
 def test_unrelated_prefixed_variable_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(f"{ENV_PREFIX}NOT_A_SETTING", "x")
-    assert load_settings() == Settings()
+    assert load_settings(GlobalOptions()) == Settings()
 
 
 def test_env_var_is_the_prefix_plus_the_upper_case_field() -> None:
@@ -133,19 +136,29 @@ def test_overrides_declare_every_setting() -> None:
     assert sorted(config._Overrides.__annotations__) == FLAG_FIELDS
 
 
-def test_load_settings_takes_a_keyword_for_every_setting() -> None:
-    """Step 2: without the keyword there is no way for a flag to reach the setting."""
-    keywords = sorted(inspect.signature(load_settings).parameters)
-    assert keywords == FLAG_FIELDS
+GLOBAL_FIELDS = sorted(field.name for field in dataclasses.fields(GlobalOptions))
+COMMAND_FIELDS = sorted(set(inspect.signature(load_settings).parameters) - {"options"})
+
+
+def test_every_setting_reaches_load_settings() -> None:
+    """Step 2: a `GlobalOptions` field or a `load_settings` keyword, or a flag cannot reach it."""
+    assert sorted(GLOBAL_FIELDS + COMMAND_FIELDS) == FLAG_FIELDS
+
+
+def test_load_settings_requires_the_global_options() -> None:
+    """A default would let a command drop `--verbose` and `--config` silently, by omission."""
+    options = inspect.signature(load_settings).parameters["options"]
+    assert options.default is inspect.Parameter.empty
 
 
 def test_load_settings_passes_every_given_flag_through(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Step 2 again: a keyword accepted but never copied into the overrides is silently ignored."""
+    """Step 2 again: a flag accepted but never copied into the overrides is silently ignored."""
     seen: dict[str, object] = {}
     monkeypatch.setattr(config, "Settings", functools.partial(_capture, seen))
-    given: dict[str, Any] = {field: f"value of {field}" for field in FLAG_FIELDS}
-    load_settings(**given)
-    assert seen == given
+    globals_given: dict[str, Any] = {field: f"value of {field}" for field in GLOBAL_FIELDS}
+    command_given: dict[str, Any] = {field: f"value of {field}" for field in COMMAND_FIELDS}
+    load_settings(GlobalOptions(**globals_given), **command_given)
+    assert seen == globals_given | command_given
 
 
 @pytest.mark.parametrize("field", FLAG_FIELDS)

@@ -8,8 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Update the dogfood** to bring in secrets and the config file; expect to add
-   `config=options.config` to `weather.py`'s `load_settings` call.
+1. **Update the dogfood** again, for the `GlobalOptions` change and the `about` and naming fixes:
+   its `weather.py` call becomes `load_settings(global_options(ctx), output=output)`.
 2. **The `cli-stdlib` scaffold**, which ends phase 7. Then phase 8.
 
 ## How work is judged
@@ -178,8 +178,10 @@ Open from the runs:
   as a bare `ValueError`, so the file is parsed with `yaml.safe_load` (`pyyaml` declared
   directly). Unknown keys, non-mappings, bad YAML and a missing named file each fail naming the
   file; a secret's value is masked in validation errors. `conftest.py` points `XDG_CONFIG_HOME`
-  into `tmp_path`. Known gap: each command must pass `config=options.config` to `load_settings`
-  by hand, as with `verbose`; one that forgets ignores `--config` silently.
+  into `tmp_path`. The dogfood's update proved the per-command wiring leaked: its own `weather.py`
+  accepted `--config` and ignored it. Fixed 2026-10-05 by passing `GlobalOptions` whole and
+  required — `load_settings(global_options(ctx), output=...)` — so a new global option needs no
+  command edit, and a command that omits it fails `ty` and raises `TypeError`.
 - [ ] **A `cli-stdlib` scaffold** (D4). The type is for tools expected to grow into full DevOps
   operator CLIs — several subcommands, real logic behind them — without third-party dependencies.
   **Not parity with `cli-modern`** (2026-10-04): good-quality tools in the style of the aws CLI,

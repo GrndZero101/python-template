@@ -19,9 +19,9 @@ import sys
 import typer
 
 from .about import about_command
-from .config import PROG_NAME, SettingsError, load_settings
+from .config import PROG_NAME, GlobalOptions, SettingsError, load_settings
 from .logging_setup import configure_logging
-from .options import ConfigOption, GlobalOptions, VerboseOption, VersionOption
+from .options import ConfigOption, VerboseOption, VersionOption
 from .typer_entrypoint import run_app
 
 USAGE_ERROR = 2
@@ -40,9 +40,10 @@ def configure(
     version: VersionOption = False,  # ruff: ignore[unused-function-argument]
 ) -> None:
     """Global options go before the command name."""
-    settings = load_settings(verbose=verbose, config=config)
+    options = GlobalOptions(verbose=verbose, config=config)
+    settings = load_settings(options)
     configure_logging(verbose=settings.verbose)
-    ctx.obj = GlobalOptions(verbose=verbose, config=config)
+    ctx.obj = options
 
 
 def main(argv: list[str] | None = None) -> int:

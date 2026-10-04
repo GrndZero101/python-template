@@ -25,8 +25,7 @@ a command that calls an API, start from `reference/status.py` instead — the ne
      parameter, so a test or a debugger can call them with literal arguments;
    - a renderer: a rich table for `table`, `sys.stdout.write` of JSON for `json`;
    - `<name>_command(ctx: typer.Context, ..., output: OutputOption = None) -> None`, which calls
-     `load_settings(verbose=options.verbose, config=options.config, output=output)` with
-     `options = global_options(ctx)`, delegates, and raises
+     `load_settings(global_options(ctx), output=output)`, delegates, and raises
      `typer.Exit(1)` on a runtime failure. Nothing else. A positional argument is
      `names: Annotated[list[str], typer.Argument(help="...")]`, with no default; one that must be
      validated or is not a string: "Recipe: a validated argument".
@@ -106,16 +105,19 @@ are done:
 
 1. **`src/<package>/config.py`** — add the field to `Settings` with a default, *and* to
    `_Overrides`.
-2. **Same file** — add a keyword to `load_settings`, `<field>: <type> | None = None`, and copy it
-   into `given` when it is not `None`.
+2. **Same file** — a per-command option: add a keyword to `load_settings`,
+   `<field>: <type> | None = None`. A global option, one that goes before the command: add a field
+   to `GlobalOptions` instead. Either way, copy it into `given` when it is not `None`.
 3. **`src/<package>/options.py`** — declare the option alias with a `None` default and
    `(env: {env_var('<field>')})` in its help. A boolean needs both halves: `--x/--no-x`.
-4. **Put the option on each command that uses it** and pass it to `load_settings`.
+4. **Put the option where it is parsed.** Per-command: on each command that uses it, passed to
+   `load_settings` as a keyword. Global: on the callback in `cli.py`, stored in its
+   `GlobalOptions` — no command changes, since each passes `global_options(ctx)` whole.
 
 Then test the new setting's precedence in `tests/test_config.py`, as the `output` tests there do:
 the environment beats the default, and the flag beats the environment. A string setting in YAML
-needs quotes when its value looks like another type: an unquoted `no` loads as `false`. Why every option
-defaults to `None` and typer's `envvar=` is not used: `reference/configuration.md`.
+needs quotes when its value looks like another type: an unquoted `no` loads as `false`. Why every
+option defaults to `None` and typer's `envvar=` is not used: `reference/configuration.md`.
 
 ## Recipe: add a secret setting
 

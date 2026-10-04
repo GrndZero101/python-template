@@ -11,6 +11,7 @@ from {{ package_name }}.about import About, build_about_table, collect_about
 from {{ package_name }}.cli import main
 from {{ package_name }}.config import (
     PROG_NAME,
+    GlobalOptions,
     Settings,
     env_var,
     load_settings,
@@ -48,7 +49,7 @@ def _pinned(settings: Settings) -> About:
 
 
 def test_collect_about_reports_the_injected_facts() -> None:
-    about = _pinned(load_settings())
+    about = _pinned(load_settings(GlobalOptions()))
     assert (about.name, about.version, about.python, about.platform) == (
         PROG_NAME,
         "1.2.3",
@@ -62,14 +63,14 @@ def test_table_shows_a_long_value_whole_in_a_narrow_terminal(tmp_path: Path) -> 
     long_path = tmp_path / ("x" * 60) / "config.yaml"
     long_path.parent.mkdir()
     long_path.write_text("", encoding="utf-8")
-    table = build_about_table(_pinned(load_settings(config=long_path)))
+    table = build_about_table(_pinned(load_settings(GlobalOptions(config=long_path))))
     buffer = io.StringIO()
     Console(file=buffer, width=40).print(table)
     assert "…" not in buffer.getvalue()
 
 
 def test_table_names_the_variable_behind_each_setting() -> None:
-    table = build_about_table(_pinned(load_settings()))
+    table = build_about_table(_pinned(load_settings(GlobalOptions())))
     keys = [str(cell) for cell in table.columns[0].cells]
     assert f"output ({OUTPUT_VAR})" in keys
     assert f"verbose ({VERBOSE_VAR})" in keys
