@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 from {{ package_name }}.cli import main
-from {{ package_name }}.config import PROG_NAME, SettingsError, env_var, load_settings
+from {{ package_name }}.config import (
+    PROG_NAME,
+    GlobalOptions,
+    SettingsError,
+    env_var,
+    load_settings,
+)
 from {{ package_name }}.config_file import CONFIG_FILE_NAME, default_config_path
 from {{ package_name }}.output import OutputFormat
 
@@ -38,7 +44,7 @@ def default_file() -> Path:
 def _error_from(config: Path | None = None) -> str:
     """Return the message `load_settings` raises, given this `--config`."""
     with pytest.raises(SettingsError) as raised:
-        load_settings(config=config)
+        load_settings(GlobalOptions(config=config))
     return str(raised.value)
 
 
@@ -80,13 +86,13 @@ def test_windows_without_appdata_falls_back_under_home() -> None:
 
 
 def test_a_missing_default_file_changes_nothing(default_file: Path) -> None:
-    settings = load_settings()
+    settings = load_settings(GlobalOptions())
     assert (settings.output, settings.config) == (OutputFormat.table, default_file)
 
 
 def test_the_file_overrides_the_default(default_file: Path) -> None:
     _write(default_file, "output: json\n")
-    assert load_settings().output is OutputFormat.json
+    assert load_settings(GlobalOptions()).output is OutputFormat.json
 
 
 def test_the_environment_beats_the_file(
@@ -94,17 +100,17 @@ def test_the_environment_beats_the_file(
 ) -> None:
     _write(default_file, "output: json\n")
     monkeypatch.setenv(OUTPUT_VAR, "table")
-    assert load_settings().output is OutputFormat.table
+    assert load_settings(GlobalOptions()).output is OutputFormat.table
 
 
 def test_a_flag_beats_the_file(default_file: Path) -> None:
     _write(default_file, "output: json\n")
-    assert load_settings(output=OutputFormat.table).output is OutputFormat.table
+    assert load_settings(GlobalOptions(), output=OutputFormat.table).output is OutputFormat.table
 
 
 def test_an_empty_file_changes_nothing(default_file: Path) -> None:
     _write(default_file, "")
-    assert load_settings().output is OutputFormat.table
+    assert load_settings(GlobalOptions()).output is OutputFormat.table
 
 
 # --- which file: --config, then the variable, then the default ---------------------------
@@ -112,7 +118,7 @@ def test_an_empty_file_changes_nothing(default_file: Path) -> None:
 
 def test_the_config_flag_names_the_file(tmp_path: Path) -> None:
     named = _write(tmp_path / "other.yaml", "output: json\n")
-    assert load_settings(config=named).output is OutputFormat.json
+    assert load_settings(GlobalOptions(config=named)).output is OutputFormat.json
 
 
 def test_the_config_variable_names_the_file(
@@ -120,8 +126,8 @@ def test_the_config_variable_names_the_file(
 ) -> None:
     named = _write(tmp_path / "other.yaml", "output: json\n")
     monkeypatch.setenv(CONFIG_VAR, str(named))
-    assert load_settings().config == named
-    assert load_settings().output is OutputFormat.json
+    assert load_settings(GlobalOptions()).config == named
+    assert load_settings(GlobalOptions()).output is OutputFormat.json
 
 
 def test_the_config_flag_beats_the_variable(
@@ -129,7 +135,7 @@ def test_the_config_flag_beats_the_variable(
 ) -> None:
     monkeypatch.setenv(CONFIG_VAR, str(_write(tmp_path / "env.yaml", "output: json\n")))
     flagged = _write(tmp_path / "flag.yaml", "verbose: true\n")
-    settings = load_settings(config=flagged)
+    settings = load_settings(GlobalOptions(config=flagged))
     assert (settings.config, settings.output, settings.verbose) == (
         flagged,
         OutputFormat.table,

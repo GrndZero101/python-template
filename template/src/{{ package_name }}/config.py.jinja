@@ -2,8 +2,9 @@
 
 Every setting resolves in one order: command-line flag, then environment variable, then the YAML
 config file (`config_file.py`), then the field default. pydantic-settings does the merge;
-`load_settings` passes only the flags actually given. Why it is built this way:
-.claude/skills/python-cli-modern/reference/configuration.md.
+`load_settings` passes only the flags actually given. Every caller passes the global flags whole,
+as one `GlobalOptions`, so a global option added there reaches every command with no edit to any
+of them. Why it is built this way: .claude/skills/python-cli-modern/reference/configuration.md.
 
 Each field reads `{{ script_name | upper | replace('-', '_') }}_<FIELD>`, so `output` is
 `{{ script_name | upper | replace('-', '_') }}_OUTPUT`. To add a setting, follow "Recipe: add a
@@ -17,6 +18,7 @@ To opt in, add `env_file=".env"` to `model_config` and return `dotenv_settings` 
 `env_settings` from `settings_customise_sources`.
 """
 
+import dataclasses
 import functools
 from pathlib import Path
 from typing import TypedDict, get_args
@@ -96,19 +98,34 @@ def _describe(error: ErrorDetails) -> str:
     return f"{field}={error['input']!r} ({sources}): {error['msg']}"
 
 
+@dataclasses.dataclass(frozen=True)
+class GlobalOptions:
+    """The global flags as given on the command line; `None` means not given.
+
+    The app callback builds it and stores it on the context; each command passes it, whole, to
+    `load_settings`. A global option is a field here, never a `load_settings` keyword.
+    """
+
+    verbose: bool | None = None
+    config: Path | None = None
+
+
 def load_settings(
+    options: GlobalOptions,
     *,
-    verbose: bool | None = None,
-    config: Path | None = None,
     output: OutputFormat | None = None,
 ) -> Settings:
     """Resolve settings from the given flags, then the environment, the config file and the defaults.
 
-    A keyword left as `None` was not given on the command line and does not override anything.
+    `options` is required, so a command cannot drop the global flags by omission: pass
+    `global_options(ctx)`, or `GlobalOptions()` where there is no command line. A keyword or field
+    left as `None` was not given and does not override anything.
     """
     given: _Overrides = {}
+    verbose = options.verbose
     if verbose is not None:
         given["verbose"] = verbose
+    config = options.config
     if config is not None:
         given["config"] = config
     if output is not None:
@@ -125,4 +142,4 @@ def load_settings(
 
 
 if __name__ == "__main__":
-    load_settings()
+    load_settings(GlobalOptions())
