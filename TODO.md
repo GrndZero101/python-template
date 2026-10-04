@@ -8,8 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Phase 7 — the config-file layer** (YAML, D10), once D8 is settled.
-2. The rest of phase 7, ending with a `copier update` of the dogfood, then phase 8.
+1. The rest of phase 7 — the `cli-stdlib` scaffold and the install story — ending with a
+   `copier update` of the dogfood, then phase 8.
 
 ## How work is judged
 
@@ -93,10 +93,11 @@ Open:
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the dogfood settles, then `v0.1.0`. See phase 8. |
 | D6 | Shape of `data` and `tui`: build on the `cli-modern` CLI layer, or each in its own idiom | Phase 9 | Build on the CLI layer. Both are CLI tools that happen to crunch data or draw a screen. |
 | D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
-| D8 | The config file's default location on macOS | Phase 7 | `~/.config/<script>/` as on Linux, honouring `XDG_CONFIG_HOME` on every platform; `platformdirs` only for Windows' `%APPDATA%`. CLI users on macOS expect `~/.config`, as `gh` and `git` use it. |
 
-Decided: **D10** (2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs
-grow; `cli-stdlib` would use TOML, which the standard library reads. **D9** (2026-10-04) — a
+Decided: **D8** (2026-10-04) — the config file lives in `~/.config/<script>/` on macOS as on
+Linux, `XDG_CONFIG_HOME` honoured on every platform, `%APPDATA%` on Windows. **D10**
+(2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs grow; `cli-stdlib`
+would use TOML, which the standard library reads. **D9** (2026-10-04) — a
 data command's JSON emits secrets raw, as `terraform output -json` and `gh auth token` do, via an
 explicit `.get_secret_value()`; incidental exposure — repr, logs, whole-model dumps such as
 `about` — is masked by `SecretStr`, as `gh auth status` and `kubectl config view` mask. Checked:
@@ -165,25 +166,15 @@ Open from the runs:
   field not typed `SecretStr` fails first under `-x`, so a model is not steered into adding a
   flag; an `about` test, skipped until a secret exists, asserts masking in table, JSON and log.
   Verified by applying the recipe in a generated project, both wrongly and rightly.
-- [ ] **A config-file layer** (needs D8). Today settings resolve flag, then environment variable,
-  then default. The missing layer is a **user config file** between the environment and the
-  defaults. Proposed shape:
-  - **Location by platform convention.** `$XDG_CONFIG_HOME/<script>/config.yaml` (falling back to
-    `~/.config`) on Linux and other Unix-alikes; `%APPDATA%\<script>\config.yaml` on Windows — the
-    roaming profile, since settings should follow the user, unlike caches, which belong in
-    `%LOCALAPPDATA%`. `platformdirs.user_config_dir(appname, appauthor=False)` gives the Windows
-    mapping; without `appauthor=False` it inserts an extra author directory.
-  - **Override the location** with a global `--config PATH` and `<SCRIPT>_CONFIG`, so tests and CI
-    never read a real user file.
-  - **YAML** (D10), read through pydantic-settings' `YamlConfigSettingsSource` via
-    `settings_customise_sources`, so one validation pass still covers every layer and error
-    messages can name the file. It uses PyYAML's `yaml.safe_load`, so add the `yaml` extra
-    (`pydantic-settings[yaml]`). PyYAML is YAML 1.1: an unquoted `no` loads as `false`. A field
-    typed `str` then fails validation rather than silently taking the wrong value; test that, and
-    show quoting in the recipe.
-  - **Tests** point the location at `tmp_path`; nothing may read the developer's real config.
-  - No project-local file (`./<script>.toml`) unless a real need appears: it is a second source of
-    surprise.
+- [x] **A config-file layer** (D8, D10), 2026-10-04. `config_file.py`: flag, then variable, then
+  `config.yaml`, then default. `config` is itself a setting (`--config`, `<PREFIX>CONFIG`), which a
+  custom source reads from `current_state` after the init and env sources — pydantic-settings has
+  no runtime path for `YamlConfigSettingsSource`, and that source lets a list-shaped file escape
+  as a bare `ValueError`, so the file is parsed with `yaml.safe_load` (`pyyaml` declared
+  directly). Unknown keys, non-mappings, bad YAML and a missing named file each fail naming the
+  file; a secret's value is masked in validation errors. `conftest.py` points `XDG_CONFIG_HOME`
+  into `tmp_path`. Known gap: each command must pass `config=options.config` to `load_settings`
+  by hand, as with `verbose`; one that forgets ignores `--config` silently.
 - [ ] **A `cli-stdlib` scaffold** (per D4): an argparse `about` resolving flag, then environment
   variable, then default like `cli-modern`, with its tests, and a stdlib `logging` setup to go with
   it, since `logging_setup.py` is loguru and travels only with `cli-modern`. Its config file, if
