@@ -97,10 +97,12 @@ Open:
 | D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
 | D8 | The config file's default location on macOS | Phase 7 | `~/.config/<script>/` as on Linux, honouring `XDG_CONFIG_HOME` on every platform; `platformdirs` only for Windows' `%APPDATA%`. CLI users on macOS expect `~/.config`, as `gh` and `git` use it. |
 
-Decided: **D9** (2026-10-04) — a data command's JSON emits secrets raw, as `terraform output
--json` and `gh auth token` do, via an explicit `.get_secret_value()`; incidental exposure — repr,
-logs, whole-model dumps such as `about` — is masked by `SecretStr`, as `gh auth status` and
-`kubectl config view` mask. Checked: pydantic-settings masks `repr` and `model_dump(mode="json")`.
+Decided: **D10** (2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs
+grow; `cli-stdlib` would use TOML, which the standard library reads. **D9** (2026-10-04) — a
+data command's JSON emits secrets raw, as `terraform output -json` and `gh auth token` do, via an
+explicit `.get_secret_value()`; incidental exposure — repr, logs, whole-model dumps such as
+`about` — is masked by `SecretStr`, as `gh auth status` and `kubectl config view` mask. Checked:
+pydantic-settings masks `repr` and `model_dump(mode="json")`.
 **D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14. **D2** —
 spec runs by hand, sonnet the baseline, reviewed by Opus (see "Spec runs"). **D3** — the git
 ritual is a script, `finish_branch.py`.
@@ -170,22 +172,26 @@ Open from the runs:
 - [ ] **A config-file layer** (needs D8). Today settings resolve flag, then environment variable,
   then default. The missing layer is a **user config file** between the environment and the
   defaults. Proposed shape:
-  - **Location by platform convention.** `$XDG_CONFIG_HOME/<script>/config.toml` (falling back to
-    `~/.config`) on Linux and other Unix-alikes; `%APPDATA%\<script>\config.toml` on Windows — the
+  - **Location by platform convention.** `$XDG_CONFIG_HOME/<script>/config.yaml` (falling back to
+    `~/.config`) on Linux and other Unix-alikes; `%APPDATA%\<script>\config.yaml` on Windows — the
     roaming profile, since settings should follow the user, unlike caches, which belong in
     `%LOCALAPPDATA%`. `platformdirs.user_config_dir(appname, appauthor=False)` gives the Windows
     mapping; without `appauthor=False` it inserts an extra author directory.
   - **Override the location** with a global `--config PATH` and `<SCRIPT>_CONFIG`, so tests and CI
     never read a real user file.
-  - **TOML**, read through pydantic-settings' own TOML source via `settings_customise_sources`
-    (check the current docs for the class name and signature), so one validation pass still covers
-    every layer and error messages can name the file.
+  - **YAML** (D10), read through pydantic-settings' `YamlConfigSettingsSource` via
+    `settings_customise_sources`, so one validation pass still covers every layer and error
+    messages can name the file. It uses PyYAML's `yaml.safe_load`, so add the `yaml` extra
+    (`pydantic-settings[yaml]`). PyYAML is YAML 1.1: an unquoted `no` loads as `false`. A field
+    typed `str` then fails validation rather than silently taking the wrong value; test that, and
+    show quoting in the recipe.
   - **Tests** point the location at `tmp_path`; nothing may read the developer's real config.
   - No project-local file (`./<script>.toml`) unless a real need appears: it is a second source of
     surprise.
 - [ ] **A `cli-stdlib` scaffold** (per D4): an argparse `about` resolving flag, then environment
   variable, then default like `cli-modern`, with its tests, and a stdlib `logging` setup to go with
-  it, since `logging_setup.py` is loguru and travels only with `cli-modern`.
+  it, since `logging_setup.py` is loguru and travels only with `cli-modern`. Its config file, if
+  it gets one, is TOML through `tomllib` (D10): no dependency, which is the point of that type.
 - [ ] **An install story in the generated README**: how a user puts the tool on their PATH
   (`uv tool install .`, or from git) and how a version is bumped. Ties to phase 8.
 
