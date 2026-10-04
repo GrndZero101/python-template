@@ -97,7 +97,11 @@ Open:
 | D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
 | D8 | The config file's default location on macOS | Phase 7 | `~/.config/<script>/` as on Linux, honouring `XDG_CONFIG_HOME` on every platform; `platformdirs` only for Windows' `%APPDATA%`. CLI users on macOS expect `~/.config`, as `gh` and `git` use it. |
 
-Decided: **D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14. **D2** —
+Decided: **D9** (2026-10-04) — a data command's JSON emits secrets raw, as `terraform output
+-json` and `gh auth token` do, via an explicit `.get_secret_value()`; incidental exposure — repr,
+logs, whole-model dumps such as `about` — is masked by `SecretStr`, as `gh auth status` and
+`kubectl config view` mask. Checked: pydantic-settings masks `repr` and `model_dump(mode="json")`.
+**D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14. **D2** —
 spec runs by hand, sonnet the baseline, reviewed by Opus (see "Spec runs"). **D3** — the git
 ritual is a script, `finish_branch.py`.
 
@@ -155,11 +159,14 @@ Open from the runs:
 
 ## Phase 7 — DevOps CLI features
 
-- [ ] **Secrets.** Following `config.py`'s own recipe with `api_token: str` leaks the token twice:
-  in `about -o json` on stdout and in the `-v` debug log on stderr. Nothing in CLAUDE.md, the skills
-  or the scaffold mentions `SecretStr`. Teach it in the "add a setting" recipe, reading the value
-  with `.get_secret_value()` only where the client is built, and add a test that a secret setting
-  renders masked in `about`'s table, its JSON and the debug log.
+- [ ] **Secrets** (scope per D9). Following `config.py`'s own recipe with `api_token: str` leaks
+  the token twice: in the `-v` debug log on stderr (`about.py`'s `logger.debug("resolved {!r}",
+  settings)`, which reaches CI logs and pasted bug reports) and in `about -o json`. Nothing in
+  CLAUDE.md, the skills or the scaffold mentions `SecretStr`. Scope:
+  - The "add a setting" recipe types credentials as `SecretStr`, and calls `.get_secret_value()`
+    only where the client is built or where a command deliberately emits the secret.
+  - One test: a secret setting renders masked in `about`'s table, its JSON and the debug log.
+  - Not in scope: a `--show-secrets` flag on `about`, and anything specific to rich output.
 - [ ] **A config-file layer** (needs D8). Today settings resolve flag, then environment variable,
   then default. The missing layer is a **user config file** between the environment and the
   defaults. Proposed shape:
