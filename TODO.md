@@ -89,22 +89,26 @@ Open:
 
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
-| D4 | `cli-stdlib`: finish it with an argparse scaffold, or replace it with a PEP 723 single-file `scripts` type | Phase 7 | Finish it. The spec runs exercised only `cli-modern`, so they gave no reason to change course. |
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the dogfood settles, then `v0.1.0`. See phase 8. |
 | D6 | Shape of `data` and `tui`: build on the `cli-modern` CLI layer, or each in its own idiom | Phase 9 | Build on the CLI layer. Both are CLI tools that happen to crunch data or draw a screen. |
 | D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
 
-Decided: **D8** (2026-10-04) — the config file lives in `~/.config/<script>/` on macOS as on
-Linux, `XDG_CONFIG_HOME` honoured on every platform, `%APPDATA%` on Windows. **D10**
-(2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs grow; `cli-stdlib`
-would use TOML, which the standard library reads. **D9** (2026-10-04) — a
-data command's JSON emits secrets raw, as `terraform output -json` and `gh auth token` do, via an
-explicit `.get_secret_value()`; incidental exposure — repr, logs, whole-model dumps such as
-`about` — is masked by `SecretStr`, as `gh auth status` and `kubectl config view` mask. Checked:
-pydantic-settings masks `repr` and `model_dump(mode="json")`.
-**D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14. **D2** —
-spec runs by hand, sonnet the baseline, reviewed by Opus (see "Spec runs"). **D3** — the git
-ritual is a script, `finish_branch.py`.
+Decided:
+
+- **D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14.
+- **D2** — spec runs by hand, sonnet the baseline, reviewed by Opus (see "Spec runs").
+- **D3** — the git ritual is a script, `finish_branch.py`.
+- **D4** (2026-10-04) — finish `cli-stdlib` as an installable package with a console script; a
+  PEP 723 single-file scripts type may come later as a sixth type.
+- **D8** (2026-10-04) — the config file lives in `~/.config/<script>/` on macOS as on Linux,
+  `XDG_CONFIG_HOME` honoured on every platform, `%APPDATA%` on Windows.
+- **D9** (2026-10-04) — a data command's JSON emits secrets raw, as `terraform output -json` and
+  `gh auth token` do, via an explicit `.get_secret_value()`; incidental exposure — repr, logs,
+  whole-model dumps such as `about` — is masked by `SecretStr`, as `gh auth status` and
+  `kubectl config view` mask. Checked: pydantic-settings masks `repr` and
+  `model_dump(mode="json")`.
+- **D10** (2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs grow;
+  `cli-stdlib` would use TOML, which the standard library reads.
 
 ## Done: phases 1–6, and fixes from the spec runs
 
@@ -175,10 +179,19 @@ Open from the runs:
   file; a secret's value is masked in validation errors. `conftest.py` points `XDG_CONFIG_HOME`
   into `tmp_path`. Known gap: each command must pass `config=options.config` to `load_settings`
   by hand, as with `verbose`; one that forgets ignores `--config` silently.
-- [ ] **A `cli-stdlib` scaffold** (per D4): an argparse `about` resolving flag, then environment
-  variable, then default like `cli-modern`, with its tests, and a stdlib `logging` setup to go with
-  it, since `logging_setup.py` is loguru and travels only with `cli-modern`. Its config file, if
-  it gets one, is TOML through `tomllib` (D10): no dependency, which is the point of that type.
+- [ ] **A `cli-stdlib` scaffold** (D4). The type is for tools expected to grow into full DevOps
+  operator CLIs — several subcommands, real logic behind them — without third-party dependencies.
+  Today it generates an empty package and its skill. Scope:
+  - **An installable entry point.** Ask `script_name` for `cli-stdlib` too (copier.yml `when:`)
+    and render `[project.scripts]` for both CLI types, so `uv tool install .` puts the command on
+    PATH.
+  - **argparse with subparsers from the start**: an `about` subcommand, global `-v/--verbose`
+    and `--version`, per-command `-o/--output table|json`, each resolving flag, then
+    `<SCRIPT>_*` variable, then default — `cli-modern`'s behaviour in stdlib form.
+  - **A stdlib `logging` setup** on stderr, since `logging_setup.py` is loguru and travels only
+    with `cli-modern`. Phase 9 wants the same as the shared default for the other types.
+  - **Tests** and a recipe-first skill ("add a subcommand", "add a setting"), as `cli-modern` has.
+  - **No config file at first.** D10 makes it TOML through `tomllib` when one is wanted.
 - [ ] **An install story in the generated README**: how a user puts the tool on their PATH
   (`uv tool install .`, or from git) and how a version is bumped. Ties to phase 8.
 
