@@ -172,7 +172,7 @@ Open from the runs:
   flag; an `about` test, skipped until a secret exists, asserts masking in table, JSON and log.
   Verified by applying the recipe in a generated project, both wrongly and rightly.
 - [x] **A config-file layer** (D8, D10), 2026-10-04. `config_file.py`: flag, then variable, then
-  `config.yaml`, then default. `config` is itself a setting (`--config`, `<PREFIX>CONFIG`), which a
+  `config.yaml`, then default. `config` is itself a setting (`--config`, `<PREFIX>_CONFIG`), which a
   custom source reads from `current_state` after the init and env sources — pydantic-settings has
   no runtime path for `YamlConfigSettingsSource`, and that source lets a list-shaped file escape
   as a bare `ValueError`, so the file is parsed with `yaml.safe_load` (`pyyaml` declared

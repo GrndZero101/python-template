@@ -79,7 +79,7 @@ def secret_fields() -> list[str]:
 
 
 def env_var(field: str) -> str:
-    """Return the environment variable that sets `field`, e.g. `output` -> `<PREFIX>OUTPUT`."""
+    """Return the environment variable that sets `field`, e.g. `output` -> `<PREFIX>_OUTPUT`."""
     return f"{ENV_PREFIX}{field.upper()}"
 
 

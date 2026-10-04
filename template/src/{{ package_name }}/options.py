@@ -2,8 +2,9 @@
 
 Every option that maps to a setting defaults to `None`, meaning "not given", and names its
 environment variable in its help as `(env: NAME)`, built with `env_var`. Global options
-(`--verbose`, `--config`, `--version`) live on the app callback and go before the command; the callback stores
-them in a `GlobalOptions`, which each command reads back with `global_options(ctx)`.
+(`--verbose`, `--config`, `--version`) live on the app callback and go before the command; the
+callback stores them in a `GlobalOptions`, which each command reads back with
+`global_options(ctx)`.
 
 Why `None`, why not typer's `envvar=`, and why not `[env var: NAME]`: .claude/skills/python-cli-modern/reference/configuration.md.
 """
