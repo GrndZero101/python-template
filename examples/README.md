@@ -4,10 +4,11 @@ Feature specs to build **inside a generated project**, as a way of exercising th
 are not shipped: everything that becomes a generated project lives under `template/`, and this
 directory sits beside it.
 
-Each spec describes a command — its flags, the service it calls, what it prints and how it fails —
-plus the tests that would prove it. None of them says how to structure the code. That is the point:
-the generated project's `CLAUDE.md`, its gate and its `python-cli-modern` skill are supposed to
-supply the structure, and a spec handed to an agent is how to find out whether they do.
+Each spec describes a command — its flags, its input or the service it calls, what it prints and
+how it fails — plus the tests that would prove it. None of them says how to structure the code.
+That is the point: the generated project's `CLAUDE.md`, its gate and its skills —
+`python-cli-modern`, and `python-data` or `python-tui` where the spec calls for them — are
+supposed to supply the structure, and a spec handed to an agent is how to find out whether they do.
 
 ## Running one
 
@@ -20,7 +21,7 @@ The commands set `REPO` to this checkout and name the run after the spec and the
 
 ```bash
 REPO=~/projects/github/GrndZero101/python-template
-SPEC=geo MODEL=sonnet                 # or currency; or haiku, for a stretch run
+SPEC=geo MODEL=sonnet                 # or currency, spend, logs; or haiku, for a stretch run
 RUN=~/scratch/spec-runs/$SPEC-$MODEL
 ```
 
@@ -76,7 +77,7 @@ change from what was just the model.
 
 ### 5. Record
 
-Add a row to the results table under phase 2 in [TODO.md](../TODO.md), and turn each template
+Add a row to the results table under "Spec runs" in [TODO.md](../TODO.md), and turn each template
 finding into an item in the phase it belongs to.
 
 Things worth watching for while it builds: the branch guard on the first edit, whether the gate's
@@ -89,7 +90,9 @@ stderr was actionable, whether the skill was loaded at all, and whether the resu
 |---|---|
 | [geo.md](geo.md) | an `httpx` client injected for tests, a response model with aliases, a required User-Agent |
 | [currency.md](currency.md) | exact `Decimal` arithmetic end to end, input parsing as a usage error, a pure core |
+| [spend.md](spend.md) | `python-data`: a declared schema over CSV and parquet, a filtered and grouped pipeline, integer money, an empty result that keeps its types |
+| [logs.md](logs.md) | `python-tui`: logic outside the app, validation before the screen opens, key bindings, a picker whose choice goes to stdout, Pilot tests |
 
-Both were once shipped in the scaffold, and the original implementations survive in history at
-[`d8e26b0`](https://github.com/GrndZero101/python-template/tree/d8e26b0/template/src) — useful for
-comparing against what an agent builds from the spec, not for copying.
+`geo` and `currency` were once shipped in the scaffold, and the original implementations survive
+in history at [`d8e26b0`](https://github.com/GrndZero101/python-template/tree/d8e26b0/template/src)
+— useful for comparing against what an agent builds from the spec, not for copying.

@@ -16,7 +16,8 @@ Read, in this order:
 4. **The build session's transcript.** Under `~/.claude/projects/`, in the directory named after
    this project's path, the `.jsonl` file whose first user message is the spec. Look for which
    skills it loaded, the gate output it was shown, and where it went wrong and recovered.
-5. **This project's `CLAUDE.md` and `python-cli-modern` skill**, to judge the work by the rules it
+5. **This project's `CLAUDE.md` and the skills the spec's work falls under** — `python-cli-modern`,
+   plus `python-data` or `python-tui` for a data or TUI command — to judge the work by the rules it
    was given.
 
 Report, briefly:
