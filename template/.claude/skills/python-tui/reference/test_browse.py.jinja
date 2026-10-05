@@ -3,6 +3,9 @@
 Each async test is marked `@pytest.mark.asyncio`: pytest-asyncio runs it on an event loop. Assert on
 widget state through `query_one`, never on rendered characters, and `await pilot.pause()` after an
 interaction so pending messages settle first.
+
+The command's tests replace `browse.run_screen`, so they check what reaches the screen, or that
+nothing does, without starting one.
 """
 
 from pathlib import Path
@@ -10,6 +13,7 @@ from pathlib import Path
 import pytest
 from textual.widgets import DataTable, Input
 
+from {{ package_name }} import browse
 from {{ package_name }}.browse import BrowseApp
 from {{ package_name }}.cli import main
 from {{ package_name }}.rows import RowTable
@@ -51,15 +55,29 @@ async def test_escape_clears_the_filter() -> None:
         assert app.query_one(DataTable).row_count == 3
 
 
-def test_a_bad_file_exits_1_before_the_app_starts(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_the_command_opens_the_screen_on_the_file_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    opened: list[RowTable] = []
+    monkeypatch.setattr(browse, "run_screen", opened.append)
+    path = tmp_path / "hosts.csv"
+    path.write_text("name,region\nweb-1,eu-west-1\n", encoding="utf-8")
+    assert main(["browse", str(path)]) == 0
+    assert opened == [RowTable(headers=("name", "region"), rows=(("web-1", "eu-west-1"),))]
+
+
+def test_a_bad_file_exits_1_before_the_app_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    opened: list[RowTable] = []
+    monkeypatch.setattr(browse, "run_screen", opened.append)
     path = tmp_path / "hosts.csv"
     path.write_text("name,region\nweb-1\n", encoding="utf-8")
     assert main(["browse", str(path)]) == 1
     captured = capsys.readouterr()
     assert "line 2" in captured.err
     assert not captured.out
+    assert not opened
 
 
 def test_another_format_is_a_usage_error(tmp_path: Path) -> None:

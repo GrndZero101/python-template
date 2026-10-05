@@ -31,8 +31,9 @@ Every rule here exists so a human can stop the program and inspect it.
 - No lambda beyond a trivial attribute or index access.
   *Why: it shows as `<lambda>` in stack traces with no source context.*
 - Inject dependencies — clock, rng, HTTP client, paths — as parameters with defaults. Never reach
-  for module-level mutable state. The one sanctioned patch: a command's end-to-end test through
-  `main` replaces `<module>.build_client` with `monkeypatch.setattr`, since the command builds it.
+  for module-level mutable state. The sanctioned patches: a command's end-to-end test through
+  `main` replaces `<module>.build_client`, or a TUI command's `<module>.run_screen`, with
+  `monkeypatch.setattr` — the one thing each command builds rather than takes as a parameter.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
 - Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
   `raise ... from None`, which discards the cause just as surely. That includes an exit:
