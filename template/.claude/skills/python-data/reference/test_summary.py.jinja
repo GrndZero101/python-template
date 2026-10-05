@@ -16,6 +16,7 @@ from {{ package_name }}.summary import (
     RECORD_SCHEMA,
     SUMMARY_SCHEMA,
     parse_records_path,
+    scan_records,
     summarize,
 )
 
@@ -38,12 +39,12 @@ EXPECTED = pl.DataFrame(
 )
 
 
-def _write(path: Path) -> Path:
-    """Write `RECORDS` to `path` as CSV or parquet, by its suffix."""
+def _write(path: Path, records: pl.DataFrame = RECORDS) -> Path:
+    """Write `records` to `path` as CSV or parquet, by its suffix."""
     if path.suffix == ".csv":
-        RECORDS.write_csv(path)
+        records.write_csv(path)
     else:
-        RECORDS.write_parquet(path)
+        records.write_parquet(path)
     return path
 
 
@@ -63,6 +64,14 @@ def test_an_empty_input_is_an_empty_summary() -> None:
     summary = summarize(RECORDS.clear().lazy())
     assert summary.is_empty()
     assert summary.schema == SUMMARY_SCHEMA
+
+
+@pytest.mark.parametrize("name", ["records.csv", "records.parquet"])
+def test_columns_are_read_by_name_in_any_order(tmp_path: Path, name: str) -> None:
+    """A real export reorders and adds columns; a positional read would mislabel them."""
+    reordered = RECORDS.select("duration_ms", "status", "service").with_columns(region=pl.lit("eu"))
+    path = _write(tmp_path / name, reordered)
+    assert_frame_equal(scan_records(path).collect(), RECORDS)
 
 
 @pytest.mark.parametrize("name", ["records.json", "records"])
