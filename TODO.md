@@ -8,8 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order.
 
-1. **The `logs` spec run** (`python-tui`), on sonnet, by hand as
-   [examples/README.md](examples/README.md) describes. `spend` ran 2026-10-05: see "Spec runs".
+1. **A dogfood update** to bring in the two spec-run fixes: the data skill reading columns by
+   name, and the TUI skill's `run_screen` seam. Run from a session started in the dogfood.
 2. Phase 8.
 
 ## How work is judged
@@ -161,6 +161,7 @@ spec, `finish_branch.py` running the tests — are not yet measured.
 | 2026-10-03 | geo | haiku | `f6c03ff` | pass | pass | 68 calls, 31k out | Close. Found `build_client` through `CLAUDE.md` and copied it. Still never loaded the skill: parsed the response by hand, reported `exc.request.url` instead of the cause. |
 | 2026-10-03 | currency | sonnet | `2b06886` | pass | 276 pass | 15 requests, 17.7k out, $0.65 | Meets the spec, every value a `Decimal`. Branched unprompted, `Annotated` throughout. 8 of 11 writes were Bash; validated arguments by hand as `str`; mocked a "missing key" the service answers with a 404; `finish_branch.py` failed twice on a dirty tree. All seven findings acted on. |
 | 2026-10-05 | spend | sonnet | `73933c1` | pass | 283 pass | 14 calls, 35k out | Meets the spec. Loaded `python-data` first, unprompted, then `python-cli-modern`; branched first; left the work on its branch and said so. Every write was Bash, so only the stop gate ran. Read columns by name, sidestepping the skill's positional `scan_csv(schema=)` — fixed. Three fix rounds, none template defects: `ty` on `Series.sum()`'s broad return type, `PLR0917`/`PLR0913` on a seven-parameter command (`*` and a commented `noqa`), and a rich title wrapping at 80 columns under a substring assert. |
+| 2026-10-05 | logs | sonnet | `15ed246` | pass | pass | 10 calls, 32k out | Meets the spec. Loaded `python-tui` unprompted; branched first; finished with `finish_branch.py`. Every write was Bash. Logic outside the app, `.tcss` styles, letters typed in search tested not to fire bindings. Patched its own `run_screen` seam in the command tests — beyond `CLAUDE.md`'s one sanctioned patch, and it said so: the reference had no seam, so the skill could not show how to test a picker through `main`. Fixed: `run_screen` is in the reference and named beside `build_client`. |
 
 What the runs taught: the skill's content works and its discovery is weak below sonnet; sonnet
 writes through Bash as a habit, so the backstops matter more than the edit-time gate; and specs and
@@ -258,8 +259,8 @@ Open from the runs:
   `err.print` wrapped them at the console width, splitting the path a test looked for, and would
   read `[...]` in a path or message as markup.
 - [x] **Specs**, 2026-10-05: `examples/spend.md` and `examples/logs.md`.
-- [ ] **A sonnet run of each**, recorded under "Spec runs". `spend` done 2026-10-05; `logs` to
-  run.
+- [x] **A sonnet run of each**, 2026-10-05, recorded under "Spec runs". Each found one template
+  defect, both fixed: a positional CSV read in `python-data`, and no test seam for a TUI command.
 - [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
   mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
 

@@ -57,6 +57,10 @@ a CSV file as a table that narrows as you type. Then:
 - **A TUI command has no `--output`**: it shows a screen, not data. A picker that returns a choice
   ends with `self.exit(choice)`; the command writes the value `run()` returns to stdout after the
   screen has closed.
+- **The app runs in one function, `run_screen`**, which the command calls and nothing else does. A
+  test through `main` replaces it with `monkeypatch.setattr`, as `test_browse.py` does, to prove a
+  bad file starts no screen and — in a picker, whose `run_screen` returns the choice — that the
+  choice reaches stdout. The app itself is tested through Pilot.
 - **Class-level `BINDINGS` is annotated** `ClassVar[list[BindingType]]`, or the gate reports a
   mutable class default.
 - **Blocking work goes in a worker**: `@work(exclusive=True)` on an async method, or

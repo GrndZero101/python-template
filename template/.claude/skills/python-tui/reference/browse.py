@@ -8,7 +8,8 @@
 
 The app only displays: `rows.py` reads and filters, and every handler here unpacks its event and
 delegates there. `browse_command` reads the file before the app starts, so a bad file is an
-ordinary error on stderr rather than a broken screen.
+ordinary error on stderr rather than a broken screen. It starts the app only through
+`run_screen`, which a test through `main` replaces, so the command is tested without a screen.
 """
 
 import sys
@@ -67,6 +68,11 @@ class BrowseApp(App[None]):
         table.add_rows(rows)
 
 
+def run_screen(source: RowTable) -> None:
+    """Open the full-screen table; return when the user quits. The only place the app runs."""
+    BrowseApp(source).run()
+
+
 def parse_csv_path(raw: str) -> Path:
     """Return `raw` as a path if it is an existing .csv file. typer calls this."""
     path = Path(raw)
@@ -95,4 +101,4 @@ def browse_command(
         sys.stderr.write(f"Error: could not read {path}: {exc}\n")
         raise typer.Exit(RUNTIME_FAILURE) from exc
     logger.debug("browsing {} rows from {}", len(source.rows), path)
-    BrowseApp(source).run()
+    run_screen(source)
