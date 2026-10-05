@@ -1,0 +1,116 @@
+"""The `summary` command, piece by piece and end to end through `main`.
+
+The pipeline gets five-row frames built inline; `main` gets fixture files written to `tmp_path`.
+"""
+
+import json
+from pathlib import Path
+
+import polars as pl
+import pytest
+import typer
+from polars.testing import assert_frame_equal
+
+from {{ package_name }}.cli import main
+from {{ package_name }}.summary import (
+    RECORD_SCHEMA,
+    SUMMARY_SCHEMA,
+    parse_records_path,
+    summarize,
+)
+
+RECORDS = pl.DataFrame(
+    {
+        "service": ["web", "api", "web", "api", "web"],
+        "status": [200, 503, 200, 200, 500],
+        "duration_ms": [10.0, 250.0, 30.0, 40.0, 20.0],
+    },
+    schema=RECORD_SCHEMA,
+)
+EXPECTED = pl.DataFrame(
+    {
+        "service": ["api", "web"],
+        "requests": [2, 3],
+        "errors": [1, 1],
+        "p95_ms": [250.0, 30.0],
+    },
+    schema=SUMMARY_SCHEMA,
+)
+
+
+def _write(path: Path) -> Path:
+    """Write `RECORDS` to `path` as CSV or parquet, by its suffix."""
+    if path.suffix == ".csv":
+        RECORDS.write_csv(path)
+    else:
+        RECORDS.write_parquet(path)
+    return path
+
+
+# --- the pieces ---------------------------------------------------------------------------
+
+
+def test_summarize_counts_requests_and_errors_per_service() -> None:
+    assert_frame_equal(summarize(RECORDS.lazy()), EXPECTED)
+
+
+def test_summary_has_the_declared_schema() -> None:
+    """A value comparison passes when Int64 drifts to Float64; a schema comparison does not."""
+    assert summarize(RECORDS.lazy()).schema == SUMMARY_SCHEMA
+
+
+def test_an_empty_input_is_an_empty_summary() -> None:
+    summary = summarize(RECORDS.clear().lazy())
+    assert summary.is_empty()
+    assert summary.schema == SUMMARY_SCHEMA
+
+
+@pytest.mark.parametrize("name", ["records.json", "records"])
+def test_another_format_is_a_bad_parameter_naming_it(tmp_path: Path, name: str) -> None:
+    path = tmp_path / name
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(typer.BadParameter, match=repr(str(path))):
+        parse_records_path(str(path))
+
+
+def test_a_missing_file_is_a_bad_parameter(tmp_path: Path) -> None:
+    with pytest.raises(typer.BadParameter, match="does not exist"):
+        parse_records_path(str(tmp_path / "missing.csv"))
+
+
+# --- through main -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["records.csv", "records.parquet"])
+def test_json_output_is_one_array_per_service(
+    tmp_path: Path, name: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["summary", str(_write(tmp_path / name)), "-o", "json"]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == EXPECTED.to_dicts()
+    assert not captured.err
+
+
+def test_table_output_names_each_service(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["summary", str(_write(tmp_path / "records.csv"))]) == 0
+    stdout = capsys.readouterr().out
+    assert "api" in stdout
+    assert "250.0" in stdout
+
+
+def test_a_malformed_file_exits_1_naming_the_file_and_the_cause(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "records.csv"
+    path.write_text("service,status,duration_ms\nweb,not-a-number,1.0\n", encoding="utf-8")
+    assert main(["summary", str(path)]) == 1
+    captured = capsys.readouterr()
+    assert str(path) in captured.err
+    assert "not-a-number" in captured.err
+    assert not captured.out
+
+
+def test_a_missing_file_is_a_usage_error(tmp_path: Path) -> None:
+    assert main(["summary", str(tmp_path / "missing.csv")]) == 2

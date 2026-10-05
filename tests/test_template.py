@@ -289,25 +289,36 @@ def test_generated_project_works_at_the_python_floor(copie: Copie) -> None:
     assert version.stdout.startswith(f"Python {PYTHON_FLOOR}."), version.stdout
 
 
-# The skill's reference files, and where its "call an HTTP API" recipe says to copy them.
-REFERENCE_DIR = Path(".claude") / "skills" / "python-cli-modern" / "reference"
+# The skills' reference files, and where their recipes say to copy them.
+SKILLS_DIR = Path(".claude") / "skills"
+REFERENCE_DIR = SKILLS_DIR / "python-cli-modern" / "reference"
 REFERENCE_MODULES = ["http_client.py", "status.py"]
 REFERENCE_TESTS = ["test_http_client.py", "test_status.py"]
-# The registration the "add a command" recipe shows, and the scaffold lines it goes beside.
-REGISTRATIONS = {
-    "from .typer_entrypoint import run_app\n": "from .status import status_command\n",
-    'app.command("about")(about_command)\n': 'app.command("status")(status_command)\n',
-}
+DATA_REFERENCE_DIR = SKILLS_DIR / "python-data" / "reference"
+# The scaffold lines the "add a command" recipe's two-line edit to cli.py goes beside.
+IMPORT_ANCHOR = "from .typer_entrypoint import run_app\n"
+COMMAND_ANCHOR = 'app.command("about")(about_command)\n'
 
 
-def _register_status_command(cli: Path) -> None:
+def _register_command(cli: Path, module: str, name: str) -> None:
     """Make the recipe's two-line edit to cli.py, failing loudly if the scaffold has moved on."""
     source = cli.read_text(encoding="utf-8")
-    for anchor, line in REGISTRATIONS.items():
-        assert anchor in source, f"cli.py no longer has {anchor!r}; update the skill's recipe"
-        before, after = (line, anchor) if line.startswith("from") else (anchor, line)
-        source = source.replace(anchor, before + after)
+    for anchor in (IMPORT_ANCHOR, COMMAND_ANCHOR):
+        assert anchor in source, f"cli.py no longer has {anchor!r}; update the skills' recipes"
+    source = source.replace(IMPORT_ANCHOR, f"from .{module} import {name}_command\n{IMPORT_ANCHOR}")
+    source = source.replace(
+        COMMAND_ANCHOR, f'{COMMAND_ANCHOR}app.command("{name}")({name}_command)\n'
+    )
     cli.write_text(source, encoding="utf-8")
+
+
+def _gate_and_test(project: Path) -> None:
+    """Stage everything, then require the project's whole gate and its tests to pass."""
+    _run(["git", "add", "-A"], project)
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
+    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
+    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
 
 
 @requires_uv
@@ -327,12 +338,23 @@ def test_skill_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Co
         shutil.copy(reference / name, project / "src" / PACKAGE_NAME / name)
     for name in REFERENCE_TESTS:
         shutil.copy(reference / name, project / "tests" / name)
-    _register_status_command(project / "src" / PACKAGE_NAME / "cli.py")
-    _run(["git", "add", "-A"], project)
-    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
-    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
-    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
-    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "status", "status")
+    _gate_and_test(project)
+
+
+@requires_uv
+@requires_prek
+def test_data_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Copie) -> None:
+    """The python-data skill's "add a data command" recipe, followed literally."""
+    project = _generate(copie)
+    _run(["git", "switch", "--quiet", "-c", "feat/summary"], project)
+    added = _run(["uv", "add", "polars"], project)
+    assert added.returncode == 0, added.stderr
+    reference = project / DATA_REFERENCE_DIR
+    shutil.copy(reference / "summary.py", project / "src" / PACKAGE_NAME / "summary.py")
+    shutil.copy(reference / "test_summary.py", project / "tests" / "test_summary.py")
+    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "summary", "summary")
+    _gate_and_test(project)
 
 
 @requires_uv
