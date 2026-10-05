@@ -8,10 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order.
 
-1. **Spec runs** for the two layered skills, on sonnet, by hand as
-   [examples/README.md](examples/README.md) describes: `spend` (`python-data`) and `logs`
-   (`python-tui`), both written 2026-10-05. A fresh project receives both skills, so each run
-   also shows whether the model picks the right one unprompted.
+1. **The `logs` spec run** (`python-tui`), on sonnet, by hand as
+   [examples/README.md](examples/README.md) describes. `spend` ran 2026-10-05: see "Spec runs".
 2. Phase 8.
 
 ## How work is judged
@@ -162,6 +160,7 @@ spec, `finish_branch.py` running the tests — are not yet measured.
 | 2026-10-03 | geo | sonnet | `354b24f` | pass | 212 pass | 9 calls, 10k out | Meets every row. Loaded the skill second, copied `http_client.py`, `MockTransport` throughout. Wrote every file through one heredoc. |
 | 2026-10-03 | geo | haiku | `f6c03ff` | pass | pass | 68 calls, 31k out | Close. Found `build_client` through `CLAUDE.md` and copied it. Still never loaded the skill: parsed the response by hand, reported `exc.request.url` instead of the cause. |
 | 2026-10-03 | currency | sonnet | `2b06886` | pass | 276 pass | 15 requests, 17.7k out, $0.65 | Meets the spec, every value a `Decimal`. Branched unprompted, `Annotated` throughout. 8 of 11 writes were Bash; validated arguments by hand as `str`; mocked a "missing key" the service answers with a 404; `finish_branch.py` failed twice on a dirty tree. All seven findings acted on. |
+| 2026-10-05 | spend | sonnet | `73933c1` | pass | 283 pass | 14 calls, 35k out | Meets the spec. Loaded `python-data` first, unprompted, then `python-cli-modern`; branched first; left the work on its branch and said so. Every write was Bash, so only the stop gate ran. Read columns by name, sidestepping the skill's positional `scan_csv(schema=)` — fixed. Three fix rounds, none template defects: `ty` on `Series.sum()`'s broad return type, `PLR0917`/`PLR0913` on a seven-parameter command (`*` and a commented `noqa`), and a rich title wrapping at 80 columns under a substring assert. |
 
 What the runs taught: the skill's content works and its discovery is weak below sonnet; sonnet
 writes through Bash as a habit, so the backstops matter more than the edit-time gate; and specs and
@@ -173,6 +172,11 @@ Open from the runs:
   only by generation tests, never by a consumer update with a real conflict. The `7a5941e` dogfood
   update had none; still watching.
 - [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
+- [ ] **Watch, from the `spend` run** — act on a second occurrence, each a line in a skill: a
+  command with more than five parameters trips `PLR0913` and `PLR0917`, and the answer is
+  keyword-only flags plus a commented `noqa`; polars' `Series.sum()` is typed as a broad union, so
+  `ty` wants `int(...)` before it reaches an `int` parameter; and a test asserting a substring of a
+  rich table breaks when the title wraps at 80 columns.
 - [ ] **Declare each setting once**, if a run shows a model fumbling "Recipe: add a setting". Today
   a setting is declared four times — `Settings`, `_Overrides`, a `GlobalOptions` field or
   `load_settings` keyword, an option alias — and `load_settings` copies each flag by hand. Building
@@ -254,7 +258,8 @@ Open from the runs:
   `err.print` wrapped them at the console width, splitting the path a test looked for, and would
   read `[...]` in a path or message as markup.
 - [x] **Specs**, 2026-10-05: `examples/spend.md` and `examples/logs.md`.
-- [ ] **A sonnet run of each**, recorded under "Spec runs".
+- [ ] **A sonnet run of each**, recorded under "Spec runs". `spend` done 2026-10-05; `logs` to
+  run.
 - [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
   mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
 

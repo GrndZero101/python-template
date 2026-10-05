@@ -58,10 +58,15 @@ def parse_records_path(raw: str) -> Path:
 
 
 def scan_records(path: Path) -> pl.LazyFrame:
-    """Scan the records in `path` lazily. Nothing is read until the result is collected."""
+    """Scan the records in `path` lazily. Nothing is read until the result is collected.
+
+    Columns are matched by name, in any order, and any others are ignored. A CSV's `schema=` would
+    match them by position instead, mislabelling a file whose columns come in another order.
+    """
     if path.suffix.lower() == ".csv":
-        return pl.scan_csv(path, schema=RECORD_SCHEMA)
-    return pl.scan_parquet(path, schema=RECORD_SCHEMA)
+        scan = pl.scan_csv(path, schema_overrides=RECORD_SCHEMA)
+        return scan.select(list(RECORD_SCHEMA))
+    return pl.scan_parquet(path, schema=RECORD_SCHEMA, extra_columns="ignore")
 
 
 def summarize(records: pl.LazyFrame) -> pl.DataFrame:

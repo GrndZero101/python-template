@@ -43,9 +43,14 @@ per service. Then:
 
 ## Rules every data command follows
 
-- **Declare the schema; never infer it.** `scan_csv(path, schema=...)` and
-  `scan_parquet(path, schema=...)`. Inference reads a sample and can differ between files — an int
-  column with one null becomes a float, silently.
+- **Declare the schema; never infer it.** Inference reads a sample and can differ between files —
+  an int column with one null becomes a float, silently.
+- **Match the schema by name.** An export reorders and adds columns, so read as `scan_records`
+  does: `scan_csv(path, schema_overrides=SCHEMA).select(list(SCHEMA))`, and
+  `scan_parquet(path, schema=SCHEMA, extra_columns="ignore")`. Never `scan_csv(path, schema=...)`:
+  it matches by **position** and ignores the header, so a reordered file fails, or — when two
+  string columns trade places — reads without error under the wrong names. Both forms reject a
+  value of the wrong type; a `.cast()` after reading would truncate `1.5` to `1` instead.
 - **Scan lazily, collect once.** The pipeline takes a `LazyFrame` and returns a collected
   `DataFrame`; the command never sees a lazy frame. Lazy scans push a filter or a column selection
   down into the read, so a filter on one column of a wide parquet reads only what it needs.
