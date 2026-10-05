@@ -8,12 +8,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **A dogfood update** to the single-shape merge. Rehearsed 2026-10-05 on a project generated
-   at `c08a7d0`: no conflicts; it adds `python-data` and `python-tui`, edits `python-cli` and the
-   README, and copier drops the stale `project_type` answer by itself.
-2. **Spec runs** for the two layered skills: a data spec and a TUI spec under `examples/`, each
+1. **Spec runs** for the two layered skills: a data spec and a TUI spec under `examples/`, each
    run on sonnet against a fresh project.
-3. Phase 8.
+2. Phase 8.
 
 ## How work is judged
 
@@ -80,15 +77,16 @@ In order. Spec runs are paused by choice (2026-10-04) until more phases land.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
 - **The dogfood**, `GrndZero101/template-dogfood`: a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`, at `a7c49b5` (2026-10-05), which brings in secrets, the
-  config file and `GlobalOptions`. Two updates there were the evidence for the last: the first
-  left `weather.py` ignoring `--config`; the second, after `GlobalOptions`, failed ty on the old
-  call and the error alone led to the fix. **Drive it from a session started
-  in its own directory**: Claude Code loads hooks and skills from the session's project, so from
-  here they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
-  `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After the
-  `b22dacd` update `session_doctor` found all three git shims missing; `prek install -t pre-commit
-  -t commit-msg -t pre-merge-commit` restored them.
+  `weather` command and script `tdf-cli`, at `7a5941e` (2026-10-05), the single-shape merge:
+  as rehearsed, no conflicts, the two layered skills added and `project_type` dropped from the
+  answers. The `a7c49b5` update before it brought in secrets, the config file and `GlobalOptions`;
+  two updates were the evidence for the last: the first left `weather.py` ignoring `--config`; the
+  second, after `GlobalOptions`, failed ty on the old call and the error alone led to the fix.
+  **Drive it from a session started in its own directory**: Claude Code loads hooks and skills
+  from the session's project, so from here they are all inert. A rehearsal on a scratch clone
+  (`_src_path` edited, `copier update --trust --defaults --vcs-ref <branch>`) predicts a real
+  update exactly. After the `b22dacd` update `session_doctor` found all three git shims missing;
+  `prek install -t pre-commit -t commit-msg -t pre-merge-commit` restored them.
 
 ## Decisions
 
@@ -170,8 +168,8 @@ API docs are unreliable about failures, so the recipe now says to provoke each o
 Open from the runs:
 
 - [ ] The gate's pause on conflict markers and the conflicted-`pyproject.toml` guard are proven
-  only by generation tests, never by a consumer update with a real conflict. Watch for one in the
-  dogfood update.
+  only by generation tests, never by a consumer update with a real conflict. The `7a5941e` dogfood
+  update had none; still watching.
 - [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
 - [ ] **Declare each setting once**, if a run shows a model fumbling "Recipe: add a setting". Today
   a setting is declared four times — `Settings`, `_Overrides`, a `GlobalOptions` field or
