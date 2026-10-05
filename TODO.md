@@ -6,10 +6,12 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-In order. Spec runs are paused by choice (2026-10-04) until more phases land.
+In order.
 
-1. **Spec runs** for the two layered skills: a data spec and a TUI spec under `examples/`, each
-   run on sonnet against a fresh project.
+1. **Spec runs** for the two layered skills, on sonnet, by hand as
+   [examples/README.md](examples/README.md) describes: `spend` (`python-data`) and `logs`
+   (`python-tui`), both written 2026-10-05. A fresh project receives both skills, so each run
+   also shows whether the model picks the right one unprompted.
 2. Phase 8.
 
 ## How work is judged
@@ -146,7 +148,7 @@ apply:
 
 ## Spec runs
 
-Paused until more phases land. When resumed: by hand, as [examples/README.md](examples/README.md)
+Resumed 2026-10-05 for the layered skills. By hand, as [examples/README.md](examples/README.md)
 describes — a fresh project, the spec handed unedited to sonnet, the gate and tests run by hand,
 then a review in a separate `opus` session in plan mode driven by
 [examples/evaluate.md](examples/evaluate.md). Each template finding becomes an item here, checked
@@ -251,7 +253,8 @@ Open from the runs:
 - [x] **Reference commands write errors with `sys.stderr.write`**, as the scaffold does: rich's
   `err.print` wrapped them at the console width, splitting the path a test looked for, and would
   read `[...]` in a path or message as markup.
-- [ ] **Specs** under `examples/` for a data command and a TUI command, and a sonnet run of each.
+- [x] **Specs**, 2026-10-05: `examples/spend.md` and `examples/logs.md`.
+- [ ] **A sonnet run of each**, recorded under "Spec runs".
 - [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
   mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
 
