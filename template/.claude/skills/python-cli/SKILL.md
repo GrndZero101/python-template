@@ -11,9 +11,9 @@ description: >-
 # Python CLI conventions
 
 These are interface rules. They hold whatever the parser is — `argparse`, `click`, `typer`.
-How to implement them on a given stack — the parser, the logger, how to test log output — lives in
-the stack skill (**python-cli-modern** or **python-cli-stdlib**). Where the two seem to disagree,
-the stack skill is the one that has been run against the scaffold; follow it.
+How to implement them on this project's stack — the parser, the logger, how to test log output —
+lives in **python-cli-modern**. Where the two seem to disagree, that skill is the one that has been
+run against the scaffold; follow it.
 
 ## The entrypoint contract
 

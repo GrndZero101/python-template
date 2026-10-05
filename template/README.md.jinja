@@ -9,10 +9,10 @@ by lint config and a `prek` gate — not just documented and hoped for.
 
 ## What's here
 
-- **`src/{{ package_name }}/`** — the package.{% if project_type == "cli-modern" %} It ships a
+- **`src/{{ package_name }}/`** — the package. It ships a
   scaffold CLI, `{{ script_name }}`, on typer, pydantic-settings, rich and loguru, with one
   placeholder command, `about`. Replace it or build beside it; the plumbing around it — settings,
-  output, logging, the entry point — is meant to stay.{% endif %}
+  output, logging, the entry point — is meant to stay.
 - **`tools/`** — the custom checks no off-the-shelf linter covers: `check_conventions.py` and
   `convention_rules.py` (the CLAUDE.md conventions no linter checks: `def` or `class` inside a
   function, complex comprehensions, `raise ... from None`, computed `getattr`, an unguarded
@@ -25,7 +25,9 @@ by lint config and a `prek` gate — not just documented and hoped for.
   `git-workflow` skill), `hook_payload.py` (shared parsing), and
   `debug_module.py` and `debug_pytest.py` (let the DebugMCP CLI debug a source module and a test
   file; see below).
-- **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply.
+- **`.claude/skills/`** — the conventions for this stack, loaded by an agent when they apply:
+  `python-cli-modern` for commands and settings, and `python-data` and `python-tui` for a
+  command that crunches files or draws a full-screen interface.
 - **`.debugmcp.json`** — debugger adapters for an agent driving [DebugMCP](https://github.com/microsoft/DebugMCP).
 - **`CLAUDE.md`** — the full rule set: structure, debuggability, agent-friendliness, portability,
   branching, and commit conventions, plus a table of exactly what is enforced by what.
@@ -70,7 +72,7 @@ Run the linters **through prek, never directly.** `ty` is not installed outside 
 `ty check` is "command not found", and a `ruff` on PATH can be a different version from the hook's
 pin and disagree with it. prek runs the pinned versions, so what passes here passes at commit.
 
-{% if project_type == "cli-modern" %}## Using the CLI
+## Using the CLI
 
 ```bash
 uv run {{ script_name }} --help
@@ -147,7 +149,7 @@ git tag "v$(uv version --short)" && git push origin main --tags
 An editable install reports the version it was installed at until it is reinstalled with
 `uv tool install --editable . --reinstall`; its code, unlike its version, is always current.
 
-{% endif %}## Updating from the template
+## Updating from the template
 
 ```bash
 copier update --trust
