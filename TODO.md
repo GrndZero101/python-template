@@ -173,6 +173,16 @@ Open from the runs:
   only by generation tests, never by a consumer update with a real conflict. Watch for one in the
   dogfood update.
 - [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
+- [ ] **Declare each setting once**, if a run shows a model fumbling "Recipe: add a setting". Today
+  a setting is declared four times — `Settings`, `_Overrides`, a `GlobalOptions` field or
+  `load_settings` keyword, an option alias — and `load_settings` copies each flag by hand. Building
+  `given` from `dataclasses.asdict(options)` plus the keywords, dropping `None`, deletes
+  `_Overrides` and the copy lines: three edits instead of four, and two wiring tests in
+  `test_config.py` go. Bundle with it: the app callback and each command both call
+  `load_settings`, so every run parses the environment and reads the config file twice; the
+  callback needs only `verbose`. Found 2026-10-05; both predate phase 7's stdlib work. Judged not
+  worth changing: the unused `err` console, `config.py` importing rich through `output.py`, and
+  five docstring lines over 100 columns.
 
 ## Phase 7 — DevOps CLI features
 
