@@ -295,21 +295,26 @@ REFERENCE_DIR = SKILLS_DIR / "python-cli-modern" / "reference"
 REFERENCE_MODULES = ["http_client.py", "status.py"]
 REFERENCE_TESTS = ["test_http_client.py", "test_status.py"]
 DATA_REFERENCE_DIR = SKILLS_DIR / "python-data" / "reference"
-# The scaffold lines the "add a command" recipe's two-line edit to cli.py goes beside.
-IMPORT_ANCHOR = "from .typer_entrypoint import run_app\n"
+TUI_REFERENCE_DIR = SKILLS_DIR / "python-tui" / "reference"
+# The scaffold line the "add a command" recipe's registration goes beside.
 COMMAND_ANCHOR = 'app.command("about")(about_command)\n'
 
 
-def _register_command(cli: Path, module: str, name: str) -> None:
-    """Make the recipe's two-line edit to cli.py, failing loudly if the scaffold has moved on."""
-    source = cli.read_text(encoding="utf-8")
-    for anchor in (IMPORT_ANCHOR, COMMAND_ANCHOR):
-        assert anchor in source, f"cli.py no longer has {anchor!r}; update the skills' recipes"
-    source = source.replace(IMPORT_ANCHOR, f"from .{module} import {name}_command\n{IMPORT_ANCHOR}")
-    source = source.replace(
-        COMMAND_ANCHOR, f'{COMMAND_ANCHOR}app.command("{name}")({name}_command)\n'
-    )
-    cli.write_text(source, encoding="utf-8")
+def _register_command(cli: Path, name: str) -> None:
+    """Make the recipe's two-line edit to cli.py, failing loudly if the scaffold has moved on.
+
+    The import goes where isort would put it, among the other relative imports, so the gate's
+    `--fix` has nothing to rewrite.
+    """
+    lines = cli.read_text(encoding="utf-8").splitlines(keepends=True)
+    assert COMMAND_ANCHOR in lines, f"cli.py no longer has {COMMAND_ANCHOR!r}; update the recipes"
+    lines.insert(lines.index(COMMAND_ANCHOR) + 1, f'app.command("{name}")({name}_command)\n')
+    relative = [index for index, line in enumerate(lines) if line.startswith("from .")]
+    assert relative, "cli.py has no relative imports; update the skills' recipes"
+    new_import = f"from .{name} import {name}_command\n"
+    later = [index for index in relative if lines[index] > new_import]
+    lines.insert(later[0] if later else relative[-1] + 1, new_import)
+    cli.write_text("".join(lines), encoding="utf-8")
 
 
 def _gate_and_test(project: Path) -> None:
@@ -338,7 +343,7 @@ def test_skill_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Co
         shutil.copy(reference / name, project / "src" / PACKAGE_NAME / name)
     for name in REFERENCE_TESTS:
         shutil.copy(reference / name, project / "tests" / name)
-    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "status", "status")
+    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "status")
     _gate_and_test(project)
 
 
@@ -353,7 +358,28 @@ def test_data_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Cop
     reference = project / DATA_REFERENCE_DIR
     shutil.copy(reference / "summary.py", project / "src" / PACKAGE_NAME / "summary.py")
     shutil.copy(reference / "test_summary.py", project / "tests" / "test_summary.py")
-    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "summary", "summary")
+    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "summary")
+    _gate_and_test(project)
+
+
+@requires_uv
+@requires_prek
+def test_tui_reference_code_passes_the_gate_where_the_recipe_puts_it(copie: Copie) -> None:
+    """The python-tui skill's "add a TUI command" recipe, followed literally."""
+    project = _generate(copie)
+    _run(["git", "switch", "--quiet", "-c", "feat/browse"], project)
+    for command in (
+        ["uv", "add", "textual"],
+        ["uv", "add", "--dev", "pytest-asyncio", "textual-dev"],
+    ):
+        added = _run(command, project)
+        assert added.returncode == 0, added.stderr
+    reference = project / TUI_REFERENCE_DIR
+    for name in ("rows.py", "browse.py"):
+        shutil.copy(reference / name, project / "src" / PACKAGE_NAME / name)
+    for name in ("test_rows.py", "test_browse.py"):
+        shutil.copy(reference / name, project / "tests" / name)
+    _register_command(project / "src" / PACKAGE_NAME / "cli.py", "browse")
     _gate_and_test(project)
 
 
