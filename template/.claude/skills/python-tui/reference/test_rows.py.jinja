@@ -1,0 +1,45 @@
+"""The logic behind `browse`, tested as plain functions: no app, no event loop."""
+
+from pathlib import Path
+
+import pytest
+
+from {{ package_name }}.rows import RowTable, matching_rows, read_rows
+
+ROWS = (("web-1", "eu-west-1"), ("web-2", "us-east-1"), ("db-1", "EU-west-1"))
+
+
+def _write(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "hosts.csv"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_query_keeps_rows_with_a_matching_cell_ignoring_case() -> None:
+    assert matching_rows(ROWS, "eu") == [ROWS[0], ROWS[2]]
+
+
+@pytest.mark.parametrize("query", ["", "   "])
+def test_a_blank_query_keeps_every_row(query: str) -> None:
+    assert matching_rows(ROWS, query) == list(ROWS)
+
+
+def test_no_match_is_an_empty_list() -> None:
+    assert matching_rows(ROWS, "ap-south") == []
+
+
+def test_read_rows_splits_the_header_from_the_rows(tmp_path: Path) -> None:
+    path = _write(tmp_path, "name,region\nweb-1,eu-west-1\n")
+    assert read_rows(path) == RowTable(headers=("name", "region"), rows=(ROWS[0],))
+
+
+def test_an_empty_file_is_refused_naming_it(tmp_path: Path) -> None:
+    path = _write(tmp_path, "")
+    with pytest.raises(ValueError, match="expected a header row"):
+        read_rows(path)
+
+
+def test_a_ragged_row_is_refused_naming_its_line(tmp_path: Path) -> None:
+    path = _write(tmp_path, "name,region\nweb-1,eu-west-1\nweb-2\n")
+    with pytest.raises(ValueError, match="line 3: 1 cells"):
+        read_rows(path)

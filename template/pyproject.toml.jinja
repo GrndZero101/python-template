@@ -8,29 +8,17 @@ authors = [
 ]
 requires-python = ">={{ python_version }}"
 dependencies = [
-{%- if project_type == "cli-modern" %}
     "loguru>=0.7.3",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "typer>=0.27.0",
-{%- elif project_type == "fastapi" %}
-    "fastapi>=0.121.0",
-    "pydantic>=2.13.4",
-    "uvicorn[standard]>=0.40.0",
-{%- elif project_type == "tui" %}
-    "textual>=7.2.0",
-{%- elif project_type == "data" %}
-    "duckdb>=1.4.2",
-    "polars>=1.35.1",
-    "pyarrow>=22.0.0",
-{%- endif %}
 ]
-{% if project_type == "cli-modern" %}
+
 [project.scripts]
 {{ script_name }} = "{{ package_name }}.cli:main"
-{% endif %}
+
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]
 build-backend = "uv_build"
@@ -78,9 +66,6 @@ select = [
     # instances, eager formatting in a logging call, and a context manager whose cleanup is skipped
     # when the body raises.
     "B909", "PLE1141", "PLE4703", "RUF045", "RUF065", "RUF075",
-{%- if project_type == "fastapi" %}
-    "FAST",                            # FastAPI-specific: redundant response_model, raw Depends
-{%- endif %}
 ]
 # ruff 0.16 wants rule names rather than codes here, which reads better anyway.
 ignore = [

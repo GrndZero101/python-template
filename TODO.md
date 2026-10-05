@@ -8,8 +8,12 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **The `cli-stdlib` scaffold**, which ends phase 7, with a dogfood update after it. Then
-   phase 8.
+1. **A dogfood update** to the single-shape merge. Rehearsed 2026-10-05 on a project generated
+   at `c08a7d0`: no conflicts; it adds `python-data` and `python-tui`, edits `python-cli` and the
+   README, and copier drops the stale `project_type` answer by itself.
+2. **Spec runs** for the two layered skills: a data spec and a TUI spec under `examples/`, each
+   run on sonnet against a fresh project.
+3. Phase 8.
 
 ## How work is judged
 
@@ -31,22 +35,24 @@ In order. Spec runs are paused by choice (2026-10-04) until more phases land.
   phase that changes what generated projects receive ends with a `copier update` of the dogfood.
 - **Format template code in a generated project before committing.** `template/` is not linted in
   place, so a formatting slip surfaces only in the generation suite, a minute later, at commit.
-  Generate a scratch `cli-modern` project, copy the file in, `prek run ruff-format`, copy it back.
+  Generate a scratch project, copy the file in, `prek run ruff-format`, copy it back.
 
 ## Status snapshot
 
 - A working copier template, **published** at
   [GrndZero101/python-template](https://github.com/GrndZero101/python-template): `copier.yml` at the
-  root, the generated project under `template/` via `_subdirectory`. All five types (`cli-modern`,
-  `cli-stdlib`, `fastapi`, `tui`, `data`) generate and pass their own gate and tests;
-  `copier copy gh:GrndZero101/python-template <dest>` is verified end to end.
+  root, the generated project under `template/` via `_subdirectory`. **One project shape**
+  (2026-10-05): the typer CLI scaffold. Data processing and full-screen TUIs are skills layered on
+  it, not project types; `copier copy gh:GrndZero101/python-template <dest>` is verified end to end.
+- **Three recipes ship reference code** that a generation test copies exactly as the recipe says,
+  registers in `cli.py` and gates: `python-cli-modern`'s `status`, `python-data`'s `summary`
+  (polars, CSV or parquet) and `python-tui`'s `browse` (Textual, Pilot tests).
 - `copier update` works and is tested. Every `_task` is guarded with
   `when: "{{ _copier_operation == 'copy' }}"`, or the tasks re-run on update and the commit task
   fails on `no-commit-to-branch`. The variable is `_copier_operation`: `_copier_conf.operation`
   renders undefined, which silently disables every task, copy included.
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py`
-  generates a project per type and runs that project's gate and suite; it is the only check on
-  `template/` and costs about a minute at commit.
+  generates projects and runs their gate and suite; it is the only check on `template/`.
 - Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek`, `rumdl` v0.2.78, `copier` 9.17.0.
   Preview rules are selected one by one (`explicit-preview-rules`); pytest names its strict options
   individually and turns warnings into errors.
@@ -91,16 +97,17 @@ Open:
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the dogfood settles, then `v0.1.0`. See phase 8. |
-| D6 | Shape of `data` and `tui`: build on the `cli-modern` CLI layer, or each in its own idiom | Phase 9 | Build on the CLI layer. Both are CLI tools that happen to crunch data or draw a screen. |
-| D7 | Order of the secondary types | Phase 9 | `data`, then `tui`, then `fastapi`: nearest to the CLI first. |
 
 Decided:
 
 - **D1** — `.python-version` rendered from the answer, 3.12–3.14, default 3.14.
 - **D2** — spec runs by hand, sonnet the baseline, reviewed by Opus (see "Spec runs").
 - **D3** — the git ritual is a script, `finish_branch.py`.
-- **D4** (2026-10-04) — finish `cli-stdlib` as an installable package with a console script; a
-  PEP 723 single-file scripts type may come later as a sixth type.
+- **D4** (2026-10-05, replacing 2026-10-04) — `cli-stdlib` is its own repo, not a type here. A
+  scaffold built for it on 2026-10-05 is parked on the local branch `archive/cli-stdlib`
+  (`4098f9e`) to seed that repo; delete the branch once it has.
+- **D6** (2026-10-05) — `data` and `tui` are recipe-first skills layered on the CLI, shipped to
+  every project, not project types. **D7** (their order) is moot.
 - **D8** (2026-10-04) — the config file lives in `~/.config/<script>/` on macOS as on Linux,
   `XDG_CONFIG_HOME` honoured on every platform, `%APPDATA%` on Windows.
 - **D9** (2026-10-04) — a data command's JSON emits secrets raw, as `terraform output -json` and
@@ -108,8 +115,12 @@ Decided:
   whole-model dumps such as `about` — is masked by `SecretStr`, as `gh auth status` and
   `kubectl config view` mask. Checked: pydantic-settings masks `repr` and
   `model_dump(mode="json")`.
-- **D10** (2026-10-04) — the `cli-modern` config file is YAML, for flexibility as configs grow;
-  `cli-stdlib` would use TOML, which the standard library reads.
+- **D10** (2026-10-04) — the config file is YAML, for flexibility as configs grow.
+- **D11** (2026-10-05) — **one project shape.** `project_type` branched `copier.yml`,
+  `pyproject.toml`, the README and the tests, and the three unbuilt types' skills rotted unexercised
+  (every one broke on a first attempt). FastAPI is a separate project. Why not layer directories
+  for two CLI scaffolds: `_exclude` matches rendered paths, so same-named modules needed
+  Jinja-named directories, which the 2026-10-05 attempt showed to be unreadable.
 
 ## Done: phases 1–6, and fixes from the spec runs
 
@@ -182,30 +193,7 @@ Open from the runs:
   accepted `--config` and ignored it. Fixed 2026-10-05 by passing `GlobalOptions` whole and
   required — `load_settings(global_options(ctx), output=...)` — so a new global option needs no
   command edit, and a command that omits it fails `ty` and raises `TypeError`.
-- [ ] **A `cli-stdlib` scaffold** (D4). The type is for tools expected to grow into full DevOps
-  operator CLIs — several subcommands, real logic behind them — without third-party dependencies.
-  **Not parity with `cli-modern`** (2026-10-04): good-quality tools in the style of the aws CLI,
-  doing whatever the standard library does well by default. A project may grow past that with
-  its user; the scaffold is the starting point. Today it generates an empty package and its
-  skill. Scope:
-  - **An installable entry point.** Ask `script_name` for `cli-stdlib` too (copier.yml `when:`)
-    and render `[project.scripts]` for both CLI types, so `uv tool install .` puts the command on
-    PATH. Widen the README's "Installing it" and "Releasing a version" to `cli-stdlib` with it.
-  - **argparse with subparsers from the start**: an `about` subcommand, global `-v/--verbose`
-    and `--version`, per-command `-o/--output table|json`, each resolving flag, then
-    `<SCRIPT>_*` variable, then default. A JSON path is cheap in the stdlib; a rich table is
-    not, so `table` is plain aligned text from a small `format_table` (`str.ljust`), as the aws
-    CLI renders its own.
-  - **`tabulate` as the sanctioned next step** (2026-10-04), not a scaffold dependency. Split the
-    skill's "colour, tables, progress" policy row: tables use `format_table` until cells wrap,
-    numbers need decimal alignment, or wide characters (CJK, emoji — `str.ljust` counts code
-    points, not columns) must line up, then `tabulate` (`tabulate[widechars]` for the last);
-    colour, progress and live layout stay manual ANSI until `rich`. `tabulate` 0.10.0
-    (2026-03) has no required dependencies.
-  - **A stdlib `logging` setup** on stderr, since `logging_setup.py` is loguru and travels only
-    with `cli-modern`. Phase 9 wants the same as the shared default for the other types.
-  - **Tests** and a recipe-first skill ("add a subcommand", "add a setting"), as `cli-modern` has.
-  - **No config file at first.** D10 makes it TOML through `tomllib` when one is wanted.
+- **The `cli-stdlib` scaffold** moved out (D4): its own repo, seeded from `archive/cli-stdlib`.
 - [x] **An install story in the generated README**, 2026-10-04: "Installing it" (`uv tool
   install .`, `--editable`, from git or a tag, `update-shell`, upgrade and uninstall by package
   name) and "Releasing a version" (`uv version --bump` on a branch, `finish_branch.py`, tag the
@@ -238,98 +226,26 @@ Open from the runs:
   already a git repo, and one whose default branch is not `main` (`branch_guard` takes
   `--protected main master`); the generation tasks assume `git init -b main` succeeds.
 
-## Phase 9 — Groundwork for the secondary types
+## Phase 9 — Layered skills (done 2026-10-05)
 
-`fastapi`, `tui` and `data` receive the infrastructure — `tools/`, CLAUDE.md, the gate, the hooks,
-one skill — and an empty package. Their skills were written but never run against a generated
-project, and probes at `712a7f8` found each broken somewhere a first attempt would hit.
-
-- [ ] **Settle D6 and D7.** The recommendation: `data` and `tui` build on the `cli-modern` CLI layer
-  (typer entry point, settings, logging, `about`) and each add one command of their own, since both
-  are CLI tools; Textual already depends on rich. `fastapi` shares the configuration and logging
-  conventions without typer: settings from the environment only, through pydantic-settings.
-- [ ] **Logging.** `logging_setup.py` is excluded from the other types because it imports
-  `loguru`. A stdlib `logging` equivalent is probably the right shared default, with the loguru one
-  shipping only where a skill calls for it. FastAPI adds uvicorn's own loggers to the question.
-- [ ] **Restructure `_exclude` around layers** rather than repeating every `cli-modern` file per
-  type, and keep the sets in `tests/test_template.py` in step.
-- [ ] **One definition of done for every type**: a scaffold that is the smallest runnable, tested
-  thing exercising its plumbing (not a demo to delete); a recipe-first skill with reference files
-  copied and gated by a generation test, as `python-cli-modern`'s are; a spec under `examples/`;
-  and a spec run.
-
-## Phase 10 — `data`
-
-Verified defects in today's skill:
-
-- [ ] `con.sql(...).fetchone()[0]` (`python-data/SKILL.md`, lines 95 and 109) fails ty, because
-  `fetchone()` returns `tuple | None`. Show the `None` check, or fetch through `.pl()`.
-- [ ] `LazyFrame.profile()` is recommended as a debugging tool but has been deprecated since polars
-  1.43 — the version the skill says it was verified against. polars' docs say the streaming engine
-  becomes the default in 2.0, which makes per-node profiling misleading. Replace it, and re-verify
-  the skill against polars 1.44 and duckdb 1.5.
-
-Build-out:
-
-- [ ] **Scaffold:** a `summarize INPUT` command over a pure pipeline function that scans with an
-  explicit schema, names each intermediate frame and collects once; `--output table|json`, plus
-  parquet to a file. Settings resolve flag, then environment variable, then default, as in the CLI.
-- [ ] **Tests:** five-row frames built inline, fixture parquet written to `tmp_path`, the schema
-  asserted alongside the values, `assert_frame_equal`, and a sort after every `group_by`.
-- [ ] **Skill additions:** an "add a pipeline stage" recipe; `rel.pl(lazy=True)` to hand a duckdb
-  result to polars lazily; parameterised duckdb queries rather than f-strings.
-- [ ] **Spec:** one under `examples/` to run — a log or billing-export summariser, say.
-
-## Phase 11 — `tui`
-
-Verified defects in today's setup and skill:
-
-- [ ] The first Pilot test fails with "async def functions are not natively supported": no async
-  test plugin ships. Add `pytest-asyncio` to the tui dev group with `asyncio_mode = "auto"`, as
-  Textual's testing guide does.
-- [ ] `textual console` and `textual run --dev`, which the skill's debugging section depends on,
-  come from `textual-dev`, which is not installed. Add it to the tui dev group.
-- [ ] Idiomatic Textual fails the gate: `BINDINGS = [...]` trips `mutable-class-default` (annotate
-  it `ClassVar[list[BindingType]]`), and a handler that ignores its event trips
-  `unused-method-argument` (Textual lets a handler omit the event parameter — teach that).
-- [ ] The floor is `textual>=7.2.0`, but 8.2.8 is current, a major version on. Re-verify the skill
-  against 8.x.
-
-Build-out:
-
-- [ ] **Scaffold:** a single-screen app launched by a `tui` command, its logic in a `domain.py` with
-  no Textual import, styles in a `.tcss` file, and a Pilot test at a pinned size.
-- [ ] **Debugging recipe:** stepping through the running app with debugpy (a launch line plus the
-  existing attach configuration), and through the DebugMCP `pytest` adapter for logic a Pilot test
-  reaches.
-- [ ] **Spec:** one under `examples/` to run — a log or process viewer, say.
-
-## Phase 12 — `fastapi`
-
-Verified defects in today's setup and skill:
-
-- [ ] `httpx` is not installed, yet every testing route the skill offers needs it — `ASGITransport`
-  directly, and `TestClient` underneath — so the first test fails at import. Add it to the fastapi
-  dev group.
-- [ ] The skill pairs lifespan-managed resources on `app.state` with `ASGITransport` tests, but
-  `ASGITransport` does not run the lifespan: following both gives
-  `AttributeError: 'State' object has no attribute ...`. Default to `with TestClient(app) as
-  client:`, which runs it and needs no async plugin; for async tests, `asgi-lifespan`'s
-  `LifespanManager` with `@pytest.mark.anyio`, as FastAPI's own docs do.
-- [ ] A lifespan written as `yield` followed by cleanup trips `fallible-context-manager`, rightly:
-  the cleanup does not run on an exception. Show `try`/`finally`, or `async with`.
-- [ ] The skill says to add `"FAST"` to the lint selection; the template already does. Drop it.
-
-Build-out:
-
-- [ ] **Scaffold:** `main.py` (the app, its lifespan, router registration), `dependencies.py` (a
-  cached `get_settings` and the `Annotated` aliases) and a `/health` router, tested through
-  `TestClient`; settings from the environment through pydantic-settings, overridden in tests with
-  `dependency_overrides`.
-- [ ] **Skill additions:** settings as a dependency; logging alongside uvicorn's loggers; running
-  with `fastapi dev` or uvicorn, and debugging the app through its tests; `SecretStr` for
-  credentials (after phase 7 teaches it for the CLI); exception handlers that keep the traceback.
-- [ ] **Spec:** one under `examples/` to run — a small webhook receiver, say.
+- [x] **`project_type` removed** (D11). A generated project differs from one made at `c08a7d0`
+  only in shipping `python-data` and `python-tui` and in its answers file.
+- [x] **`python-data`**: "Recipe: add a data command" with `reference/summary.py`. Fixed the
+  verified defects — `fetchone()[0]` failed ty, `LazyFrame.profile()` deprecated since 1.43 — and
+  re-verified against polars 1.44 and duckdb 1.5, which found two more: registering a polars frame
+  needs `pyarrow`, and duckdb's integer `sum` arrives as `Decimal(38, 0)`.
+- [x] **`python-tui`**: "Recipe: add a TUI command" with `reference/rows.py` (no Textual import)
+  and `reference/browse.py`. Fixed the verified defects — no async test plugin, no `textual-dev`,
+  `BINDINGS` without `ClassVar`, a skill written for Textual 7 — and found that loguru's sink
+  bypasses Textual's stderr redirect, so the app logs with `self.log`. `TEXTUAL=devtools,debug`
+  reaches the console through the project's own script, since `textual run --dev` needs an app it
+  can build without arguments.
+- [x] **Reference commands write errors with `sys.stderr.write`**, as the scaffold does: rich's
+  `err.print` wrapped them at the console width, splitting the path a test looked for, and would
+  read `[...]` in a path or message as markup.
+- [ ] **Specs** under `examples/` for a data command and a TUI command, and a sonnet run of each.
+- [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
+  mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
 
 ## Later
 

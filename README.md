@@ -41,13 +41,14 @@ uv run pytest
 git switch -c feat/first-thing                    # never work on main
 ```
 
-You will be asked for: project name, package name, description, author name and email, minimum
-Python version (3.12, 3.13 or 3.14), and **project type** — one of `cli-modern`, `cli-stdlib`,
-`fastapi`, `tui`, `data`.
-The type selects dependencies, lint rules and which skill ships. Only `cli-modern` includes a
-scaffold CLI: one placeholder `about` command, with global and command flags that each resolve
-flag, then environment variable, then default through `pydantic-settings`. The others get the
-infrastructure and a bare package.
+You will be asked for: project name, package name, console script name, description, author name
+and email, and minimum Python version (3.12, 3.13 or 3.14).
+
+Every project is a CLI on typer, pydantic-settings, rich and loguru, with a scaffold: one
+placeholder `about` command, with global and command flags that each resolve flag, then
+environment variable, then config file, then default. A command that crunches data files or draws
+a full-screen interface is added on top of it, following the `python-data` or `python-tui` skill,
+rather than chosen at generation.
 
 ### Keeping it in sync with the template
 
@@ -132,8 +133,8 @@ git switch -c feat/whatever    # never edit on main; a hook enforces it
 Edit under `template/`, then:
 
 ```bash
-uv run pytest                   # generate a project per type, run its gate and suite (~1 min)
-uv run pytest -k cli-modern     # one type, while iterating
+uv run pytest                   # generate projects, run their gate and suite
+uv run pytest -k gate           # only the generated project's gate, while iterating
 prek run --all-files            # the whole gate, generation tests included
 ```
 

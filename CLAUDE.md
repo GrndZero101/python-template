@@ -15,7 +15,7 @@ it is held to exactly the standard it preaches. What follows is only what differ
 |---|---|
 | `template/` | Becomes the generated project. Holds Jinja; not runnable in place. |
 | `copier.yml` | The questions, the exclusions and the generation tasks. |
-| `tests/test_template.py` | Generates a project per type and runs its gate. The only check on `template/`. |
+| `tests/test_template.py` | Generates projects and runs their gate. The only check on `template/`. |
 | `.pre-commit-config.yaml` | Governs **this** repo. `.git` is here, so this is what the git hooks read. |
 | `pyproject.toml` | Dev deps and lint config for the root. Not published, not importable. |
 | `TODO.md` | Outstanding work on the template itself. Not shipped. |
@@ -48,8 +48,8 @@ would find no environment to resolve `httpx` or `typer` through. Its `.pre-commi
 suffixed `.jinja` for the same reason: that keeps prek from picking the directory up as a workspace
 member and running a gate there that is guaranteed to fail.
 
-What covers it instead is `tests/test_template.py`. It generates a project for each of the five
-project types and runs **that project's** gate and test suite inside it. This is the stronger check
+What covers it instead is `tests/test_template.py`. It generates projects — at the default Python and
+at the floor — and runs **that project's** gate and test suite inside each. This is the stronger check
 of the two — it verifies the thing that actually ships rather than the thing it is made from — but
 it costs about a minute. It therefore runs only at commit, and only when the commit touches
 something that can change a generated project: `template/`, `tests/`, `copier.yml`, `pyproject.toml`
@@ -84,7 +84,7 @@ Run from the repo root:
 ```bash
 prek run --all-files            # the whole gate, generation tests included (~1 min)
 uv run pytest                   # generation tests only
-uv run pytest -k cli-modern     # one project type, when iterating
+uv run pytest -k gate           # only the generated project's gate, when iterating
 copier copy --trust . /tmp/scratch    # generate by hand to poke at the result
 ```
 
