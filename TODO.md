@@ -8,9 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 In order. Spec runs are paused by choice (2026-10-04) until more phases land.
 
-1. **Update the dogfood** again, for the `GlobalOptions` change and the `about` and naming fixes:
-   its `weather.py` call becomes `load_settings(global_options(ctx), output=output)`.
-2. **The `cli-stdlib` scaffold**, which ends phase 7. Then phase 8.
+1. **The `cli-stdlib` scaffold**, which ends phase 7, with a dogfood update after it. Then
+   phase 8.
 
 ## How work is judged
 
@@ -75,9 +74,10 @@ In order. Spec runs are paused by choice (2026-10-04) until more phases land.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
 - **The dogfood**, `GrndZero101/template-dogfood`: a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`, at `6f84873` (2026-10-04), which closes "done" for
-  phases 2–6. That update tripped `raw-httpx-client` and `silent-exit` in `weather.py`, fixed in
-  the update commit by adopting the reference `http_client.py`. **Drive it from a session started
+  `weather` command and script `tdf-cli`, at `a7c49b5` (2026-10-05), which brings in secrets, the
+  config file and `GlobalOptions`. Two updates there were the evidence for the last: the first
+  left `weather.py` ignoring `--config`; the second, after `GlobalOptions`, failed ty on the old
+  call and the error alone led to the fix. **Drive it from a session started
   in its own directory**: Claude Code loads hooks and skills from the session's project, so from
   here they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
   `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After the
