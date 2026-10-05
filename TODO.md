@@ -6,11 +6,7 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-In order.
-
-1. **A dogfood update** to bring in the two spec-run fixes: the data skill reading columns by
-   name, and the TUI skill's `run_screen` seam. Run from a session started in the dogfood.
-2. Phase 8.
+Phase 8, starting with CI for this repo.
 
 ## How work is judged
 
@@ -77,8 +73,13 @@ In order.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
 - **The dogfood**, `GrndZero101/template-dogfood`: a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`, at `7a5941e` (2026-10-05), the single-shape merge:
-  as rehearsed, no conflicts, the two layered skills added and `project_type` dropped from the
+  `weather` command and script `tdf-cli`, at `2957d4c` (2026-10-05), the two spec-run fixes:
+  no conflicts, eight files, skills and `CLAUDE.md` only. The dogfood's gate excludes `.claude/`
+  and it depends on neither polars nor textual, so its session copied the reference code into a
+  scratch project and ran it: all 26 reference tests passed, and the `python-data` claims held
+  against polars 1.44.2 — a positional `scan_csv(schema=)` silently mislabels swapped columns, and
+  `.cast(pl.Int64)` truncates 1.5. The `7a5941e` update before it was the single-shape merge: as
+  rehearsed, no conflicts, the two layered skills added and `project_type` dropped from the
   answers. The `a7c49b5` update before it brought in secrets, the config file and `GlobalOptions`;
   two updates were the evidence for the last: the first left `weather.py` ignoring `--config`; the
   second, after `GlobalOptions`, failed ty on the old call and the error alone led to the fix.
@@ -170,8 +171,8 @@ API docs are unreliable about failures, so the recipe now says to provoke each o
 Open from the runs:
 
 - [ ] The gate's pause on conflict markers and the conflicted-`pyproject.toml` guard are proven
-  only by generation tests, never by a consumer update with a real conflict. The `7a5941e` dogfood
-  update had none; still watching.
+  only by generation tests, never by a consumer update with a real conflict. The `7a5941e` and
+  `2957d4c` dogfood updates had none; still watching.
 - [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
 - [ ] **Watch, from the `spend` run** — act on a second occurrence, each a line in a skill: a
   command with more than five parameters trips `PLR0913` and `PLR0917`, and the answer is
