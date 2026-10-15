@@ -8,7 +8,7 @@ and a `prek` gate — not just documented and hoped for.
 Generated projects get: the rule set, a `PreToolUse` guard that refuses edits to `main`, a
 `PostToolUse` gate that lints on every save, a `Stop` gate that re-checks every changed file and
 runs the tests before a turn can end, `ruff`/`ty`/`rumdl`/`prek` configured, a custom checker
-for the conventions no linter covers, and the Claude Code skills matching the stack you pick.
+for the conventions no linter covers, and the shared Claude Code skills.
 
 ## Prerequisites
 
@@ -26,7 +26,8 @@ uv tool install prek
 The template is two layers: the **base** (this repo: the hooks, the gate, `CLAUDE.md`, the shared
 skills) and a **use case** layered on it.
 [python-template-cli-typer](https://github.com/GrndZero101/python-template-cli-typer) is the typer
-CLI, and copying it applies the base to the same directory:
+CLI, and copying it applies the base to the same directory. For a CLI, start there; its README
+covers the questions it adds and the scaffold it ships:
 
 ```bash
 copier copy --trust gh:GrndZero101/python-template-cli-typer my-project     # answer the prompts
@@ -34,7 +35,10 @@ cd my-project
 ```
 
 The base also works alone, for a prototype or a repo adopting the guards:
-`copier copy --trust gh:GrndZero101/python-template-base my-project`.
+
+```bash
+copier copy --trust gh:GrndZero101/python-template-base my-project
+```
 
 `--trust` is required because the template declares `_tasks` — the ones that run `git init`,
 `uv sync` and install the shims. Without it copier exits 4 with "Template uses potentially unsafe
@@ -49,40 +53,48 @@ uv run pytest
 git switch -c feat/first-thing                    # never work on main
 ```
 
-You will be asked for: project name, package name, console script name, description, author name
-and email, minimum Python version (3.12, 3.13 or 3.14), licence (MIT, Apache-2.0 or Proprietary)
-and the name on its copyright line.
+On its own the base asks for: project name, author name and email, minimum Python version (3.12,
+3.13 or 3.14), licence (MIT, Apache-2.0 or Proprietary) and the name on its copyright line. Under a
+use case it asks none of these: it reads the use case's answers instead.
 
-Every project is a CLI on typer, pydantic-settings, rich and loguru, with a scaffold: one
-placeholder `about` command, with global and command flags that each resolve flag, then
-environment variable, then config file, then default. A command that crunches data files or draws
-a full-screen interface is added on top of it, following the `python-data` or `python-tui` skill,
-rather than chosen at generation.
+It ships no source. `src/` and the tests beyond `tools/tests` are yours to write. Its
+`pyproject.toml` is a fallback, written only where the directory has none: copier never overwrites
+an existing one. A repo adopting the guards therefore keeps its own `pyproject.toml`, and needs the
+fallback's `[tool.*]` sections copied into it by hand — without them ruff misses the base's rules,
+and the hooks' own tests never run.
 
 ### Keeping it in sync with the template
 
-A project records two sources, so an update is two commands, each on a clean tree and each touching
-only its own layer's files: `copier update --trust` for the use case, and
-`copier update --trust -a .copier-answers.base.yml` for the base. Run the second the same way as
-the first.
+A project records one source per layer, each in its own answers file, and each layer updates
+separately, touching only its own files:
+
+| Layer | Answers file | Command |
+|---|---|---|
+| The use case | `.copier-answers.yml` | `copier update --trust` |
+| The base | `.copier-answers.base.yml` | `copier update --trust -a .copier-answers.base.yml` |
+
+A project generated from the base alone has only the second. Under a use case, run both, the use
+case first. Each needs a clean tree, so commit between them:
 
 ```bash
 git status --short                    # must be clean; copier refuses otherwise
 git switch -c chore/template-update   # branch first; main takes no direct commits
-copier update --trust                 # three-way merge into the working tree
+
+copier update --trust                 # the use case: a three-way merge into the working tree
 # resolve conflicts, if any (below)
 uv sync                               # before any check; see below
 git diff                              # review; nothing is committed for you
-prek run --all-files
-uv run pytest
 git add -A                            # -A, not -a: the template may have added files
-git commit -m "chore(template): update to python-template-cli-typer <commit>"
-git switch main
-git merge --no-ff -m "chore(template): update to python-template-cli-typer <commit>" chore/template-update
-git branch -d chore/template-update
+git commit -m "chore(template): update python-template-cli-typer to <commit>"
+
+copier update --trust -a .copier-answers.base.yml
+# resolve, sync, review and commit as above, naming python-template-base
+
+uv run python tools/finish_branch.py "chore(template): update from the templates"
 ```
 
-`<commit>` is the `_commit` value copier just wrote to `.copier-answers.yml`.
+`<commit>` is the `_commit` value copier just wrote to that layer's answers file.
+`finish_branch.py` squashes the branch, runs the gate and the tests, and merges it into `main`.
 
 **Run `copier update` yourself, not through an agent.** `--trust` is required because the template
 declares `_tasks`. Every task is guarded to run on `copy` only, but copier asks for the flag anyway,
@@ -117,15 +129,15 @@ While any file still holds markers, the edit-time gate pauses. A save lists the 
 instead of reporting syntax errors from each one. `check-merge-conflict` blocks the commit if any
 markers remain.
 
-To pin a version, or to move deliberately, pass a commit. The template has no release tags yet;
-once it does, `copier update` moves to the latest tag rather than the newest commit.
+To pin a version, or to move deliberately, pass a commit. The templates have no release tags yet;
+once they do, `copier update` moves to the latest tag rather than the newest commit.
 
 ```bash
-copier copy --trust --vcs-ref <commit> gh:GrndZero101/python-template-cli-typer my-project
-copier update --trust --vcs-ref <commit>
+copier copy --trust --vcs-ref <commit> gh:GrndZero101/python-template-base my-project
+copier update --trust -a .copier-answers.base.yml --vcs-ref <commit>
 ```
 
-Do not delete `.copier-answers.yml` — `copier update` reads it to know what you answered.
+Do not delete either answers file — `copier update` reads it to know what you answered.
 
 ---
 
