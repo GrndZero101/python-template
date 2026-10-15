@@ -16,3 +16,7 @@ __pycache__/
 .pytest_cache/
 .ty_cache/
 .rumdl_cache/
+
+# The CLI repo, checked out beside the suite by CI. Untracked, copier would record it as a
+# submodule with no .gitmodules when it copies this working tree.
+/cli/
