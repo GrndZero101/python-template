@@ -29,7 +29,10 @@ The state to expect:
   `.gitmodules` and fails. This repo's CI runs the CLI suite against the commit under test, which
   is now the only automatic check of the hooks, the licence and the update tests.
 - Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
-  first whenever a CLI change depends on a base change.
+  first whenever a CLI change depends on a base change. A change that must land in both at once,
+  such as a shared question's help text, fails the base's CI whichever goes first: that run checks
+  out the CLI's `main` before the CLI half is there. Push the CLI half straight after, then
+  `gh run rerun <id> --failed` the base's run (2026-10-16, the blank `author_email`).
 - Nothing relies on GitHub's redirect from an old name. The canary is
   `GrndZero101/python-canary-cli-typer`, public since 2026-10-15, at `71af808`. Its history was rewritten
   on 2026-10-15 (step 8), so canary hashes from before that no longer exist anywhere.
