@@ -38,8 +38,8 @@ the split is by directory and a test checks it. The base owns `CLAUDE.md`, `tool
 `python-cli`, and `.copier-answers.base.yml`. The one exception is `pyproject.toml`, which the use
 case owns: the base also renders a minimal one under `_skip_if_exists`, which copier never
 overwrites, so it reaches only a project that has none. The use case owns `pyproject.toml`,
-`README.md`, `src/`, `tests/`, `.copier-answers.yml` and the skills `python-cli-typer`,
-`python-data` and `python-tui`.
+`README.md`, `src/`, `tests/`, `.copier-answers.yml`, `.claude/rules/cli-typer.md` and the skills
+`python-cli-typer`, `python-data` and `python-tui`.
 
 A file under either `template/` carries a `.jinja` suffix only when it must name something the
 answers decide:

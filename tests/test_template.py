@@ -228,6 +228,16 @@ def test_every_skill_ships(copie: Copie) -> None:
     assert shipped == SKILLS
 
 
+def test_the_use_case_rules_ship_beside_the_base_claude_md(copie: Copie) -> None:
+    """The base's CLAUDE.md points at `.claude/rules/`; the typer rows live there, not in the base."""
+    project = _generate(copie)
+    rules = (project / ".claude" / "rules" / "cli-typer.md").read_text(encoding="utf-8")
+    base = (project / "CLAUDE.md").read_text(encoding="utf-8")
+    for rule in ("raw-httpx-client", "patched-httpx", "typer-default", "run_screen"):
+        assert rule in rules, f"{rule} should be stated in the use case's rules"
+        assert rule not in base, f"{rule} names a stack the base must not know"
+
+
 @pytest.mark.parametrize("adapter", ["python", "pytest"])
 def test_debugmcp_adapter_points_at_a_shipped_program(copie: Copie, adapter: str) -> None:
     """The DebugMCP CLI resolves `program` only when a session starts, so a renamed shim fails late.

@@ -329,10 +329,9 @@ def client_hits(tree: ast.Module) -> list[Hit]:
             continue
         message = (
             f"`{built}` builds a client with no retries, no User-Agent and default timeouts. "
-            f"Call `{CLIENT_FACTORY}()` from `http_client.py` in the command, and pass the client "
-            "down. No `http_client.py` yet? Copy it and its test from "
-            "`.claude/skills/python-cli-typer/reference/` — the python-cli-typer skill, "
-            '"Recipe: call an HTTP API".'
+            f"Call `{CLIENT_FACTORY}()` and pass the client down. No `{CLIENT_FACTORY}` yet? "
+            "Copy `http_client.py` and its test from the project's CLI skill, "
+            '`.claude/skills/*/reference/`, "Recipe: call an HTTP API".'
         )
         hits.append(Hit(call.lineno, "raw-httpx-client", message))
     return hits
@@ -364,7 +363,7 @@ def patch_hits(tree: ast.Module) -> list[Hit]:
         "this patches httpx itself, for every caller at once, and hides what the code under test "
         "sends. Give it a client built with `transport=httpx.MockTransport(handler)` instead: "
         "pass one to the function, or replace the command module's `build_client` for a test "
-        "through `main`. `.claude/skills/python-cli-typer/reference/test_status.py` shows both."
+        "through `main`. `.claude/skills/*/reference/test_status.py` shows both."
     )
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
     patches = [call for call in calls if _patches_httpx(call, names)]
@@ -415,10 +414,11 @@ def exit_hits(tree: ast.Module) -> list[Hit]:
         if _reports(handler):
             continue
         message = (
-            "This exit drops the exception it caught: typer never prints an exit's cause, so the "
+            "This exit drops the exception it caught: nothing prints an exit's cause, so the "
             "user sees no reason and `-v` shows nothing. Bind it (`except ... as exc`), put the "
-            "whole of it in the stderr message (`{exc}`) and log it with "
-            '`logger.opt(exception=exc).debug("...")` before exiting.'
+            "whole of it in the stderr message (`{exc}`) and log it with the exception attached "
+            '(`logger.opt(exception=exc).debug("...")` under loguru, '
+            '`logger.debug("...", exc_info=exc)` under stdlib logging) before exiting.'
         )
         exits = [node for node in ast.walk(handler) if _raises_exit(node)]
         for exit_raise in exits:
@@ -447,8 +447,8 @@ def typer_default_hits(tree: ast.Module) -> list[Hit]:
         "Put the typer call in the annotation, and only the real default after `=`: "
         "`count: Annotated[int, typer.Option(help=...)] = 3`, and for a required argument "
         "`urls: Annotated[list[str], typer.Argument(help=...)]` with no default at all. "
-        "`options.py` has options, and `.claude/skills/python-cli-typer/reference/status.py` an "
-        "argument, in this form."
+        "`.claude/skills/*/reference/status.py` in the project's CLI skill shows an argument in "
+        "this form."
     )
     hits: list[Hit] = []
     for node in ast.walk(tree):
