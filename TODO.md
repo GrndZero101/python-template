@@ -7,7 +7,7 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 ## Next up
 
 **Checkpoint C2 reached: start a new session.** Steps 2–5 of phase 10 are merged on local `main`,
-which is **10 commits ahead of `origin/main` and unpushed**. Next is step 6, the new repo
+which was pushed to `origin/main` on 2026-10-16. Next is step 6, the new repo
 `python-template-cli-typer`. Work runs sequentially, with no worktrees or side tracks. The rest of
 phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
@@ -19,8 +19,8 @@ ownership rules. The state to expect:
 - `tests/test_template.py` is the one suite: 41 tests, about a minute. `uv run pytest -k <name>`
   to iterate; `prek run --all-files` is the whole gate. Finish a branch with
   `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
-- Nothing outward-facing has happened yet: no push, no new repo, no rename. Pushing, creating the
-  public repo and renaming each need the author's go-ahead.
+- Only the push of `main` has happened. The new repo and the rename have not, and each needs the
+  author's go-ahead.
 
 ## How work is judged
 
@@ -420,7 +420,7 @@ before moving a file.
    keep the old layout, which is what `copier update` re-renders at step 8.
 4. **The base must be on GitHub first.** The use case's `base_template` defaults to
    `gh:GrndZero101/python-template` (the name until step 7), and the new repo's CI needs the base
-   at `HEAD`. Push `main` here before the new repo's first CI run.
+   at `HEAD`. `main` was pushed on 2026-10-16; push again if it has moved before the first CI run.
 5. **Splitting `tests/test_template.py`.** Tests of the base alone (the base passes its own gate,
    its questions are defined in the use case) stay here. Everything generated through the use case
    moves, with `USE_CASE_DIR` becoming the repo root and the base coming from an environment
