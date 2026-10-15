@@ -32,6 +32,44 @@ layers.
   place, so a formatting slip surfaces only in the generation suite, a minute later, at commit.
   Generate a scratch project, copy the file in, `prek run ruff-format`, copy it back.
 
+## How work runs in parallel
+
+Decided 2026-10-15. **One main thread, at most one side track at a time.**
+
+- **The main thread is phase 10.** Its steps form one chain that moves the files each next step
+  depends on, so it is never split across sessions.
+- **A side track** touches files the main thread will not touch before the side track merges.
+  It runs in its own worktree and session, finishes with `finish_branch.py` like any branch, and
+  is listed under "Side tracks" below, ticked when merged. Start the next only after that.
+- **Why only one:** the author reviews every decision and merge, so a second side track mostly
+  adds context switching; each session pays its own context, against goal 3; and two local
+  generation suites slow each other down. Push the side track's branch to let CI run its suite.
+- **Mechanics**, from the main checkout:
+
+  ```bash
+  git worktree add ../python-template-<track> -b <type>/<track>
+  cd ../python-template-<track> && uv sync && claude
+  # when merged:
+  git worktree remove ../python-template-<track>
+  ```
+
+  A session started in the worktree directory loads that tree's hooks, which act on that tree. If
+  `main` moved while the track ran, `finish_branch.py` says so; the **git-workflow** skill covers
+  the rebase. Don't count on Claude Code memory reaching a side session: memory is keyed on the
+  session's directory, so this file is the hand-off. `claude --worktree` exists too, but is
+  untried here, and a worktree nested in the main checkout could dirty its tree.
+
+### Side tracks
+
+In order; one at a time.
+
+- [ ] **Licence questions (D14).** `copier.yml`, `template/LICENSE` and a generation test. Lands in
+  the single repo now and moves into the base with the split.
+- [ ] **Canary secrets audit**, from a session in the canary's own directory. Read-only. Must
+  pass before the canary is made public (D13).
+- [ ] **uv-script skill, first draft**: a new skill directory under `template/.claude/skills/`,
+  gated by generating a project. Moves into the base with the split.
+
 ## Status snapshot
 
 - A working copier template, **published** at
@@ -346,16 +384,18 @@ scratch copies first; the canary's update is the acceptance test.
   no file in common, `_skip_if_exists` files aside; and a test shipped in the base's `tools/tests`
   asserting `pyproject.toml` holds what the base relies on — `filterwarnings = ["error"]`,
   `tools/tests` in testpaths, the ruff `extend` line — so a drifting use case fails naming the fix.
-- [ ] **Licence questions** (D14).
+- [ ] **Licence questions** (D14) — a side track; if it merged first, only move it into the base.
 - [ ] **New repo `python-template-cli-typer`**, public, with CI on three platforms against the base
   at `HEAD`. The base's CI checks it out and runs its generation suite against the base commit
   under test.
 - [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
   remote URL and the Claude Code memory directory; then every reference to the old name.
 - [ ] **Migrate the canary**: `template-dogfood` to `python-canary-cli-typer`, from one answers file
-  to two. Audit its history for secrets before making it public. Rehearse on a scratch clone.
-- [ ] **Later in the phase**: the uv-script skill in the base, then `python-canary-base` to
-  exercise it; seed `python-template-cli-stdlib` from `archive/cli-stdlib`.
+  to two. Make it public only once the secrets-audit side track has passed. Rehearse on a scratch
+  clone.
+- [ ] **Later in the phase**: finish the uv-script skill (drafted as a side track) in the base,
+  then `python-canary-base` to exercise it; seed `python-template-cli-stdlib` from
+  `archive/cli-stdlib`.
 
 ## Later
 
