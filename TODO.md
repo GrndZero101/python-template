@@ -6,10 +6,21 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C2: start a new session.** Then phase 10, step 6: the new repo
-`python-template-cli-typer`, seeded from this repo's history (never `git init`), with CI on three
-platforms against the base at `HEAD`. Work runs sequentially, with no worktrees or side tracks. The
-rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**Checkpoint C2 reached: start a new session.** Steps 2–5 of phase 10 are merged on local `main`,
+which is **10 commits ahead of `origin/main` and unpushed**. Next is step 6, the new repo
+`python-template-cli-typer`. Work runs sequentially, with no worktrees or side tracks. The rest of
+phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+
+Read step 6 and "Before step 6" under Phase 10 first, then `CLAUDE.md` for the layout and the
+ownership rules. The state to expect:
+
+- `template/` and the root `copier.yml` are the base. `use-cases/cli-typer/` is the CLI layer, with
+  its own `copier.yml` and `template/`. One `copier copy` of the use case yields both layers.
+- `tests/test_template.py` is the one suite: 41 tests, about a minute. `uv run pytest -k <name>`
+  to iterate; `prek run --all-files` is the whole gate. Finish a branch with
+  `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
+- Nothing outward-facing has happened yet: no push, no new repo, no rename. Pushing, creating the
+  public repo and renaming each need the author's go-ahead.
 
 ## How work is judged
 
@@ -358,7 +369,8 @@ each step on scratch copies first; the canary's update is the acceptance test.
    repo's own.
    **Checkpoint C2**, reached: steps 2–5 are merged here, and the layering is rehearsed by the
    update tests and by scratch generations.
-6. [ ] **New repo `python-template-cli-typer`**, public. **Seed it from this repo's history** —
+6. [ ] **New repo `python-template-cli-typer`**, public (read "Before step 6" below first).
+   **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
    template at the commit recorded in the canary's answers file, and that commit must exist in the
    new repo. CI on three platforms against the base at `HEAD`; the base's CI checks it out and runs
@@ -386,6 +398,45 @@ each step on scratch copies first; the canary's update is the acceptance test.
    `tests/test_template.py:24–31` asserts the exact skill set, so a draft before the split would
    collide with it — then `python-canary-base` to exercise it; seed `python-template-cli-stdlib`
    from `archive/cli-stdlib`.
+
+### Before step 6
+
+What the 2026-10-16 session learned that step 6 depends on. Settle the first two with the author
+before moving a file.
+
+1. **How the new repo is gated.** The root of this repo borrows the base: its
+   `.claude/settings.json` hooks and its `conventions` hook run `template/tools/*.py`, and its
+   `CLAUDE.md` imports `@template/CLAUDE.md`. The new repo has none of those files. D12 rejected
+   copying `tools/` per repo (drift), so the options are a root gate with no tools at all (prek
+   hygiene, ruff, rumdl and the generation tests only), or fetching the base's `tools/` at a pinned
+   commit. Decide first; it shapes the new repo's `CLAUDE.md`, hooks and pre-commit config.
+2. **Where `examples/` and the spec-run material go.** `examples/` and "Spec runs" below test a
+   model building CLIs on the typer scaffold, so they belong with the CLI repo, but `TODO.md`
+   stays here. Moving them is a call about where the benchmark lives.
+3. **Seed by plain clone, never `git filter-repo`.** filter-repo rewrites every hash, and the point
+   of seeding from history is that the canary's recorded `_commit` (an old, single-template
+   commit) must still exist. A clone keeps the hashes: clone, `git rm` the base-owned files, move
+   `use-cases/cli-typer/*` to the root in one commit, point `origin` at the new repo. Old commits
+   keep the old layout, which is what `copier update` re-renders at step 8.
+4. **The base must be on GitHub first.** The use case's `base_template` defaults to
+   `gh:GrndZero101/python-template` (the name until step 7), and the new repo's CI needs the base
+   at `HEAD`. Push `main` here before the new repo's first CI run.
+5. **Splitting `tests/test_template.py`.** Tests of the base alone (the base passes its own gate,
+   its questions are defined in the use case) stay here. Everything generated through the use case
+   moves, with `USE_CASE_DIR` becoming the repo root and the base coming from an environment
+   variable naming a checkout (default: the GitHub URL). The three contract tests need both
+   templates, so they run in the CLI repo's suite and this repo's CI runs that suite against the
+   base commit under test (checkout the CLI repo, set the variable, `uv run pytest`). The helpers
+   `_snapshot`, `_snapshot_base` and `_snapshot_use_case` copy a template into a throwaway git repo
+   because copier cannot update from a subdirectory; in the CLI repo the use case is a git root,
+   so it can be cloned directly.
+6. **CI.** Copy `.github/workflows/ci.yml` (actions pinned by SHA, `fetch-depth: 0`, git identity in
+   the environment) and add a second `actions/checkout` of the base into `base/`. Its `paths:`
+   filter must list what `generation-tests` lists. The Windows and macOS jobs are the only check of
+   the portability rules, so do not trim the matrix.
+7. **Leftovers named for step 7.** The base's bootstrap commit message, the `base_template`
+   default, `tests/` assertions on "python-template" and the README's Path A (which says to clone
+   and copy the use case) all change with the rename or the split.
 
 ## Phase 8 — CI, releases and updates (after phase 10)
 
