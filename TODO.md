@@ -12,8 +12,9 @@ history was clean, its package is renamed and its author email scrubbed, and it 
 canary's follow-ups under step 8 are closed, and the update docs now cover both layers. A blank
 email can be avoided too: both READMEs show copier's user settings file, filled from `git config`,
 and a CLI test pins that such a file cannot split the layers' answers. Next is step 9, the
-uv-script skill. Work runs sequentially, with no worktrees or side
-tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+uv-script skill, then the setup helper planned under "Setup helper", built by following it. Work
+runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so
+that nothing under `template/` moves twice.
 
 The state to expect:
 
@@ -530,6 +531,72 @@ before moving a file.
    default, `tests/` assertions on "python-template" and the README's Path A (which says to clone
    and copy the use case) all change with the rename or the split. All done in step 7.
 
+## Setup helper (after step 9)
+
+Raised 2026-10-16. One command takes a machine from nothing to ready, and later keeps it current:
+`uv`, the tools, copier's settings, and both layers' updates of a project. Two files, because the
+first step has to run before anything is installed and everything after it is easier in Python.
+Not a template file: it runs before any project exists, so it lives at this repo's root and is
+linted by the root gate.
+
+**The shim: a POSIX `sh` script, as thin as it can be.** Its only job is a `uv` it can trust:
+
+1. **No `uv` on PATH:** say so, and with consent (`--yes` when there is no TTY; refuse otherwise)
+   run the official installer, `curl -LsSf https://astral.sh/uv/install.sh | sh`, falling back to
+   `wget -qO-`. Then use `$HOME/.local/bin/uv` by absolute path for the rest of the run, since
+   PATH in this process has not changed.
+2. **`uv self update --dry-run`, exit code non-zero:** stop. Exit 2 means this `uv` cannot update
+   itself — Homebrew, pip, a distro package, or a second copy shadowing the standalone one; the
+   error says which (seen 2026-10-16: "Self-update is only available for uv binaries installed via
+   the standalone installation scripts", plus "Are multiple copies of uv installed?"). Print it,
+   and how to move to the standalone install (`brew uninstall uv`, then step 1). A network failure
+   also lands here: stop and say the check could not run. A `uv` older than 0.7.3 has no
+   `--dry-run` and errors on the flag: treat it as outdated.
+3. **Exit 0 with "Would update uv from vX to vY":** outdated. Offer `uv self update`; stop if
+   declined. "You're on the latest version" passes. Matching that text is the one fragile part:
+   the shim's tests must run against the real latest `uv` on CI so a reworded message fails there.
+4. **Hand off:** `exec uv run --script <helper> "$@"`. From a clone, `<helper>` is the file beside
+   the shim; piped from the web, a `raw.githubusercontent.com` URL at the same pinned ref as the
+   shim, which `uv run` accepts.
+
+Hard means hard: no `--skip-uv-check`. The helper may then assume a current standalone `uv`. Never
+`set -o pipefail` or `[[ ]]`, `local` or arrays: `/bin/sh` is `dash` on Ubuntu (and on the
+author's WSL) and macOS's `sh` is bash in POSIX mode, so CI covers both.
+
+**The helper: a `uv run` script with PEP 723 inline metadata.** `requires-python` and its
+dependencies in the header, plus `[tool.uv] exclude-newer` so a run months later resolves the same
+versions. Subcommands, each re-runnable:
+
+- `doctor`: report, change nothing. `uv` (already gated), `copier` and `prek` as uv tools and
+  their versions, git identity, copier's settings file, `gh` installed and authenticated.
+- `setup`: `uv tool install` or `uv tool upgrade` copier and prek; write copier's settings file
+  from `git config`, offering the GitHub noreply address from `gh api user` (`id` and `login`)
+  when `gh` is authenticated, since its default token cannot read a private email. Never
+  overwrite a settings file without showing the diff and asking.
+- `new <dir>`: `copier copy --trust` from the CLI template, after `doctor` passes.
+- `update`: in a project, the README's two-layer flow — clean tree, branch, `copier update`, `uv
+  sync`, commit, the base the same way, then `tools/finish_branch.py`. Stops at a conflict and
+  says how to resume. The flow is spelled out in both READMEs, so this replaces prose a user had to
+  follow by hand.
+
+It is held to the template's own rules (no `print`, a stderr logger, functions small enough to
+step through), so it is a real example of the uv-script skill from step 9: build the skill first,
+then this by following it.
+
+**Open:**
+
+- Names for both files: corporate-neutral, and the subcommand name a user will type often.
+- Typer and rich as dependencies, or stdlib `argparse` to keep the first run's download small.
+- `copier` as a uv tool the helper drives, or as a library in the helper's own environment. A
+  tool keeps the READMEs' commands true; a library allows `user_defaults` without a settings file.
+- Hosting: run from a clone only, or also `curl … | sh` at a pinned ref. The second needs a tag
+  (phase 8's tagging) or a commit in the URL, never `main`.
+
+**Tests:** shellcheck with `--shell=sh` in the root gate. The shim's four branches tested with a
+stub `uv` on PATH that prints each case, plus one test against the real `uv` on CI. The helper's
+subcommands tested with `git`, `gh` and copier stubbed or pointed at a tmp directory; `update`
+end-to-end in the CLI repo's suite, which already has projects to update.
+
 ## Phase 8 — CI, releases and updates (after phase 10)
 
 Done: CI for this repo (2026-10-15), under "Done" above.
@@ -554,12 +621,6 @@ Done: CI for this repo (2026-10-15), under "Done" above.
   consumers (`typer_entrypoint.py` superseded the canary's own version, with changed semantics),
   and which interface moves a consumer's own commands must follow (`-v/--verbose` went global, so
   `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
-- [ ] **A setup helper** for a first-time user (raised 2026-10-16): install `uv`, `copier` and
-  `prek`, write copier's settings file from `git config` (the READMEs' tip does this by hand), and
-  check `gh` if present. Open: a POSIX `sh` script, which needs nothing installed but gets
-  `curl | sh`-style trust questions, or a `uv run` script with inline dependencies, which needs `uv`
-  first and can then use copier's API. zsh is the author's shell but not a fair floor. Not a
-  template file: it runs before any project exists.
 
 ## Later
 
