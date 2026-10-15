@@ -6,14 +6,12 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C5: start a new session in the canary**,
-`/home/timl/projects/github/GrndZero101/python-canary-cli-typer`. Step 8's migration and rename
-are done (2026-10-15): the canary records two sources, is renamed on GitHub and on disk, and is
-pushed. What is left of step 8 needs a session started *there*, because Claude Code loads hooks,
-skills and memory from the session's directory: confirm the hooks, skills, gate and tests work, and
-run the read-only secrets audit of its whole history. Making it public is the author's call after
-that audit. Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits
-behind phase 10 so that nothing under `template/` moves twice.
+**Step 9, and the canary's follow-ups.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
+from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
+history was clean, its package is renamed and its author email scrubbed. Making it public is the
+author's call, and nothing stands in the way. Next is step 9, the uv-script skill, and the three
+follow-ups listed under step 8. Work runs sequentially, with no worktrees or side tracks. The rest
+of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
 
@@ -33,14 +31,16 @@ The state to expect:
 - Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
   first whenever a CLI change depends on a base change.
 - Nothing relies on GitHub's redirect from an old name. The canary is
-  `GrndZero101/python-canary-cli-typer`, still private, merged at `80de718`: `.copier-answers.yml`
-  names `gh:GrndZero101/python-template-cli-typer` at `ac50467`, and `.copier-answers.base.yml`
-  names `gh:GrndZero101/python-template-base` at `07a1f78`. Its memory was copied to the new
-  project directory. **Left for the author, with Claude Code closed**: delete
-  `~/.claude/projects/-home-timl-projects-github-GrndZero101-template-dogfood` and the three
-  `template-dogfood` entries in `~/.claude.json`, as was done for this repo at step 7.
+  `GrndZero101/python-canary-cli-typer`, still private, at `71af808`. Its history was rewritten
+  on 2026-10-15 (step 8), so canary hashes from before that no longer exist anywhere.
+  `.copier-answers.yml` names `gh:GrndZero101/python-template-cli-typer` at `ac50467`, and
+  `.copier-answers.base.yml` names `gh:GrndZero101/python-template-base` at `07a1f78`. Its package
+  is `python_canary_cli_typer`; its script is still `tdf-cli`. The old `template-dogfood` memory
+  directory and `~/.claude.json` entries are gone.
 - Renaming the directory left the `.venv` pointing at the old path (`Failed to spawn: pytest`):
-  `rm -rf .venv && uv sync` fixed it. Any other clone moved on disk needs the same.
+  `rm -rf .venv && uv sync` fixed it. Any other clone moved on disk needs the same. pytest's
+  assertion-rewrite cache (`tests/__pycache__/*-pytest-*.pyc`) also keeps the old path in the
+  locations it reports, until `__pycache__` is deleted: cosmetic.
 
 ## How work is judged
 
@@ -144,10 +144,10 @@ on. Read-only work — a review, an audit — is still a session started where t
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
-- **The canary**, the private `GrndZero101/python-canary-cli-typer` (public after the audit, D13):
-  a consumer of both layers with its own `weather` command and script `tdf-cli`. Its package and
-  project name still say `template_dogfood`, which D13 retires: a follow-up of its own, since
-  changing `package_name` renames `src/` and every import. **Drive it from a session started in
+- **The canary**, the private `GrndZero101/python-canary-cli-typer` (public when the author
+  decides; the audit is clean, D13): a consumer of both layers with its own `weather` command,
+  script `tdf-cli` and package `python_canary_cli_typer`. Its author email, in its answers and in
+  every commit, is the GitHub noreply address. **Drive it from a session started in
   its own directory**: Claude Code loads hooks and skills from the session's project, so from here
   they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
   `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After an
@@ -407,8 +407,8 @@ each step on scratch copies first; the canary's update is the acceptance test.
    commit message becoming `chore: generate project from python-template-base` and the root dev
    project `python-template-base-dev`.
    **Checkpoint C4, mandatory**: the session's directory no longer exists. Reached.
-8. [ ] **Migrate the canary** to two answers files. Steps 1 and 2 and the rename are done
-   (2026-10-15); the audit and C5 remain. What the run showed:
+8. [x] **Migrate the canary** to two answers files. Done 2026-10-15, C5 included. What the run
+   showed:
    - Both copier commands took `--skip-tasks --defaults`. `--defaults` answers the questions added
      since `2957d4c` (`license` MIT, `copyright_holder` the author, `base_template`), so `LICENSE`
      now names Timothy Longbottom, not GrndZero101.
@@ -434,7 +434,43 @@ each step on scratch copies first; the canary's update is the acceptance test.
    on a scratch clone. Then rename the repo to `python-canary-cli-typer`. Make it public only
    after a secrets audit of its whole history: read-only, from a session in its directory.
    **Checkpoint C5**: a new session started in the canary, to confirm its hooks, skills, gate
-   and tests.
+   and tests. Reached 2026-10-15:
+   - All four hooks fire and block: the branch guard refused a Write on `main`; on a probe branch
+     the edit-time gate and the stop gate both blocked a `print` and a nested `def`. Skills load,
+     the gate is green (bar `no-commit-to-branch`, which always fails on `main`), and the suite
+     passes (272, one skip).
+   - The secrets audit was clean: all 28 commits then, every ref, by pattern with no scanner
+     installed — token shapes, secret-named literals, credentialed URLs, sensitive file names,
+     long literals, IPs. GitHub held no issues, PRs, Actions runs or releases. The only personal
+     data was the author's two email addresses.
+   - **The package rename** (D13) was two user-run updates that change answers only:
+     `copier update --trust --defaults --vcs-ref=:current: --data package_name=... --data
+     project_name=... --data project_description=...`, then the base with
+     `-a .copier-answers.base.yml --data project_name=...`, which changed only its answers file.
+     No conflicts, but `_remove_old_files` bites here too: each template file under `src/<package>/`
+     is rendered at the new path and the old one deleted, edits and all. `cli.py` silently lost the
+     `weather` registration — no marker, no `.rej`. Project-only modules (`weather.py`,
+     `http_client.py`) stayed in the old directory, their tests importing the old name. After
+     `uv sync` the `tdf-cli` script was missing, probably because the old and new distributions
+     both own it and removing the old took it; `uv sync --reinstall-package <new>` restored it.
+   - **The email scrub**, because the author wants no personal address in the canary:
+     `author_email` became the GitHub noreply address through the same kind of update on both
+     layers. The history was rewritten with `git filter-repo` (`--mailmap`, `--replace-text`,
+     `--replace-message`) on a fresh clone, verified — no address in any object, the tip's tree
+     identical — and pushed to a deleted and recreated GitHub repo, since a force-push leaves old
+     commits reachable by hash. The author ran the rewrite, the delete and the push: an agent's
+     auto mode refuses history rewriting.
+
+   Follow-ups the canary found:
+   - [ ] **Document renaming a project** in both READMEs' "Keeping it in sync": changing
+     `package_name` loses local edits to template files under `src/` (diff
+     `git show HEAD:src/<old>/<file>` against the new render and carry them across), leaves
+     project-only modules and their imports behind, and needs
+     `uv sync --reinstall-package <new>` while `script_name` stays the same.
+   - [ ] **A blank `author_email`** renders `email = ""` in `pyproject.toml`. Omit the key when it
+     is blank, and suggest the GitHub noreply address in the question's help.
+   - [ ] **`finish_branch.py` drops commit bodies when it squashes**: the canary's rename lost its
+     explanation. Keep the squashed commits' bodies in the one commit.
 9. [ ] **Later in the phase**: the uv-script skill, written directly in the base after the split —
    `tests/test_template.py:24–31` asserts the exact skill set, so a draft before the split would
    collide with it — then `python-canary-base` to exercise it; seed `python-template-cli-stdlib`
