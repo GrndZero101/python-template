@@ -57,6 +57,25 @@ On its own the base asks for: project name, author name and email, minimum Pytho
 3.13 or 3.14), licence (MIT, Apache-2.0 or Proprietary) and the name on its copyright line. Under a
 use case it asks none of these: it reads the use case's answers instead.
 
+**Answer your name and email once.** Copier reads a personal settings file and offers its
+`defaults` as the default answer to any question of the same name, in every template. It lives at
+`~/.config/copier/settings.yml` on Linux and `~/Library/Application Support/copier/settings.yml`
+on macOS, or wherever `COPIER_SETTINGS_PATH` says. To fill it from your git identity, if you have
+none yet (on macOS, use that path instead):
+
+```bash
+mkdir -p ~/.config/copier
+cat > ~/.config/copier/settings.yml <<EOF
+defaults:
+  author_name: "$(git config user.name)"
+  author_email: "$(git config user.email)"
+EOF
+```
+
+You are still asked; the file only changes what Enter accepts. An update keeps the answers you
+recorded and ignores it. For an email that stays private, use GitHub's noreply address,
+`<id>+<username>@users.noreply.github.com`, shown under Settings > Emails.
+
 It ships no source. `src/` and the tests beyond `tools/tests` are yours to write. Its
 `pyproject.toml` is a fallback, written only where the directory has none: copier never overwrites
 an existing one. A repo adopting the guards therefore keeps its own `pyproject.toml`, and needs the
