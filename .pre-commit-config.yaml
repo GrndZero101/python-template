@@ -84,7 +84,8 @@ repos:
       #
       # `files:` scopes it to what can change a generated project: the template, the copier
       # config, the tests themselves, and the dependencies that run them. A commit touching only
-      # TODO.md or this repo's own docs skips it. The PostToolUse hook in .claude/settings.json
+      # TODO.md or this repo's own docs skips it. `.github/workflows/ci.yml` filters pushes on the
+      # same paths; change both together. The PostToolUse hook in .claude/settings.json
       # skips it too, so a minute-long suite never runs on save. To skip it at commit as well:
       #   SKIP=generation-tests git commit ...
       # `stages: [pre-commit]` is load-bearing. Without it the hook also fires at the commit-msg

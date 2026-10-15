@@ -87,7 +87,8 @@ In order; one at a time.
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py`
   generates projects and runs their gate and suite; it is the only check on `template/`.
 - **CI** (2026-10-15): `.github/workflows/ci.yml` runs the root gate on Linux and the generation
-  suite on Ubuntu, Windows and macOS on every push, any branch. Free, since the repo is public.
+  suite on Ubuntu, Windows and macOS on a push to any branch, unless it touches only docs: its
+  `paths` list mirrors `generation-tests`' `files:`. Free, since the repo is public.
   Warm-cache times: gate 14s, Ubuntu 1m05, macOS 1m43, Windows 7m54. `prek` is in the root dev
   group, so CI's version comes from `uv.lock`; with `CI=true` a missing tool fails a test rather
   than skipping it.
