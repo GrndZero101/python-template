@@ -539,27 +539,48 @@ first step has to run before anything is installed and everything after it is ea
 Not a template file: it runs before any project exists, so it lives at this repo's root and is
 linted by the root gate.
 
+Decided 2026-10-16: the gate is hard, `uv` is pinned rather than chased to the latest release,
+the shim is POSIX `sh` (not zsh), and step 9's skill is written first so the helper is built by
+following it.
+
+**The `uv` pin.** One version, the floor every part of the system needs, kept in step everywhere it
+is written down, with a test asserting they agree:
+
+- `UV_VERSION=` in the shim, the one place a shell has to read it from;
+- `[tool.uv] required-version = ">=<pin>"` in each `pyproject.toml` the templates render, and in
+  this repo's. uv itself then refuses to run below the floor (checked 2026-10-16: "Required uv
+  version `>=0.13.1` does not match the running version `0.12.21`. Update `uv` by running `uv self
+  update`"), so every `uv run` — the hooks, the gate, the agent's commands — is gated, not only
+  the helper. A hook that fails this way fails closed and names the fix;
+- the `version` input of `astral-sh/setup-uv` in both repos' CI, so CI runs the floor it enforces.
+
+A newer `uv` passes; the pin is a floor, not an exact match, so a user who updated is never pushed
+back. Moving it is the helper's job (`pins`, below), not a hand edit in four files.
+
 **The shim: a POSIX `sh` script, as thin as it can be.** Its only job is a `uv` it can trust:
 
 1. **No `uv` on PATH:** say so, and with consent (`--yes` when there is no TTY; refuse otherwise)
-   run the official installer, `curl -LsSf https://astral.sh/uv/install.sh | sh`, falling back to
-   `wget -qO-`. Then use `$HOME/.local/bin/uv` by absolute path for the rest of the run, since
-   PATH in this process has not changed.
+   run the official installer at the pinned version,
+   `curl -LsSf https://astral.sh/uv/$UV_VERSION/install.sh | sh`, falling back to `wget -qO-`.
+   Then use `$HOME/.local/bin/uv` by absolute path for the rest of the run, since PATH in this
+   process has not changed.
 2. **`uv self update --dry-run`, exit code non-zero:** stop. Exit 2 means this `uv` cannot update
    itself — Homebrew, pip, a distro package, or a second copy shadowing the standalone one; the
    error says which (seen 2026-10-16: "Self-update is only available for uv binaries installed via
    the standalone installation scripts", plus "Are multiple copies of uv installed?"). Print it,
    and how to move to the standalone install (`brew uninstall uv`, then step 1). A network failure
    also lands here: stop and say the check could not run. A `uv` older than 0.7.3 has no
-   `--dry-run` and errors on the flag: treat it as outdated.
-3. **Exit 0 with "Would update uv from vX to vY":** outdated. Offer `uv self update`; stop if
-   declined. "You're on the latest version" passes. Matching that text is the one fragile part:
-   the shim's tests must run against the real latest `uv` on CI so a reworded message fails there.
+   `--dry-run` and errors on the flag: treat it as below the pin, step 3.
+3. **`uv self version --short` below `UV_VERSION`:** offer `uv self update $UV_VERSION`, which
+   takes a target version; stop if declined. Equal or newer passes. The comparison is numeric per
+   dot-separated field, in `awk`: `sort -V` is not POSIX. No output text is parsed anywhere — the
+   exit code and `--short` are the whole interface.
 4. **Hand off:** `exec uv run --script <helper> "$@"`. From a clone, `<helper>` is the file beside
    the shim; piped from the web, a `raw.githubusercontent.com` URL at the same pinned ref as the
    shim, which `uv run` accepts.
 
-Hard means hard: no `--skip-uv-check`. The helper may then assume a current standalone `uv`. Never
+Hard means hard: no `--skip-uv-check`, and no allowance for Homebrew or pip installs. The helper
+may then assume a standalone `uv` at or above the pin. Never
 `set -o pipefail` or `[[ ]]`, `local` or arrays: `/bin/sh` is `dash` on Ubuntu (and on the
 author's WSL) and macOS's `sh` is bash in POSIX mode, so CI covers both.
 
@@ -574,6 +595,10 @@ versions. Subcommands, each re-runnable:
   when `gh` is authenticated, since its default token cannot read a private email. Never
   overwrite a settings file without showing the diff and asking.
 - `new <dir>`: `copier copy --trust` from the CLI template, after `doctor` passes.
+- `pins`: show each pin beside the latest release — `uv` first, later the hook revisions and
+  the dependency floors that phase 8's pin automation names — and with `--update <name>` move one
+  everywhere it is written, on a branch, ready for the gate and `finish_branch.py`. The easy,
+  deliberate update that the pin trades for always-latest; a scheduled workflow can call it later.
 - `update`: in a project, the README's two-layer flow — clean tree, branch, `copier update`, `uv
   sync`, commit, the base the same way, then `tools/finish_branch.py`. Stops at a conflict and
   says how to resume. The flow is spelled out in both READMEs, so this replaces prose a user had to
@@ -592,8 +617,9 @@ then this by following it.
 - Hosting: run from a clone only, or also `curl … | sh` at a pinned ref. The second needs a tag
   (phase 8's tagging) or a commit in the URL, never `main`.
 
-**Tests:** shellcheck with `--shell=sh` in the root gate. The shim's four branches tested with a
-stub `uv` on PATH that prints each case, plus one test against the real `uv` on CI. The helper's
+**Tests:** shellcheck with `--shell=sh` in the root gate. The shim's branches tested with a stub
+`uv` on PATH for each case (missing, not self-updatable, below the pin, at it, above it), plus one
+against the real `uv` on CI. A test that every copy of the pin agrees. The helper's
 subcommands tested with `git`, `gh` and copier stubbed or pointed at a tmp directory; `update`
 end-to-end in the CLI repo's suite, which already has projects to update.
 
