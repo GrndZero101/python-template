@@ -4,6 +4,7 @@ The pipeline gets five-row frames built inline; `main` gets fixture files writte
 """
 
 import json
+import re
 from pathlib import Path
 
 import polars as pl
@@ -78,7 +79,7 @@ def test_columns_are_read_by_name_in_any_order(tmp_path: Path, name: str) -> Non
 def test_another_format_is_a_bad_parameter_naming_it(tmp_path: Path, name: str) -> None:
     path = tmp_path / name
     path.write_text("{}", encoding="utf-8")
-    with pytest.raises(typer.BadParameter, match=repr(str(path))):
+    with pytest.raises(typer.BadParameter, match=re.escape(repr(str(path)))):
         parse_records_path(str(path))
 
 

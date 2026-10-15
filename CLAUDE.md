@@ -62,6 +62,11 @@ SKIP=generation-tests git commit -m "..."
 Copier includes uncommitted working-tree changes when the template is a local path (it warns
 `DirtyLocalWarning`), so the tests validate what you are about to commit, not the last commit.
 
+On every push, `.github/workflows/ci.yml` runs the root gate on Linux and the generation suite on
+Linux, Windows and macOS — the only check of the portability rules away from WSL. Push a branch to
+see the other platforms before merging. On CI (`CI=true`) a test needing `uv`, `prek` or `copier`
+fails rather than skips when the tool is missing; `prek` and `copier` come from the dev group.
+
 The edit-time `PostToolUse` gate uses `find_gate_root` in `template/tools/hook_payload.py`, which
 walks up from the edited file to the nearest `.pre-commit-config.yaml`, bounded by the repo root.
 Inside a generated project that lands on the root, which is the case it exists to serve. In *this*

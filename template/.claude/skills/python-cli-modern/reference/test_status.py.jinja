@@ -7,6 +7,7 @@ with one that returns a mock-backed client.
 
 import functools
 import json
+import re
 
 import httpx
 import pytest
@@ -50,7 +51,7 @@ def test_an_http_or_https_url_is_accepted() -> None:
 
 @pytest.mark.parametrize("raw", ["up.example.test", "ftp://up.example.test/", ""])
 def test_anything_else_is_a_bad_parameter_naming_it(raw: str) -> None:
-    with pytest.raises(typer.BadParameter, match=repr(raw)):
+    with pytest.raises(typer.BadParameter, match=re.escape(repr(raw))):
         parse_url(raw)
 
 

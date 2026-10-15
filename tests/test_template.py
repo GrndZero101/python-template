@@ -9,6 +9,7 @@ else is deterministic — fixed answers, a fresh tmp directory per test, no cloc
 """
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -118,9 +119,21 @@ def _generate(
     return result.project_dir
 
 
-requires_uv = pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not installed")
-requires_prek = pytest.mark.skipif(shutil.which("prek") is None, reason="prek is not installed")
-requires_copier = pytest.mark.skipif(shutil.which("copier") is None, reason="copier is not on PATH")
+# GitHub Actions sets CI=true. There a missing tool is a broken runner, not an optional extra, so
+# the test runs and fails on it: skipping would let the suite go green having checked nothing.
+ON_CI = os.environ.get("CI") == "true"
+
+
+def _requires(tool: str) -> pytest.MarkDecorator:
+    """Skip a test locally when `tool` is not on PATH, but never on CI."""
+    return pytest.mark.skipif(
+        shutil.which(tool) is None and not ON_CI, reason=f"{tool} is not on PATH"
+    )
+
+
+requires_uv = _requires("uv")
+requires_prek = _requires("prek")
+requires_copier = _requires("copier")
 
 
 def _clone_template(destination: Path) -> Path:
