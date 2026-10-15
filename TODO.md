@@ -118,11 +118,16 @@ on. Read-only work — a review, an audit — is still a session started where t
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py`
   generates projects and runs their gate and suite; it is the only check on `template/`.
 - **CI** (2026-10-15): `.github/workflows/ci.yml` runs the root gate on Linux and the generation
-  suite on Ubuntu, Windows and macOS on a push to any branch, unless it touches only docs: its
-  `paths` list mirrors `generation-tests`' `files:`. Free, since the repo is public.
-  Warm-cache times: gate 14s, Ubuntu 1m05, macOS 1m43, Windows 7m54. `prek` is in the root dev
-  group, so CI's version comes from `uv.lock`; with `CI=true` a missing tool fails a test rather
-  than skipping it.
+  suite on Ubuntu and macOS on a push to any branch, unless it touches only docs: its `paths` list
+  mirrors `generation-tests`' `files:`. Free, since the repo is public. Windows is opt-in since
+  2026-10-16, in both repos: `gh workflow run ci.yml --ref <branch> -f windows=true`, at
+  milestones and in work aimed at Windows. The targets are Unix-alikes (Linux, macOS, WSL2).
+  Warm-cache times: gate 14s, Ubuntu 1m05, macOS 1m43, Windows 7m54; with the CLI suite on
+  2026-10-16, Ubuntu 1m26, macOS 4m10, Windows 14m23. Why Windows is that slow is unconfirmed: the
+  uv cache is on `D:` and pytest's tmp on `C:`, so uv cannot hardlink and may copy every package
+  per project. `--basetemp` on `D:` plus `--durations=15` would test it, in a Windows uplift.
+  `prek` is in the root dev group, so CI's version comes from `uv.lock`; with `CI=true` a missing
+  tool fails a test rather than skipping it.
 - Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek` 0.5.4, `rumdl` v0.2.78, `copier` 9.17.0.
   Preview rules are selected one by one (`explicit-preview-rules`); pytest names its strict options
   individually and turns warnings into errors.
@@ -518,7 +523,7 @@ before moving a file.
 6. **CI.** Copy `.github/workflows/ci.yml` (actions pinned by SHA, `fetch-depth: 0`, git identity in
    the environment) and add a second `actions/checkout` of the base into `base/`. Its `paths:`
    filter must list what `generation-tests` lists. The Windows and macOS jobs are the only check of
-   the portability rules, so do not trim the matrix.
+   the portability rules, so do not trim the matrix. (Superseded 2026-10-16: Windows is opt-in.)
 7. **Leftovers named for step 7.** The base's bootstrap commit message, the `base_template`
    default, `tests/` assertions on "python-template" and the README's Path A (which says to clone
    and copy the use case) all change with the rename or the split. All done in step 7.
