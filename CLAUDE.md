@@ -115,3 +115,10 @@ uv run python template/tools/finish_branch.py --no-tests "feat(x): summary"
 
 It runs the root's whole gate before merging, generation suite included: about a minute.
 `--no-tests` because that suite *is* this repo's tests, so running them again would double it.
+
+## Sessions
+
+Work is cut into sessions at checkpoints, which `TODO.md` defines under "Sessions and
+checkpoints" and names in each phase. At one, finish and merge the step, update `TODO.md` so a
+fresh session can start from it alone, then tell the user: "Checkpoint: start a new session", with
+the next step. Don't carry on into the next step in the same session.
