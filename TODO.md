@@ -6,8 +6,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 10, step 3: neutralise the base-owned text that names the CLI. Step 2 is done (the layers
-exist, see below). Work runs sequentially, with no worktrees or side tracks. The rest of phase 8
+Phase 10, step 4: the mechanical checks. Steps 2 and 3 are done (the layers exist and the base
+names no stack). Work runs sequentially, with no worktrees or side tracks. The rest of phase 8
 waits behind phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
@@ -334,18 +334,11 @@ each step on scratch copies first; the canary's update is the acceptance test.
      includes uncommitted changes, so the tests no longer see only committed state.
    - New tests: each layer writes its own answers file; the use case keeps the `pyproject.toml` it
      wrote; each layer updates only its own files (D12's claim); the base alone passes its gate.
-3. [ ] **Neutralise base-owned text that names the CLI.** `template/CLAUDE.md`: the rows at :35 and
-   :100–102 (`build_client`, `run_screen`, `typer-default`, `raw-httpx-client`, `patched-httpx`)
-   move to `.claude/rules/cli-typer.md`, and :40 (`typer.Exit`) and :49 (`cli.py`) are reworded;
-   :45 and :94 already name no stack. `tools/convention_rules.py`: the messages at :334, :367 and
-   :450 name `python-cli-typer` reference paths and `options.py` — point them at "the project's
-   CLI skill" or carry the path in the finding's detail, since the base must not know a use case's
-   paths; and
-   `silent-exit` fires on `SystemExit` too (:50, :374–379) but its message (:418–421) is worded for
-   typer and loguru, so a `cli-stdlib` project would get the wrong fix. The checks themselves stay
-   in the base. Skills: `python-cli/SKILL.md:15` and `python-debug/SKILL.md:101–106` point at the
-   `cli-modern` scaffold. Line numbers are as of before step 2; `template/` kept the base files, so
-   they still hold.
+3. [x] **Neutralise base-owned text that names the CLI** (2026-10-16). The typer and httpx rows
+   and the sanctioned-patches sentence moved from the base `CLAUDE.md` to
+   `use-cases/cli-typer/template/.claude/rules/cli-typer.md`; the `convention_rules.py` messages
+   point at `.claude/skills/*/reference/` rather than a named skill, and `silent-exit`'s message
+   covers stdlib logging as well as loguru. A generation test keeps those names out of the base.
 4. [ ] **The mechanical checks**, all in the use case's generation tests, which the base's CI runs
    too. The layers render no file in common, `_skip_if_exists` files aside. Both answers files
    agree on the shared questions. And the use case's `pyproject.toml` holds what the base relies

@@ -98,8 +98,8 @@ scope; use it before asking for values.
 
 `testName` does nothing under the CLI; it needs the VS Code extension's Test Explorer. The `pytest`
 adapter runs the whole file. To stop in one case, use a **conditional breakpoint** keyed on that
-case's values — in the test itself, or in the code under test. For example, in the `cli-modern`
-scaffold:
+case's values — in the test itself, or in the code under test. For example, in a test that
+parametrizes a setting:
 
 ```text
 add_breakpoint   fileFullPath=<root>/tests/test_config.py  line=<n>  condition="raw == 'on'"
@@ -136,5 +136,5 @@ that reflects what actually happened.
 - A program that reads **stdin** waits forever; no tool can feed it. Debug a path that takes its
   input from arguments or a fixture.
 - A **network call** in the code under inspection is still a network call. Debug against the tests,
-  which inject `httpx.MockTransport`, rather than the live command.
+  which inject a fake transport, rather than the live command.
 - `evaluate_expression` runs arbitrary code in the debuggee. Keep it to reads.

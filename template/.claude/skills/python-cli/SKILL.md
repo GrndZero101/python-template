@@ -12,8 +12,8 @@ description: >-
 
 These are interface rules. They hold whatever the parser is — `argparse`, `click`, `typer`.
 How to implement them on this project's stack — the parser, the logger, how to test log output —
-lives in **python-cli-typer**. Where the two seem to disagree, that skill is the one that has been
-run against the scaffold; follow it.
+lives in the stack skill, `python-cli-<stack>` under `.claude/skills/`. Where the two seem to
+disagree, that skill is the one that has been run against the scaffold; follow it.
 
 ## The entrypoint contract
 

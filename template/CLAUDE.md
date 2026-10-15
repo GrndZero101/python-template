@@ -31,13 +31,12 @@ Every rule here exists so a human can stop the program and inspect it.
 - No lambda beyond a trivial attribute or index access.
   *Why: it shows as `<lambda>` in stack traces with no source context.*
 - Inject dependencies — clock, rng, HTTP client, paths — as parameters with defaults. Never reach
-  for module-level mutable state. The sanctioned patches: a command's end-to-end test through
-  `main` replaces `<module>.build_client`, or a TUI command's `<module>.run_screen`, with
-  `monkeypatch.setattr` — the one thing each command builds rather than takes as a parameter.
+  for module-level mutable state. The few sanctioned patches, if any, are named in the use case's
+  rules under `.claude/rules/`.
   *Why: a function must be re-runnable in isolation from a breakpoint, with values you choose.*
 - Never swallow an exception. `raise ... from e`, or `logger.exception(...)` — never
   `raise ... from None`, which discards the cause just as surely. That includes an exit:
-  `raise typer.Exit(1) from e` on its own still swallows `e`, because nothing prints an exit's
+  `raise SystemExit(1) from e` on its own still swallows `e`, because nothing prints an exit's
   cause. Name `e` in the error message and log it too.
   *Why: a bare `except: pass` destroys the traceback that tells you where it started.*
 - Diagnostics go to a configured logger writing to **stderr**; data goes out with
@@ -45,8 +44,9 @@ Every rule here exists so a human can stop the program and inspect it.
   `loguru` where a stack skill says so.
   *Why: stdout is reserved for a command's data, so it stays pipeable. Diagnostics that land there
   corrupt the output a caller is parsing.*
-- Every module that can run standalone gets `if __name__ == "__main__":`. A command module reached
-  only through `cli.py` has no entry point of its own, and needs none.
+- Every module that can run standalone gets `if __name__ == "__main__":`. A module reached only
+  through an entry point elsewhere, such as a command registered in the CLI, has none of its own
+  and needs none.
 
 ## Agent-friendliness
 
@@ -97,9 +97,6 @@ which rest on your own discipline.
 | No `getattr`/`setattr`/`delattr` with a computed name | `tools/check_conventions.py` `dynamic-attribute` |
 | A module defining `main` has an `if __name__ == "__main__":` block | `tools/check_conventions.py` `missing-main-guard` |
 | An exit from an `except` reports what it caught | `tools/check_conventions.py` `silent-exit` |
-| An HTTP client comes from `build_client`, never a bare `httpx.Client()` | `tools/check_conventions.py` `raw-httpx-client` |
-| Tests replace the network with `httpx.MockTransport`, never by patching httpx | `tools/check_conventions.py` `patched-httpx` |
-| typer parameters use `Annotated`, never `= typer.Option(...)` | `tools/check_conventions.py` `typer-default` |
 | Full annotations on public signatures | `ANN` + `ty` |
 | Docstrings on public functions/classes | `D101` `D102` `D103` |
 | No lambda assigned to a name | `E731` |
