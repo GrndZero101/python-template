@@ -23,14 +23,13 @@ uv tool install prek
 
 ## Path A — start a new project from this template
 
-The template is two layers: the **base** (this repo's root: the hooks, the gate, `CLAUDE.md`, the
-shared skills) and a **use case** layered on it. `use-cases/cli-typer/` is the typer CLI, and
-copying it applies the base to the same directory. Until the use case has a repository of its own,
-copy it from a clone:
+The template is two layers: the **base** (this repo: the hooks, the gate, `CLAUDE.md`, the shared
+skills) and a **use case** layered on it.
+[python-template-cli-typer](https://github.com/GrndZero101/python-template-cli-typer) is the typer
+CLI, and copying it applies the base to the same directory:
 
 ```bash
-git clone https://github.com/GrndZero101/python-template
-copier copy --trust python-template/use-cases/cli-typer my-project     # answer the prompts
+copier copy --trust gh:GrndZero101/python-template-cli-typer my-project     # answer the prompts
 cd my-project
 ```
 
@@ -77,9 +76,9 @@ git diff                              # review; nothing is committed for you
 prek run --all-files
 uv run pytest
 git add -A                            # -A, not -a: the template may have added files
-git commit -m "chore(template): update to python-template <commit>"
+git commit -m "chore(template): update to python-template-cli-typer <commit>"
 git switch main
-git merge --no-ff -m "chore(template): update to python-template <commit>" chore/template-update
+git merge --no-ff -m "chore(template): update to python-template-cli-typer <commit>" chore/template-update
 git branch -d chore/template-update
 ```
 
@@ -122,7 +121,7 @@ To pin a version, or to move deliberately, pass a commit. The template has no re
 once it does, `copier update` moves to the latest tag rather than the newest commit.
 
 ```bash
-copier copy --trust --vcs-ref <commit> gh:GrndZero101/python-template my-project
+copier copy --trust --vcs-ref <commit> gh:GrndZero101/python-template-cli-typer my-project
 copier update --trust --vcs-ref <commit>
 ```
 
@@ -146,23 +145,32 @@ the commit-message check and breaks `--no-ff` merges into `main`.
 git switch -c feat/whatever    # never edit on main; a hook enforces it
 ```
 
-Edit under `template/` (the base) or `use-cases/cli-typer/template/`, then:
+Edit under `template/`, then:
 
 ```bash
-uv run pytest                   # generate projects, run their gate and suite
-uv run pytest -k gate           # only the generated project's gate, while iterating
-prek run --all-files            # the whole gate, generation tests included
+uv run pytest                   # generate the base alone, run its gate and suite
+prek run --all-files            # the whole gate, generation test included
 ```
 
-To look at real output rather than an assertion:
+The base layered under a use case is checked by the use case's own suite. To run it against your
+working tree, clone python-template-cli-typer beside this repo:
+
+```bash
+cd ../python-template-cli-typer
+uv sync
+BASE_TEMPLATE_DIR=../python-template uv run pytest
+```
+
+To look at real output rather than an assertion, generate through the CLI use case with the base
+pointed at your tree:
 
 ```bash
 copier copy --trust --defaults -d project_name=Scratch -d package_name=scratch \
-  -d base_template="$PWD" use-cases/cli-typer /tmp/scratch
+  -d base_template="$PWD" ../python-template-cli-typer /tmp/scratch
 ```
 
-**The templates cannot be linted or run where they sit** — they hold Jinja and have no
-`pyproject.toml`. The generation tests are the only thing that verifies them, which is why they are
+**The template cannot be linted or run where it sits** — it holds Jinja and has no
+`pyproject.toml`. The generation tests are the only thing that verifies it, which is why they are
 wired into the gate.
 See [CLAUDE.md](CLAUDE.md) for why, and for the branching and merge rules.
 
@@ -170,9 +178,8 @@ See [CLAUDE.md](CLAUDE.md) for why, and for the branching and merge rules.
 
 - **`template/`** — the base layer: everything every generated project receives.
 - **`copier.yml`** — the base's questions, exclusions and bootstrap tasks.
-- **`use-cases/cli-typer/`** — the CLI layer, with its own `copier.yml` and `template/`.
-- **`tests/test_template.py`** — generates projects and runs their gates. The only check on the
-  templates.
+- **`tests/test_template.py`** — generates the base alone and runs its gate. The only local check
+  on the template; CI also runs the CLI repo's suite against it.
 - **`.pre-commit-config.yaml`** — the gate for this repository.
 - **`TODO.md`** — outstanding work.
 

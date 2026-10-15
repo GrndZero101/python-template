@@ -6,21 +6,28 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C2 reached: start a new session.** Steps 2–5 of phase 10 are merged on local `main`,
-which was pushed to `origin/main` on 2026-10-16. Next is step 6, the new repo
-`python-template-cli-typer`. Work runs sequentially, with no worktrees or side tracks. The rest of
-phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**Step 6 of phase 10 is built locally and waits on the author's go-ahead to publish.** Work runs
+sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
+nothing under `template/` moves twice.
 
-Read step 6 and "Before step 6" under Phase 10 first, then `CLAUDE.md` for the layout and the
-ownership rules. The state to expect:
+The state to expect:
 
-- `template/` and the root `copier.yml` are the base. `use-cases/cli-typer/` is the CLI layer, with
-  its own `copier.yml` and `template/`. One `copier copy` of the use case yields both layers.
-- `tests/test_template.py` is the one suite: 41 tests, about a minute. `uv run pytest -k <name>`
-  to iterate; `prek run --all-files` is the whole gate. Finish a branch with
+- `template/` and the root `copier.yml` are the base. This repo's `tests/test_template.py` holds
+  one test, the base alone (about fifteen seconds); `uv run pytest` runs it, `prek run --all-files`
+  is the whole gate. Finish a branch with
   `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
-- Only the push of `main` has happened. The new repo and the rename have not, and each needs the
-  author's go-ahead.
+- The CLI layer is the sibling directory `../python-template-cli-typer`, a plain clone of this
+  repo's `main` at `1f44e70` with the base-owned files removed and `use-cases/cli-typer/*` moved to
+  its root, merged on its local `main`. Its `origin` still points at this repo's directory, not
+  GitHub. Its suite (40 tests) passes against this checkout with `BASE_TEMPLATE_DIR`.
+- This repo's branch `refactor/split-cli-layer` removes `use-cases/` and `examples/`, trims the
+  tests to the base alone and makes this repo's CI check the CLI repo out and run its suite.
+- **Left to do for step 6:** with the author's go-ahead, create the public GitHub repo
+  `GrndZero101/python-template-cli-typer`, point the clone's `origin` at it and push `main`; then
+  push this branch, so its CI checks the CLI repo out. Fix what the three-platform runs find, in
+  whichever repo it belongs to, merge this branch, and tick step 6. **Checkpoint C3** follows once
+  both CIs are green.
+- Neither the CLI repo's push nor the rename (step 7) has happened; each needs the go-ahead.
 
 ## How work is judged
 
@@ -275,13 +282,13 @@ put this repo under CI. The detail is in `git log`.
 
 ## Spec runs
 
-Resumed 2026-10-05 for the layered skills. By hand, as [examples/README.md](examples/README.md)
+Resumed 2026-10-05 for the layered skills. By hand, as `examples/README.md` in the CLI repo
 describes — a fresh project, the spec handed unedited to sonnet, the gate and tests run by hand,
-then a review in a separate `opus` session in plan mode driven by
-[examples/evaluate.md](examples/evaluate.md). Each template finding becomes an item here, checked
-against the code first. Rerun both specs after any phase that changes what a skill or the gate
-tells a model; the fixes from the currency run — the validated-argument recipe, the corrected
-spec, `finish_branch.py` running the tests — are not yet measured.
+then a review in a separate `opus` session in plan mode driven by `examples/evaluate.md` there. Each
+template finding becomes an item here, checked against the code first. Rerun both specs after any
+phase that changes what a skill or the gate tells a model; the fixes from the currency run — the
+validated-argument recipe, the corrected spec, `finish_branch.py` running the tests — are not yet
+measured.
 
 | Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
 |---|---|---|---|---|---|---|---|
@@ -369,7 +376,8 @@ each step on scratch copies first; the canary's update is the acceptance test.
    repo's own.
    **Checkpoint C2**, reached: steps 2–5 are merged here, and the layering is rehearsed by the
    update tests and by scratch generations.
-6. [ ] **New repo `python-template-cli-typer`**, public (read "Before step 6" below first).
+6. [~] **New repo `python-template-cli-typer`**, public (read "Before step 6" below first). Built
+   locally as "Next up" describes; the push and the CI runs remain.
    **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
    template at the commit recorded in the canary's answers file, and that commit must exist in the

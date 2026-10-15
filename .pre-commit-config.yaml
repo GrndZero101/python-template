@@ -5,13 +5,14 @@
 #
 # The division of labour is deliberate:
 #
-# - Every file check here EXCLUDES `template/` and `use-cases/`. They hold Jinja and no
-#   `pyproject.toml`, so ruff would fall back to default rules and ty would have no environment to
-#   resolve imports through. Their own configs are suffixed `.jinja` for the same reason: prek would
-#   otherwise adopt them as workspace members and run a gate there that is guaranteed to fail.
-# - What checks them instead is `generation-tests` below: it generates projects (the base alone, and
-#   the CLI use case with the base layered on) and runs THAT project's gate inside each, so the lint list exists exactly once, in the file a
-#   generated project actually receives.
+# - Every file check here EXCLUDES `template/`. It holds Jinja and no `pyproject.toml`, so ruff
+#   would fall back to default rules and ty would have no environment to resolve imports through.
+#   Its own config is suffixed `.jinja` for the same reason: prek would otherwise adopt it as a
+#   workspace member and run a gate there that is guaranteed to fail.
+# - What checks it instead is `generation-tests` below: it generates the base on its own and runs
+#   THAT project's gate inside it, so the lint list exists exactly once, in the file a generated
+#   project actually receives. The base layered under a use case is checked by the CLI repo's
+#   suite, which this repo's CI runs against the commit under test (see .github/workflows/ci.yml).
 # - The rest covers the repo's own markdown, its one Python test module, and the commit-level
 #   rules that need a `.git` to act on.
 #
@@ -20,21 +21,21 @@ repos:
   - repo: builtin
     hooks:
       - id: trailing-whitespace
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: end-of-file-fixer
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       # --assume-in-merge: see template/.pre-commit-config.yaml.jinja.
       - id: check-merge-conflict
         args: [--assume-in-merge]
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: check-added-large-files
       - id: check-yaml
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: check-toml
       # template/ ships JSONC under .vscode/, which check-json would reject; a generated
       # project's own gate checks the strict-JSON files it receives.
       - id: check-json
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: detect-private-key
       # Work happens on a branch; main only ever receives merge commits. See the note in
       # template/.pre-commit-config.yaml — `stages: [pre-commit]` is what lets `--no-ff` through.
@@ -52,9 +53,9 @@ repos:
     rev: v0.2.78
     hooks:
       - id: rumdl-fmt
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: rumdl
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
 
   # The root's own Python is just the generation tests, but they are held to the same rules.
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -63,9 +64,9 @@ repos:
       # The fixer before the formatter: a fix can leave code that needs reformatting.
       - id: ruff-check
         args: [--fix]
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
       - id: ruff-format
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
 
   - repo: local
     hooks:
@@ -76,11 +77,11 @@ repos:
         entry: uv run python template/tools/check_conventions.py
         language: system
         types: [python]
-        exclude: ^(template|use-cases)/
+        exclude: ^template/
 
-      # The only thing that verifies template/ and use-cases/. It generates projects and runs each
-      # one's gate and test suite inside it, so it is slow — around a minute. That is the price of
-      # the templates not being lintable in place.
+      # The only local check of template/. It generates the base on its own and runs that
+      # project's gate and test suite inside it, which is slow — around fifteen seconds. That is the
+      # price of the template not being lintable in place. The layered projects are CI's job.
       #
       # `files:` scopes it to what can change a generated project: the template, the copier
       # config, the tests themselves, and the dependencies that run them. A commit touching only
@@ -95,5 +96,5 @@ repos:
         entry: uv run pytest tests
         language: system
         pass_filenames: false
-        files: ^(template/|use-cases/|tests/|copier\.yml$|pyproject\.toml$|uv\.lock$)
+        files: ^(template/|tests/|copier\.yml$|pyproject\.toml$|uv\.lock$)
         stages: [pre-commit]

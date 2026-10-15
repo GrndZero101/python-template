@@ -1,10 +1,10 @@
 # copier template metadata for the BASE layer: the hooks, the gate, the skills every Python
 # project shares, and a minimal pyproject.toml. Everything it generates is under `template/`.
 #
-# A use case (use-cases/cli-typer) is a second template applied to the same project. Its one task
-# runs this template with `--defaults`, so the shared questions below are answered from the use
-# case's answers file and nothing is asked twice. Run on its own, this template asks everything,
-# which is how a prototype or a brownfield repo adopts the guards.
+# A use case (the repository python-template-cli-typer) is a second template applied to the same
+# project. Its one task runs this template with `--defaults`, so the shared questions below are
+# answered from the use case's answers file and nothing is asked twice. Run on its own, this
+# template asks everything, which is how a prototype or a brownfield repo adopts the guards.
 #
 # On its own:  copier copy --trust gh:GrndZero101/python-template <destination>
 # Update:      copier update --trust -a .copier-answers.base.yml

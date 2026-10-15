@@ -1,10 +1,10 @@
 # Configuration for the TEMPLATE REPOSITORY, not for a generated project.
 #
-# There is no [project] table: the root is not a package and ships nothing. It has a dev
-# dependency group and a venv for one purpose only — running the generation tests, which are
-# the sole thing that verifies `template/` now that it holds Jinja and cannot be linted in
-# place. A generated project's own configuration lives in
-# `use-cases/cli-typer/template/pyproject.toml.jinja`, with ruff's rules in `template/ruff-base.toml`.
+# The root is not a package and ships nothing. It has a dev dependency group and a venv for one
+# purpose only — running the generation tests, which are the sole thing that verifies `template/`
+# now that it holds Jinja and cannot be linted in place. A generated project's own configuration
+# lives in its use case's `template/pyproject.toml.jinja`, with ruff's rules in
+# `template/ruff-base.toml`.
 #
 # The lint config here is deliberately smaller than the template's. The root holds one test
 # module, not a project, so it gets the rules that catch real defects and none of the dials
@@ -74,7 +74,7 @@ ignore = [
 [tool.rumdl]
 line-length = 100
 respect-gitignore = true
-exclude = [".venv", "node_modules", "template", "use-cases"]
+exclude = [".venv", "node_modules", "template"]
 
 [tool.rumdl.MD013]
 code_blocks = false  # never wrap code
