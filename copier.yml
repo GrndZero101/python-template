@@ -46,7 +46,9 @@ author_name:
 
 author_email:
   type: str
-  help: Author email
+  help: >-
+    Author email, or blank to leave it out. GitHub's noreply address keeps yours private:
+    <id>+<username>@users.noreply.github.com, under Settings > Emails
   default: "{{ _external_data.use_case.author_email | default('') }}"
 
 # A choice, not free text: the shipped code uses `typing.override`, so anything below 3.12 passes

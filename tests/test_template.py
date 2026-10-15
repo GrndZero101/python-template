@@ -103,3 +103,15 @@ def test_the_base_alone_is_a_project_that_passes_its_gate(copie: Copie) -> None:
     assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+@requires_uv
+def test_a_blank_author_email_is_left_out(copie: Copie) -> None:
+    """`email = ""` is not an address; an author with none gets no `email` key at all."""
+    answers = {**SHARED_ANSWERS, "author_email": ""}
+    result = copie.copy(extra_answers=answers, template_dir=REPO_ROOT)
+    assert result.exception is None, f"copier raised: {result.exception}"
+    assert result.project_dir is not None
+    pyproject = (result.project_dir / "pyproject.toml").read_text(encoding="utf-8")
+    authors = tomllib.loads(pyproject)["project"]["authors"]
+    assert authors == [{"name": SHARED_ANSWERS["author_name"]}]
