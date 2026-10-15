@@ -8,7 +8,7 @@ environment variable, then config file, then default. Its keys are the field nam
 
 `--config PATH` or the `<PREFIX>_CONFIG` variable names the file; otherwise it is
 `default_config_path`, which need not exist. Why YAML, and why this location:
-.claude/skills/python-cli-modern/reference/configuration.md.
+.claude/skills/python-cli-typer/reference/configuration.md.
 """
 
 import os

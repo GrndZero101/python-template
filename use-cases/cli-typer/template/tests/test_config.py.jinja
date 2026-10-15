@@ -127,7 +127,7 @@ def test_every_credential_setting_is_secret() -> None:
     ]
     assert exposed == [], (
         f"type {exposed} as SecretStr and drop their flags: "
-        'follow "Recipe: add a secret setting" in the python-cli-modern skill'
+        'follow "Recipe: add a secret setting" in the python-cli-typer skill'
     )
 
 

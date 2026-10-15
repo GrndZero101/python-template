@@ -331,7 +331,7 @@ def client_hits(tree: ast.Module) -> list[Hit]:
             f"`{built}` builds a client with no retries, no User-Agent and default timeouts. "
             f"Call `{CLIENT_FACTORY}()` from `http_client.py` in the command, and pass the client "
             "down. No `http_client.py` yet? Copy it and its test from "
-            "`.claude/skills/python-cli-modern/reference/` — the python-cli-modern skill, "
+            "`.claude/skills/python-cli-typer/reference/` — the python-cli-typer skill, "
             '"Recipe: call an HTTP API".'
         )
         hits.append(Hit(call.lineno, "raw-httpx-client", message))
@@ -364,7 +364,7 @@ def patch_hits(tree: ast.Module) -> list[Hit]:
         "this patches httpx itself, for every caller at once, and hides what the code under test "
         "sends. Give it a client built with `transport=httpx.MockTransport(handler)` instead: "
         "pass one to the function, or replace the command module's `build_client` for a test "
-        "through `main`. `.claude/skills/python-cli-modern/reference/test_status.py` shows both."
+        "through `main`. `.claude/skills/python-cli-typer/reference/test_status.py` shows both."
     )
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
     patches = [call for call in calls if _patches_httpx(call, names)]
@@ -447,7 +447,7 @@ def typer_default_hits(tree: ast.Module) -> list[Hit]:
         "Put the typer call in the annotation, and only the real default after `=`: "
         "`count: Annotated[int, typer.Option(help=...)] = 3`, and for a required argument "
         "`urls: Annotated[list[str], typer.Argument(help=...)]` with no default at all. "
-        "`options.py` has options, and `.claude/skills/python-cli-modern/reference/status.py` an "
+        "`options.py` has options, and `.claude/skills/python-cli-typer/reference/status.py` an "
         "argument, in this form."
     )
     hits: list[Hit] = []

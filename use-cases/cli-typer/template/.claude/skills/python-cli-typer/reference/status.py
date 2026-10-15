@@ -1,7 +1,7 @@
 """The `status` command: check that URLs answer, as a table or as JSON. A worked "add a command".
 
-    cp .claude/skills/python-cli-modern/reference/status.py src/<package>/
-    cp .claude/skills/python-cli-modern/reference/test_status.py tests/
+    cp .claude/skills/python-cli-typer/reference/status.py src/<package>/
+    cp .claude/skills/python-cli-typer/reference/test_status.py tests/
     # and register it in cli.py — see "Add a command" in SKILL.md
 
 It has the shape every command here should have, the same as the scaffold's `about`:

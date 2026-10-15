@@ -26,6 +26,7 @@ on:
   push:
     paths:
       - "template/**"
+      - "use-cases/**"
       - "tests/**"
       - "copier.yml"
       - "pyproject.toml"

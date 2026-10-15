@@ -4,11 +4,11 @@ Every setting resolves in one order: command-line flag, then environment variabl
 config file (`config_file.py`), then the field default. pydantic-settings does the merge;
 `load_settings` passes only the flags actually given. Every caller passes the global flags whole,
 as one `GlobalOptions`, so a global option added there reaches every command with no edit to any
-of them. Why it is built this way: .claude/skills/python-cli-modern/reference/configuration.md.
+of them. Why it is built this way: .claude/skills/python-cli-typer/reference/configuration.md.
 
 Each field reads `{{ script_name | upper | replace('-', '_') }}_<FIELD>`, so `output` is
 `{{ script_name | upper | replace('-', '_') }}_OUTPUT`. To add a setting, follow "Recipe: add a
-setting" in the python-cli-modern skill; the wiring tests at the end of `tests/test_config.py` fail,
+setting" in the python-cli-typer skill; the wiring tests at the end of `tests/test_config.py` fail,
 naming the missed step, until it is done. A credential follows "Recipe: add a secret setting"
 instead: typed `SecretStr`, never a flag, and masked everywhere it is shown. Every field is also
 read from the config file under its own name, with no further edit.

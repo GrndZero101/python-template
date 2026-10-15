@@ -10,7 +10,7 @@ description: >-
 
 # TUI command recipes
 
-A TUI is one command of this CLI — **python-cli-modern** owns the command shape, settings and
+A TUI is one command of this CLI — **python-cli-typer** owns the command shape, settings and
 errors — that opens a full-screen Textual app instead of printing a result. Verified against
 Textual 8.2 and pytest-asyncio 1.4.
 
@@ -29,7 +29,7 @@ They pass the gate and their tests exactly as copied (a generation test proves i
 a CSV file as a table that narrows as you type. Then:
 
 1. **Register it in `src/<package>/cli.py`**, beside `about`, as "Recipe: add a command" in
-   python-cli-modern shows: `app.command("browse")(browse_command)`.
+   python-cli-typer shows: `app.command("browse")(browse_command)`.
 2. **Rename and reshape it.** The logic goes in the Textual-free module (`rows.py`); the app in
    `browse.py` only lays out widgets and forwards events to it.
 3. **Test the logic as plain functions** (`test_rows.py`), and the app through Pilot

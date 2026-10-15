@@ -7,7 +7,7 @@ directory sits beside it.
 Each spec describes a command — its flags, its input or the service it calls, what it prints and
 how it fails — plus the tests that would prove it. None of them says how to structure the code.
 That is the point: the generated project's `CLAUDE.md`, its gate and its skills —
-`python-cli-modern`, and `python-data` or `python-tui` where the spec calls for them — are
+`python-cli-typer`, and `python-data` or `python-tui` where the spec calls for them — are
 supposed to supply the structure, and a spec handed to an agent is how to find out whether they do.
 
 ## Running one

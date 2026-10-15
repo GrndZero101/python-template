@@ -1,7 +1,7 @@
 """An httpx client with the defaults every API-calling command needs. Copy, then adjust constants.
 
-    cp .claude/skills/python-cli-modern/reference/http_client.py src/<package>/
-    cp .claude/skills/python-cli-modern/reference/test_http_client.py tests/
+    cp .claude/skills/python-cli-typer/reference/http_client.py src/<package>/
+    cp .claude/skills/python-cli-typer/reference/test_http_client.py tests/
     uv add httpx
 
 What `build_client` sets up, and why each one:

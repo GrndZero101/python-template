@@ -1,5 +1,5 @@
 ---
-name: python-cli-modern
+name: python-cli-typer
 description: >-
   Recipes and conventions for modern devops CLI tools that call APIs — typer with Annotated, httpx
   clients, pydantic models, pydantic-settings configuration (flag, env var, YAML file, default), rich
@@ -49,10 +49,10 @@ Copy the vetted client and the worked command rather than writing either from sc
 
 ```bash
 uv add httpx
-cp .claude/skills/python-cli-modern/reference/http_client.py src/<package>/
-cp .claude/skills/python-cli-modern/reference/test_http_client.py tests/
-cp .claude/skills/python-cli-modern/reference/status.py src/<package>/          # optional: a worked command
-cp .claude/skills/python-cli-modern/reference/test_status.py tests/
+cp .claude/skills/python-cli-typer/reference/http_client.py src/<package>/
+cp .claude/skills/python-cli-typer/reference/test_http_client.py tests/
+cp .claude/skills/python-cli-typer/reference/status.py src/<package>/          # optional: a worked command
+cp .claude/skills/python-cli-typer/reference/test_status.py tests/
 ```
 
 They pass the gate and their tests exactly as copied (a generation test proves it). Then rename
