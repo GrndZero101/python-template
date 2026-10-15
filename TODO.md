@@ -6,7 +6,7 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 8, starting with CI for this repo.
+Phase 8: CI shipped in generated projects.
 
 ## How work is judged
 
@@ -46,6 +46,11 @@ Phase 8, starting with CI for this repo.
   renders undefined, which silently disables every task, copy included.
 - `template/` cannot be linted in place (Jinja, no `pyproject.toml`). `tests/test_template.py`
   generates projects and runs their gate and suite; it is the only check on `template/`.
+- **CI** (2026-10-15): `.github/workflows/ci.yml` runs the root gate on Linux and the generation
+  suite on Ubuntu, Windows and macOS on every push, any branch. Free, since the repo is public.
+  Warm-cache times: gate 14s, Ubuntu 1m05, macOS 1m43, Windows 7m54. `prek` is in the root dev
+  group, so CI's version comes from `uv.lock`; with `CI=true` a missing tool fails a test rather
+  than skipping it.
 - Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek`, `rumdl` v0.2.78, `copier` 9.17.0.
   Preview rules are selected one by one (`explicit-preview-rules`); pytest names its strict options
   individually and turns warnings into errors.
@@ -218,12 +223,20 @@ Open from the runs:
 
 ## Phase 8 — CI, releases and updates
 
-- [ ] **CI for this repo.** A GitHub Actions workflow running the generation suite on Ubuntu,
-  Windows and macOS. It would check on every push the portability rules that only convention and
-  WSL cover today, and the generation tests that spawn hooks exactly as Claude Code would go a long
-  way toward the hooks half of "DebugMCP on Windows native" under Later.
-- [ ] **CI shipped in generated projects**: the same matrix running `prek run --all-files` and
-  `uv run pytest`, so a generated tool is checked away from its author's machine too.
+- [x] **CI for this repo**, 2026-10-15. The first run failed one test, on Windows only: the
+  `python-data` reference test passed `repr()` of a path to `pytest.raises(match=)`, which is a
+  regex, and a Windows path's backslashes are escapes. Fixed with `re.escape`, in the `status`
+  test too, which passed only because `.` matches anything. Windows runners check out with
+  `core.autocrlf=true`, as Git for Windows does for users, and nothing broke on CRLF or long
+  paths, so no `.gitattributes` was added. The hooks spawned by the generation tests ran on
+  Windows, which is the hooks half of "DebugMCP on Windows native" under Later. Not used:
+  `j178/prek-action` (prek comes from `uv.lock`) and setup-uv's `python-version` input, which
+  exports `UV_PYTHON` and would override every generated project's `.python-version`.
+- [ ] **CI shipped in generated projects**: `prek run --all-files` and `uv run pytest`, so a
+  generated tool is checked away from its author's machine too. **A consumer's private repo pays
+  for it**: a Free account has 2,000 minutes a month, and Windows and macOS burn the quota faster,
+  macOS at about ten times Linux. Ship Linux only, with Windows and macOS commented in; run on
+  pushes to `main` and on pull requests, not on every branch push.
 - [ ] **Pin automation.** Nothing bumps the hook pins or the dependency floors, and they drifted
   10–20 releases in two months. A scheduled `prek update` workflow, or Renovate, gated by the
   generation suite. `prek update` cannot read `template/.pre-commit-config.yaml.jinja`; phase 4 ran
@@ -270,11 +283,11 @@ Open from the runs:
 - **DebugMCP on Windows native.** The agent-session half is done in WSL. Still unverified, and
   needing a session started on Windows itself: the `cmd /c` registration, `uv` resolving as the
   adapter command, and both adapters launching through it, including the `python` adapter's
-  launcher, proven so far only on Linux. Phase 8's CI covers whether the exec-form hooks' `uv` and
-  `git` resolve there. Known CLI gaps, worked around in the skill rather than fixed: it ignores
-  `launch.json`; it always sets `program`, so pytest and every `src/` module need a launcher, and it
-  cannot pass program arguments; complex values render as dunder trees unless wrapped in `repr()`;
-  the debuggee's output and logpoint output are not captured.
+  launcher, proven so far only on Linux. Phase 8's CI proved on 2026-10-15 that the exec-form
+  hooks' `uv` and `git` resolve there. Known CLI gaps, worked around in the skill rather than
+  fixed: it ignores `launch.json`; it always sets `program`, so pytest and every `src/` module need
+  a launcher, and it cannot pass program arguments; complex values render as dunder trees unless
+  wrapped in `repr()`; the debuggee's output and logpoint output are not captured.
 - **The DebugMCP VS Code extension.** Deferred by choice. It drives VS Code's own debugger over
   HTTP on `localhost:3001` and reuses `launch.json`, but uses the interpreter selected for the
   *open window*: from a `python-template` window it launched the system Python and failed to import
