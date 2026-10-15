@@ -6,13 +6,14 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C4 reached: start a new session.** Step 7 of phase 10 is done (2026-10-15): this repo
-is `GrndZero101/python-template-base` on GitHub, on disk and in `origin`; the Claude Code memory
-lives in the new project directory and the old one is deleted; and neither repo names the bare
-`python-template` any more, the bootstrap commit message included. Next is step 8, migrating the
-canary — by hand or from a session outside it, rehearsed on a scratch clone first. Work runs
-sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
-nothing under `template/` moves twice.
+**Checkpoint C5: start a new session in the canary**,
+`/home/timl/projects/github/GrndZero101/python-canary-cli-typer`. Step 8's migration and rename
+are done (2026-10-15): the canary records two sources, is renamed on GitHub and on disk, and is
+pushed. What is left of step 8 needs a session started *there*, because Claude Code loads hooks,
+skills and memory from the session's directory: confirm the hooks, skills, gate and tests work, and
+run the read-only secrets audit of its whole history. Making it public is the author's call after
+that audit. Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits
+behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
 
@@ -31,10 +32,13 @@ The state to expect:
   is now the only automatic check of the hooks, the licence and the update tests.
 - Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
   first whenever a CLI change depends on a base change.
-- Nothing relies on GitHub's redirect from the old name. The canary followed at `c218913`: its
-  `_src_path` is `gh:GrndZero101/python-template-base` at the same `_commit: 2957d4c`, which
-  exists under the new name, and its README and description name the base too. The stale
-  old-path entries in `~/.claude.json` were removed with Claude Code closed.
+- Nothing relies on GitHub's redirect from an old name. The canary is
+  `GrndZero101/python-canary-cli-typer`, still private, merged at `80de718`: `.copier-answers.yml`
+  names `gh:GrndZero101/python-template-cli-typer` at `ac50467`, and `.copier-answers.base.yml`
+  names `gh:GrndZero101/python-template-base` at `07a1f78`. Its memory was copied to the new
+  project directory. **Left for the author, with Claude Code closed**: delete
+  `~/.claude/projects/-home-timl-projects-github-GrndZero101-template-dogfood` and the three
+  `template-dogfood` entries in `~/.claude.json`, as was done for this repo at step 7.
 - Renaming the directory left the `.venv` pointing at the old path (`Failed to spawn: pytest`):
   `rm -rf .venv && uv sync` fixed it. Any other clone moved on disk needs the same.
 
@@ -140,9 +144,10 @@ on. Read-only work — a review, an audit — is still a session started where t
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
-- **The canary**, today the private `GrndZero101/template-dogfood`, to become the public
-  `python-canary-cli-typer` in phase 10 (D13): a `cli-modern` consumer with its own `weather`
-  command and script `tdf-cli`, at `2957d4c` (2026-10-05). **Drive it from a session started in
+- **The canary**, the private `GrndZero101/python-canary-cli-typer` (public after the audit, D13):
+  a consumer of both layers with its own `weather` command and script `tdf-cli`. Its package and
+  project name still say `template_dogfood`, which D13 retires: a follow-up of its own, since
+  changing `package_name` renames `src/` and every import. **Drive it from a session started in
   its own directory**: Claude Code loads hooks and skills from the session's project, so from here
   they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
   `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After an
@@ -402,9 +407,22 @@ each step on scratch copies first; the canary's update is the acceptance test.
    commit message becoming `chore: generate project from python-template-base` and the root dev
    project `python-template-base-dev`.
    **Checkpoint C4, mandatory**: the session's directory no longer exists. Reached.
-8. [ ] **Migrate the canary** to two answers files. **Order matters**: `copier update` deletes every
-   file the old render had and the new one lacks, with no check for local edits (copier 9.17
-   `_remove_old_files`). So:
+8. [ ] **Migrate the canary** to two answers files. Steps 1 and 2 and the rename are done
+   (2026-10-15); the audit and C5 remain. What the run showed:
+   - Both copier commands took `--skip-tasks --defaults`. `--defaults` answers the questions added
+     since `2957d4c` (`license` MIT, `copyright_holder` the author, `base_template`), so `LICENSE`
+     now names Timothy Longbottom, not GrndZero101.
+   - Step 1 conflicted only on the README's "Generated from" line; the template's side is right.
+   - Between the steps `.gitignore` is gone, so `.gate.log` and `__pycache__` show as untracked:
+     `git add -A` only after step 2. Commit nothing in between either, since the hooks' config is
+     gone too.
+   - The rehearsal and the real run matched file for file (35 files, +190 −138); afterwards a
+     plain update and a base update were both no-ops. The base update's `MissingFileWarning` for
+     `.copier-answers.yml` comes from copier rendering the old base in a temp directory: harmless.
+
+   The plan, as followed. **Order matters**: `copier update` deletes every file the old render had
+   and the new one lacks, with no check for local edits (`_remove_old_files`, still so in copier
+   9.18). So:
    1. Edit `_src_path` in `.copier-answers.yml` to the CLI repo — the one sanctioned edit of a file
       that says never to edit it — and `copier update`. The canary's edits to `cli.py`,
       `pyproject.toml` and `README.md` merge; every base-owned file is deleted.
