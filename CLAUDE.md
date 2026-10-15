@@ -82,12 +82,16 @@ python-template-cli-typer. Most of what the base ships — the hooks, the gate, 
 licence — is exercised only that way.
 
 On a push that touches what `generation-tests` watches, the root gate's config or the workflow,
-`.github/workflows/ci.yml` runs the root gate on Linux, then on Linux, Windows and macOS this repo's
-suite and the CLI repo's, checked out into `cli/` with this checkout as the base — the only check of
-the portability rules away from WSL, and the only automatic check of the layering. A docs-only push
-runs nothing. Push a branch to see the other platforms before merging. On CI (`CI=true`) a test
-needing `uv`, `prek` or `copier` fails rather than skips when the tool is missing; `prek` and
-`copier` come from the dev group.
+`.github/workflows/ci.yml` runs the root gate on Linux, then on Linux and macOS this repo's suite
+and the CLI repo's, checked out into `cli/` with this checkout as the base — the only automatic
+check of the layering. A docs-only push runs nothing. Push a branch to see macOS before merging.
+On CI (`CI=true`) a test needing `uv`, `prek` or `copier` fails rather than skips when the tool is
+missing; `prek` and `copier` come from the dev group.
+
+Windows runs only when asked: `gh workflow run ci.yml --ref <branch> -f windows=true`. The targets
+are Unix-alikes, and Windows took ten times Linux's time, so it is checked at milestones and in work
+aimed at it, not on every push. That run is the only check of the portability rules away from a
+Unix-alike, so they rest on review in between.
 
 The edit-time `PostToolUse` gate uses `find_gate_root` in `template/tools/hook_payload.py`, which
 walks up from the edited file to the nearest `.pre-commit-config.yaml`, bounded by the repo root.

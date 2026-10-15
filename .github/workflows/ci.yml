@@ -4,19 +4,21 @@
 #
 # - `gate` runs the root's prek config on Linux: its markdown, its one test module and the
 #   conventions check. `generation-tests` is skipped there because the next job is that suite.
-# - `generation` runs on Linux, Windows and macOS. It runs tests/test_template.py (the base alone)
-#   and then the suite of python-template-cli-typer, checked out into `cli/` and pointed at this
-#   checkout through BASE_TEMPLATE_DIR. That suite generates projects with this base layered under
-#   the CLI layer and runs each one's own gate and tests, so it is the only place the portability
-#   rules in template/CLAUDE.md are checked on a real Windows or macOS, rather than by convention
-#   or WSL, and the only place a base change that breaks the CLI layer shows up.
+# - `generation` runs on Linux and macOS, and on Windows when a manual run asks for it. It runs
+#   tests/test_template.py (the base alone) and then the suite of python-template-cli-typer,
+#   checked out into `cli/` and pointed at this checkout through BASE_TEMPLATE_DIR. That suite
+#   generates projects with this base layered under the CLI layer and runs each one's own gate and
+#   tests, so it is the only place the portability rules in template/CLAUDE.md are checked on a
+#   real Windows or macOS, rather than by convention or WSL, and the only place a base change that
+#   breaks the CLI layer shows up.
 #
 # The repo is public, so GitHub-hosted runners cost nothing on any OS. Actions are pinned by
 # commit SHA with the release in a comment; a tag can be moved, a SHA cannot.
 
 name: CI
 
-# Every branch, not just main: pushing a branch is how to see Windows and macOS before merging.
+# Every branch, not just main: pushing a branch is how to see macOS before merging, and a manual
+# run with `windows` ticked is how to see Windows.
 # There is no pull_request trigger — work arrives by merge into main, never by PR.
 #
 # Only a push that can change the result runs: the paths `generation-tests` in
@@ -36,6 +38,11 @@ on:
       - ".pre-commit-config.yaml"
       - ".github/workflows/**"
   workflow_dispatch:
+    inputs:
+      windows:
+        description: Also run the generation suite on Windows
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -69,7 +76,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Windows only on a manual run that asks for it: the targets are Unix-alikes, and Windows
+        # took ten times Linux's minutes. `inputs` is empty on a push, so a push runs two.
+        # gh workflow run ci.yml --ref <branch> -f windows=true
+        os: ${{ fromJSON(inputs.windows && '["ubuntu-latest", "macos-latest", "windows-latest"]' || '["ubuntu-latest", "macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
