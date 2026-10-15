@@ -103,11 +103,12 @@ While any file still holds markers, the edit-time gate pauses. A save lists the 
 instead of reporting syntax errors from each one. `check-merge-conflict` blocks the commit if any
 markers remain.
 
-To pin a version, or to move deliberately:
+To pin a version, or to move deliberately, pass a commit. The template has no release tags yet;
+once it does, `copier update` moves to the latest tag rather than the newest commit.
 
 ```bash
-copier copy --trust --vcs-ref v1.2.0 gh:GrndZero101/python-template my-project
-copier update --trust --vcs-ref v1.3.0
+copier copy --trust --vcs-ref <commit> gh:GrndZero101/python-template my-project
+copier update --trust --vcs-ref <commit>
 ```
 
 Do not delete `.copier-answers.yml` — `copier update` reads it to know what you answered.

@@ -6,9 +6,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 10: split this repo into a base layer and the typer CLI use case (D12–D15). The rest of
-phase 8 waits behind it, since shipped CI, pins and tags all land differently once there are two
-layers.
+**Start a new session** (checkpoint C0). Then phase 10, step 1: settle D15 from the answers the
+2026-10-15 review proposed. The licence side track may run alongside. The rest of phase 8 waits
+behind phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
 
@@ -21,7 +21,8 @@ layers.
   a hook, module or stored state only for a defect that actually reached `main`; prefer extending
   an existing check (`finish_branch.py`, the `pre-merge-commit` hook, the stop gate) over a new
   one; and verify a reviewer's claim against the code before acting on it. Two of the currency
-  review's seven proposals were wrong on inspection.
+  review's seven proposals were wrong on inspection; the 2026-10-15 review's held, bar one
+  overstatement and one proposed question that copier's `--skip-tasks` made unnecessary.
 - **Prefer a mechanical check, a script or a copyable reference file** to more prose in
   `CLAUDE.md` or a skill. A specific, greppable name in `CLAUDE.md` (`build_client`) steered haiku
   where a docstring pointer did not.
@@ -32,15 +33,37 @@ layers.
   place, so a formatting slip surfaces only in the generation suite, a minute later, at commit.
   Generate a scratch project, copy the file in, `prek run ruff-format`, copy it back.
 
+## Sessions and checkpoints
+
+Decided 2026-10-15. A long session gets slower and costlier per turn and drifts from what is
+written down; a fresh one reads only `CLAUDE.md`, memory and this file. So work is cut into
+sessions at **checkpoints**, and at each one Claude says so: "Checkpoint: start a new session",
+with the next step named in "Next up". Before that it finishes the step, merges it, and updates
+this file, which is the hand-off — a fresh session must be able to start from it alone, and a gap
+it finds is fixed here first.
+
+A checkpoint falls:
+
+- at the end of any step that ends mergeable, once this file says what comes next;
+- after a review is triaged and recorded — the session that made the decisions triages, since it
+  holds the evidence, and a fresh one carries them out;
+- when the next step needs another working directory: hooks, skills and memory all belong to the
+  directory a session started in;
+- when `/context` shows the session past about half its window, at the next mergeable point.
+
+Phase 10's checkpoints are named in its steps, C1 to C5. C4 is mandatory, not advisory: the
+rename moves the directory the session started in.
+
 ## How work runs in parallel
 
 Decided 2026-10-15. **One main thread, at most one side track at a time.**
 
-- **The main thread is phase 10.** Its steps form one chain that moves the files each next step
-  depends on, so it is never split across sessions.
+- **The main thread is phase 10**: one session at a time, in order, each step ending mergeable.
+  Its steps move the files each next step depends on, so two sessions would only collide.
 - **A side track** touches files the main thread will not touch before the side track merges.
   It runs in its own worktree and session, finishes with `finish_branch.py` like any branch, and
-  is listed under "Side tracks" below, ticked when merged. Start the next only after that.
+  is ticked below when merged. Start the next only after that. Read-only work — a review, an
+  audit — needs no worktree; start a session where the files are.
 - **Why only one:** the author reviews every decision and merge, so a second side track mostly
   adds context switching; each session pays its own context, against goal 3; and two local
   generation suites slow each other down. Push the side track's branch to let CI run its suite.
@@ -49,26 +72,22 @@ Decided 2026-10-15. **One main thread, at most one side track at a time.**
   ```bash
   git worktree add ../python-template-<track> -b <type>/<track>
   cd ../python-template-<track> && uv sync && claude
-  # when merged:
-  git worktree remove ../python-template-<track>
   ```
 
-  A session started in the worktree directory loads that tree's hooks, which act on that tree. If
-  `main` moved while the track ran, `finish_branch.py` says so; the **git-workflow** skill covers
-  the rebase. Don't count on Claude Code memory reaching a side session: memory is keyed on the
-  session's directory, so this file is the hand-off. `claude --worktree` exists too, but is
-  untried here, and a worktree nested in the main checkout could dirty its tree.
+  `finish_branch.py` ends by switching to `main`, and git refuses that while another worktree has
+  `main` checked out. So finish in the worktree only while the main checkout is on a branch;
+  otherwise `git worktree remove ../python-template-<track>` first and finish from the main
+  checkout. If `main` moved meanwhile, `finish_branch.py` says so and the **git-workflow** skill
+  covers the rebase. A session started in a worktree runs that tree's hooks, on that tree.
+  Memory is keyed on the directory, so this file is the hand-off. `claude --worktree` is untried
+  here, and a worktree nested in the main checkout could dirty its tree.
 
 ### Side tracks
 
-In order; one at a time.
-
-- [ ] **Licence questions (D14).** `copier.yml`, `template/LICENSE` and a generation test. Lands in
-  the single repo now and moves into the base with the split.
-- [ ] **Canary secrets audit**, from a session in the canary's own directory. Read-only. Must
-  pass before the canary is made public (D13).
-- [ ] **uv-script skill, first draft**: a new skill directory under `template/.claude/skills/`,
-  gated by generating a project. Moves into the base with the split.
+- [ ] **Licence questions (D14).** `copier.yml`; `template/LICENSE` becomes a template; the
+  answers-file template, to lock the year; `README.md.jinja:163–165`, which hard-codes "[MIT]";
+  `pyproject.toml.jinja` if it gains `license =`; and a generation test. Before the split, so the
+  locked-year answers file is copied into both layers.
 
 ## Status snapshot
 
@@ -92,7 +111,7 @@ In order; one at a time.
   Warm-cache times: gate 14s, Ubuntu 1m05, macOS 1m43, Windows 7m54. `prek` is in the root dev
   group, so CI's version comes from `uv.lock`; with `CI=true` a missing tool fails a test rather
   than skipping it.
-- Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek`, `rumdl` v0.2.78, `copier` 9.17.0.
+- Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek` 0.5.4, `rumdl` v0.2.78, `copier` 9.17.0.
   Preview rules are selected one by one (`explicit-preview-rules`); pytest names its strict options
   individually and turns warnings into errors.
 - `template/tools/`, eleven modules: the hooks `branch_guard` (`PreToolUse`: no edits on `main`),
@@ -108,33 +127,22 @@ In order; one at a time.
   `uv run --no-project --no-config`, so neither a `cd` nor a conflicted `pyproject.toml` breaks
   them. Bash writes (heredocs, `sed -i`) skip the edit-time gate by design; the stop gate and
   `finish_branch.py` are the backstop, and both run the tests. Proven in the canary on
-  2026-10-04: a `sed -i` `print` passed the edit-time gate and the stop gate blocked it on
-  `ruff-check` and `pytest`; both hooks wrote `.gate.log`, the stop gate as `stop-gate`.
+  2026-10-04: a `sed -i` `print` passed the edit-time gate and the stop gate blocked it.
 - `cli-modern` ships a **scaffold**, not a demo: an `about` command, global `--verbose`/`--version`,
   a per-command `--output`, each resolving flag, then `<SCRIPT>_*` environment variable, then
-  default through pydantic-settings. `python-cli-modern` is recipe-first — add a command, call an
-  HTTP API, a validated argument, add a setting — with reference code (`http_client.py`,
-  `status.py`) that a generation test copies exactly as the recipe says and gates.
+  config file, then default through pydantic-settings. `python-cli-modern` is recipe-first — add a
+  command, call an HTTP API, a validated argument, add a setting or a secret.
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
-- **The canary**, today `GrndZero101/template-dogfood`, to become the public
-  `python-canary-cli-typer` in phase 10 (D13): a private `cli-modern` consumer with its own
-  `weather` command and script `tdf-cli`, at `2957d4c` (2026-10-05), the two spec-run fixes:
-  no conflicts, eight files, skills and `CLAUDE.md` only. The canary's gate excludes `.claude/`
-  and it depends on neither polars nor textual, so its session copied the reference code into a
-  scratch project and ran it: all 26 reference tests passed, and the `python-data` claims held
-  against polars 1.44.2 — a positional `scan_csv(schema=)` silently mislabels swapped columns, and
-  `.cast(pl.Int64)` truncates 1.5. The `7a5941e` update before it was the single-shape merge: as
-  rehearsed, no conflicts, the two layered skills added and `project_type` dropped from the
-  answers. The `a7c49b5` update before it brought in secrets, the config file and `GlobalOptions`;
-  two updates were the evidence for the last: the first left `weather.py` ignoring `--config`; the
-  second, after `GlobalOptions`, failed ty on the old call and the error alone led to the fix.
-  **Drive it from a session started in its own directory**: Claude Code loads hooks and skills
-  from the session's project, so from here they are all inert. A rehearsal on a scratch clone
-  (`_src_path` edited, `copier update --trust --defaults --vcs-ref <branch>`) predicts a real
-  update exactly. After the `b22dacd` update `session_doctor` found all three git shims missing;
-  `prek install -t pre-commit -t commit-msg -t pre-merge-commit` restored them.
+- **The canary**, today the private `GrndZero101/template-dogfood`, to become the public
+  `python-canary-cli-typer` in phase 10 (D13): a `cli-modern` consumer with its own `weather`
+  command and script `tdf-cli`, at `2957d4c` (2026-10-05). **Drive it from a session started in
+  its own directory**: Claude Code loads hooks and skills from the session's project, so from here
+  they are all inert. A rehearsal on a scratch clone (`_src_path` edited,
+  `copier update --trust --defaults --vcs-ref <branch>`) predicts a real update exactly. After an
+  update, `session_doctor` may report missing git shims;
+  `prek install -t pre-commit -t commit-msg -t pre-merge-commit` restores them.
 
 ## Decisions
 
@@ -143,21 +151,43 @@ Open:
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the canary settles, then `v0.1.0`. See phase 8. |
-| D15 | The base on its own, and in a brownfield repo | Phase 10 | See below. |
+| D15 | The base on its own, and in a brownfield repo | Phase 10, step 1 | The proposed answers below. |
 
 **D15, open.** The base is a use case in itself (2026-10-15): a skeleton with every guard for
 prototyping before the shape is known, or dropped into a brownfield repo with the least
-disruption. Questions the split must answer:
+disruption. The 2026-10-15 review proposed these answers; each was checked against the code.
 
-- **Who owns `pyproject.toml`.** Standalone, the base needs a minimal one; layered, the use case
-  owns it; brownfield, the repo already has one. Candidate: the base renders it under
-  `_skip_if_exists`, which copier never patches once the file exists — so the ownership check
-  must exempt it, and a brownfield repo adds the `extend = "ruff-base.toml"` line by hand.
-- **Which layer applies first, and which asks the shared questions** (author, licence, Python
-  version). The spike applied the use case first and had its task copy the base, which read the
-  use case's answers through `_external_data`. A standalone base must ask them itself.
-- **Brownfield gating.** The edit-time and stop gates already check only changed files, but
-  `finish_branch.py` runs `prek run --all-files`, which a legacy codebase would fail wholesale.
+- **Who owns `pyproject.toml`.** The use case, when layered. The base renders a minimal one under
+  `_skip_if_exists`, which copier never overwrites and leaves out of the update patch, for the
+  standalone and brownfield cases — so the ownership check exempts it. Ruff is the only tool that
+  merges configs: the use case writes `extend = "ruff-base.toml"` and then **only additive keys**
+  (`extend-select`, `extend-per-file-ignores`, `extend-exclude`), because its own `select` or
+  `per-file-ignores` would replace the base's lists, dropping the whole rule set and the `tools/**`
+  exemptions. pytest, ty and rumdl take the first config file they find and merge nothing, so a
+  base-owned `pytest.ini`, `ty.toml` or `.rumdl.toml` would lock every use case and brownfield repo
+  out of adding a setting (FastAPI's async tests need their own); their config stays in
+  `pyproject.toml`, guarded by the contract test in phase 10.
+- **Order, and the shared questions.** Keep the spike's: one `copier copy` of the use case, whose
+  only task runs `copier copy --trust --defaults` of the base, and the base owns every bootstrap
+  task. The base defines the shared questions (author, licence, Python version) with
+  `default: "{{ _external_data.use_case.<key> | default('') }}"`, so layered under `--defaults` it
+  asks nothing, and standalone it asks everything; a missing answers file yields an empty dict.
+  The base's source is an answer in the use case (`base_template`, default
+  `gh:GrndZero101/python-template-base`), so the generation tests and the base's CI can point it at
+  a local checkout. The base's `copier.yml` sets `_answers_file: .copier-answers.base.yml`, so no
+  `-a` is needed. Cost: shared questions are defined twice; a generation test asserts both
+  answers files agree on them.
+- **Applying the base to an existing repo** (the canary, a brownfield repo). It is a `copy`, so
+  every task runs: `git init`, `uv sync`, `git add -A`, `git commit` on whatever branch is checked
+  out, and the `prek install`s. `copier copy --skip-tasks` (`-T`) avoids it, followed by the three
+  `prek install`s by hand. A `bootstrap_git` question only if brownfield adoption becomes real.
+  "Generation into unusual git states" — a destination that is already a repo, a default branch
+  other than `main` — belongs here, not in phase 8.
+- **Brownfield gating.** `finish_branch.py` runs `prek run --all-files` (finish_branch.py:209), and
+  `ty` checks the whole project whatever files it is given (gate.py:20–23), so the edit-time and
+  stop gates would fail a legacy codebase at the first save too. No machinery now: brownfield has
+  not reached `main`. When it does: a `--changed-only` flag on `finish_branch.py` reusing
+  `stop_gate.changed_files`, and `exclude` lists in the ty and rumdl config the adopter can edit.
 
 Decided:
 
@@ -179,9 +209,9 @@ Decided:
 - **D10** (2026-10-04) — the config file is YAML, for flexibility as configs grow.
 - **D11** (2026-10-05) — **one project shape.** `project_type` branched `copier.yml`,
   `pyproject.toml`, the README and the tests, and the three unbuilt types' skills rotted unexercised
-  (every one broke on a first attempt). FastAPI is a separate project. Why not layer directories
-  for two CLI scaffolds: `_exclude` matches rendered paths, so same-named modules needed
-  Jinja-named directories, which the 2026-10-05 attempt showed to be unreadable.
+  (every one broke on a first attempt). Why not layer directories for two CLI scaffolds: `_exclude`
+  matches rendered paths, so same-named modules needed Jinja-named directories, which the
+  2026-10-05 attempt showed to be unreadable. Superseded across repos by D12.
 - **D12** (2026-10-15) — **layered templates.** A shared base template plus one thin template per
   use case, applied to the same project with separate answers files, as copier documents. A spike
   with two local templates proved it: one `copier copy` of the use case produced both layers, its
@@ -190,12 +220,12 @@ Decided:
   touched only their own layer; a local edit survived. **No update chain**: a project records both
   sources, so a base fix reaches it without a use-case release. The costs: an update is two
   commands, each needing a clean tree; a file both layers render conflicts (proven — markers in
-  `pyproject.toml`), so ownership must be disjoint and checked; pytest config and the dev group
-  repeat in each use case's `pyproject.toml`, since only ruff (`extend`), rumdl and ty can read a
-  base-owned file; and the base's CI must run every use case's suite. Rules split as `CLAUDE.md`
-  (base) plus `.claude/rules/<use case>.md`, which Claude Code loads at the same priority.
-  Rejected: copying `tools/` per repo (drift), and vendoring the base into each use case as a
-  subtree (a real update chain).
+  `pyproject.toml`), so ownership must be disjoint and checked; only ruff can extend a base-owned
+  config, so pytest, ty and rumdl config and the dev group repeat in each use case's
+  `pyproject.toml` (D15); and the base's CI must run every use case's suite. Rules split as
+  `CLAUDE.md` (base) plus `.claude/rules/<use case>.md`, which Claude Code loads at the same
+  priority. Rejected: copying `tools/` per repo (drift), and vendoring the base into each use case
+  as a subtree (a real update chain).
 - **D13** (2026-10-15) — **names, and no redirects.** This repo becomes `python-template-base`;
   use cases are `python-template-cli-typer` (today's scaffold), `-cli-stdlib`, `-api-fastapi`, and
   `js-template-web-vue` for the Vue front end in `~/tmp/operator/inventory-app-design-spec.md`.
@@ -210,15 +240,20 @@ Decided:
   GrndZero101" literally, so every generated project names the template's author. The base asks
   `license` (MIT default, Apache-2.0, Proprietary) and `copyright_holder` (default `author_name`;
   not git config, which copier can read only through an extension each user must install), and
-  records the year at generation: `'%Y' | strftime` under `when: false`, dumped into the answers
-  file so updates keep it. Checked: copier 9.17 loads the filter by default.
+  records the year at generation. That takes both halves of copier's "lock a computed value"
+  recipe, because a `when: false` answer is otherwise dropped from the answers file and
+  recomputed on every update: `default: "{{ copyright_year | default('%Y' | strftime) }}"`, and
+  the answers-file template dumping
+  `{{ dict(_copier_answers, copyright_year=copyright_year) | to_nice_yaml }}`. Checked: copier
+  9.17 loads `strftime` by default.
 
-## Done: phases 1–6, and fixes from the spec runs
+## Done: phases 1–9, and the lessons that still apply
 
 Phases 1–6 (2026-10-02 to 10-04) fixed the defects a review reproduced at `712a7f8`, then made the
 gate concise and unavoidable, stabilised the toolchain, turned conventions into checks, cut
-`template/CLAUDE.md` from 296 lines to about 170, and made the skills recipes. Lessons that still
-apply:
+`template/CLAUDE.md` from 296 lines to about 170, and made the skills recipes. Phase 7 added
+secrets, the config file and the install story; phase 9 made data and TUI layered skills; phase 8
+put this repo under CI. The detail is in `git log`.
 
 - **The edit-time gate's report** is `prek --quiet` with ruff and ty set to concise output: 266
   bytes where it was 3,048. A repeated convention message prints once, then only its location.
@@ -226,13 +261,25 @@ apply:
   a rebase runs none, so it runs the full gate, the tests and the message check itself.
 - **A half-added setting fails `tests/test_config.py`**, naming the missed step. `load_settings`
   keeps its explicit keywords: only the `Settings` constructor is documented to resolve sources.
+- **A new global option needs no command edit**: commands take `GlobalOptions` whole and required.
+  The canary proved the earlier per-command wiring leaked — its `weather.py` accepted `--config`
+  and ignored it — and, after the fix, that a stale call fails `ty` with an error that alone leads
+  to the fix.
 - **Convention messages route the model to the skill**: `raw-httpx-client`, `patched-httpx` and
   `silent-exit` each name the reference file to copy. That reached haiku, which never loaded the
   skill on its own.
-- **Bugbear's `B008` advice is wrong for typer**, so `typer.Argument` and `typer.Option` are in
-  `extend-immutable-calls` and `typer-default` gives the `Annotated` fix instead.
-- **httpx ignores proxy variables once given a transport**, so `build_client` routes through
-  `EnvironmentProxyTransport`. Its retry `backoff=` exists for APIs with a rate policy.
+- **pydantic-settings has no runtime path for `YamlConfigSettingsSource`**, and that source lets a
+  list-shaped file escape as a bare `ValueError`, so `config_file.py` parses with `yaml.safe_load`.
+- **An editable `uv tool install` keeps its old `--version`** until `--reinstall`; a plain one is a
+  snapshot that `uv tool upgrade` rebuilds from its source.
+- **Library facts the skills now encode**: registering a polars frame in duckdb needs `pyarrow`;
+  duckdb's integer `sum` is `Decimal(38, 0)`; a positional `scan_csv(schema=)` silently mislabels
+  swapped columns; loguru's sink bypasses Textual's stderr redirect, so the app logs with
+  `self.log`; rich's `err.print` wraps errors at the console width and reads `[...]` as markup, so
+  commands write errors with `sys.stderr.write`.
+- **`pytest.raises(match=)` is a regex**: `repr()` of a Windows path is full of escapes. CI's first
+  run caught it on Windows only; the reference tests `re.escape` it. Windows runners check out
+  with `core.autocrlf=true`, as users' Git for Windows does, and nothing broke on CRLF.
 - **Decided against**, 2026-10-04: a `PostToolUse` hook on `Bash`, and a per-session stop-gate
   checkpoint (`tools/session_base.py`, built and discarded). The gap they targeted — tests never
   run on work merged within a turn — took three lines in `finish_branch.py`.
@@ -265,7 +312,6 @@ Open from the runs:
 - [ ] The gate's pause on conflict markers and the conflicted-`pyproject.toml` guard are proven
   only by generation tests, never by a consumer update with a real conflict. The `7a5941e` and
   `2957d4c` canary updates had none; still watching.
-- [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
 - [ ] **Watch, from the `spend` run** — act on a second occurrence, each a line in a skill: a
   command with more than five parameters trips `PLR0913` and `PLR0917`, and the answer is
   keyword-only flags plus a commented `noqa`; polars' `Series.sum()` is typed as a broad union, so
@@ -278,140 +324,114 @@ Open from the runs:
   `_Overrides` and the copy lines: three edits instead of four, and two wiring tests in
   `test_config.py` go. Bundle with it: the app callback and each command both call
   `load_settings`, so every run parses the environment and reads the config file twice; the
-  callback needs only `verbose`. Found 2026-10-05; both predate phase 7's stdlib work. Judged not
-  worth changing: the unused `err` console, `config.py` importing rich through `output.py`, and
-  five docstring lines over 100 columns.
+  callback needs only `verbose`. Found 2026-10-05. Judged not worth changing: the unused `err`
+  console, `config.py` importing rich through `output.py`, and five docstring lines over 100
+  columns.
 
-## Phase 7 — DevOps CLI features
+## Phase 10 — Base and use-case layers
 
-- [x] **Secrets** (D9), 2026-10-04. "Recipe: add a secret setting": `SecretStr`, environment
-  only (no flag), unwrapped at the point of use, sent in a header since URLs are logged.
-  `secret_fields()` in `config.py` exempts secrets from the flag wiring tests; a credential-named
-  field not typed `SecretStr` fails first under `-x`, so a model is not steered into adding a
-  flag; an `about` test, skipped until a secret exists, asserts masking in table, JSON and log.
-  Verified by applying the recipe in a generated project, both wrongly and rightly.
-- [x] **A config-file layer** (D8, D10), 2026-10-04. `config_file.py`: flag, then variable, then
-  `config.yaml`, then default. `config` is itself a setting (`--config`, `<PREFIX>_CONFIG`), which a
-  custom source reads from `current_state` after the init and env sources — pydantic-settings has
-  no runtime path for `YamlConfigSettingsSource`, and that source lets a list-shaped file escape
-  as a bare `ValueError`, so the file is parsed with `yaml.safe_load` (`pyyaml` declared
-  directly). Unknown keys, non-mappings, bad YAML and a missing named file each fail naming the
-  file; a secret's value is masked in validation errors. `conftest.py` points `XDG_CONFIG_HOME`
-  into `tmp_path`. The canary's update proved the per-command wiring leaked: its own `weather.py`
-  accepted `--config` and ignored it. Fixed 2026-10-05 by passing `GlobalOptions` whole and
-  required — `load_settings(global_options(ctx), output=...)` — so a new global option needs no
-  command edit, and a command that omits it fails `ty` and raises `TypeError`.
-- **The `cli-stdlib` scaffold** moved out (D4): its own repo, seeded from `archive/cli-stdlib`.
-- [x] **An install story in the generated README**, 2026-10-04: "Installing it" (`uv tool
-  install .`, `--editable`, from git or a tag, `update-shell`, upgrade and uninstall by package
-  name) and "Releasing a version" (`uv version --bump` on a branch, `finish_branch.py`, tag the
-  merge). Verified in a generated project. An editable install keeps its old `--version` until
-  `--reinstall`; a plain one is a snapshot that `uv tool upgrade` rebuilds from its source.
+Prove D12 on the use case that already works before building another. One session at a time, in
+order; each step ends mergeable, and the checkpoints say where a new session starts. Rehearse
+each step on scratch copies first; the canary's update is the acceptance test.
 
-## Phase 8 — CI, releases and updates
+1. [ ] **Settle D15**: accept or amend the proposed answers, and move D15 to "Decided".
+   **Checkpoint C1.**
+2. [ ] **Assign every file an owner.** Base: `CLAUDE.md`, `tools/` and its tests,
+   `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
+   `.debugmcp.json`, `.vscode/`, a new `ruff-base.toml`, the minimal `pyproject.toml` under
+   `_skip_if_exists`, its own `.copier-answers.base.yml` template, and the skills `git-workflow`,
+   `python-debug` and `python-cli` (stack-agnostic, so shared by both CLI use cases). CLI use case:
+   `pyproject.toml` — with the pytest, ty and rumdl config and the dev group, including `pytest`
+   and `debugpy`, which `.debugmcp.json` launches — `README.md`, `src/`, `tests/`, its own
+   answers-file template, `.claude/rules/cli-typer.md`, and the skills `python-cli-typer`,
+   `python-data` and `python-tui`.
+3. [ ] **Neutralise base-owned text that names the CLI.** `template/CLAUDE.md`: the rows at :35 and
+   :100–102 (`build_client`, `run_screen`, `typer-default`, `raw-httpx-client`, `patched-httpx`)
+   move to `.claude/rules/cli-typer.md`, and :40 (`typer.Exit`) and :49 (`cli.py`) are reworded;
+   :45 and :94 already name no stack. `tools/convention_rules.py`: the messages at :334, :367 and
+   :450 name `python-cli-modern` reference paths and `options.py` — point them at "the project's
+   CLI skill" or carry the path in the finding's detail, which the skill rename needs anyway; and
+   `silent-exit` fires on `SystemExit` too (:50, :374–379) but its message (:418–421) is worded for
+   typer and loguru, so a `cli-stdlib` project would get the wrong fix. The checks themselves stay
+   in the base. Skills: `python-cli/SKILL.md:15` and `python-debug/SKILL.md:101–106` point at the
+   `cli-modern` scaffold.
+4. [ ] **The mechanical checks**, all in the use case's generation tests, which the base's CI runs
+   too. The layers render no file in common, `_skip_if_exists` files aside. Both answers files
+   agree on the shared questions. And the use case's `pyproject.toml` holds what the base relies
+   on: `filterwarnings = ["error"]`, `tools/tests` in `testpaths`, `pythonpath = ["tools"]`, ty's
+   `extra-paths` and `.claude` exclusion, `extend = "ruff-base.toml"` with no `select` or
+   `per-file-ignores` key, and `pytest` and `debugpy` in the dev group. Not in `tools/tests`: a
+   test there cannot notice `tools/tests` leaving `testpaths`, because it then never runs.
+5. [ ] **Licence questions** (D14), if the side track has not already landed them.
+   **Checkpoint C2**, with steps 2–5 merged here and the layering rehearsed on scratch copies.
+6. [ ] **New repo `python-template-cli-typer`**, public. **Seed it from this repo's history** —
+   clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
+   template at the commit recorded in the canary's answers file, and that commit must exist in the
+   new repo. CI on three platforms against the base at `HEAD`; the base's CI checks it out and runs
+   its generation suite against the base commit under test, through `base_template`.
+   **Checkpoint C3**, once its CI is green.
+7. [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
+   remote URL and the Claude Code memory directory; then every reference to the old name.
+   **Checkpoint C4, mandatory**: the session's directory no longer exists.
+8. [ ] **Migrate the canary** to two answers files. **Order matters**: `copier update` deletes every
+   file the old render had and the new one lacks, with no check for local edits (copier 9.17
+   `_remove_old_files`). So:
+   1. Edit `_src_path` in `.copier-answers.yml` to the CLI repo — the one sanctioned edit of a file
+      that says never to edit it — and `copier update`. The canary's edits to `cli.py`,
+      `pyproject.toml` and `README.md` merge; every base-owned file is deleted.
+   2. `copier copy --trust --skip-tasks <base> .`, which recreates them at the base's `HEAD`;
+      the canary never edited them, so nothing is lost. Then the three `prek install`s by hand.
 
-- [x] **CI for this repo**, 2026-10-15. The first run failed one test, on Windows only: the
-  `python-data` reference test passed `repr()` of a path to `pytest.raises(match=)`, which is a
-  regex, and a Windows path's backslashes are escapes. Fixed with `re.escape`, in the `status`
-  test too, which passed only because `.` matches anything. Windows runners check out with
-  `core.autocrlf=true`, as Git for Windows does for users, and nothing broke on CRLF or long
-  paths, so no `.gitattributes` was added. The hooks spawned by the generation tests ran on
-  Windows, which is the hooks half of "DebugMCP on Windows native" under Later. Not used:
-  `j178/prek-action` (prek comes from `uv.lock`) and setup-uv's `python-version` input, which
-  exports `UV_PYTHON` and would override every generated project's `.python-version`.
+   The reverse order deletes the base again. Step 1 deletes `.claude/settings.json` and `tools/`,
+   so run the migration by hand or from a session outside the canary, never inside it. Rehearse
+   on a scratch clone. Then rename the repo to `python-canary-cli-typer`. Make it public only
+   after a secrets audit of its whole history: read-only, from a session in its directory.
+   **Checkpoint C5**: a new session started in the canary, to confirm its hooks, skills, gate
+   and tests.
+9. [ ] **Later in the phase**: the uv-script skill, written directly in the base after the split —
+   `tests/test_template.py:24–31` asserts the exact skill set, so a draft before the split would
+   collide with it — then `python-canary-base` to exercise it; seed `python-template-cli-stdlib`
+   from `archive/cli-stdlib`.
+
+## Phase 8 — CI, releases and updates (after phase 10)
+
+Done: CI for this repo (2026-10-15), under "Done" above.
+
 - [ ] **CI shipped in generated projects**: `prek run --all-files` and `uv run pytest`, so a
-  generated tool is checked away from its author's machine too. **A consumer's private repo pays
-  for it**: a Free account has 2,000 minutes a month, and Windows and macOS burn the quota faster,
-  macOS at about ten times Linux. Ship Linux only, with Windows and macOS commented in; run on
-  pushes to `main` and on pull requests, not on every branch push.
+  generated tool is checked away from its author's machine too. Base-owned, so it waits only so
+  that nothing under `template/` moves twice. **A consumer's private repo pays for it**: a Free
+  account has 2,000 minutes a month, and Windows and macOS burn the quota faster, macOS at about
+  ten times Linux. Ship Linux only, with Windows and macOS commented in; run on pushes to `main`
+  and on pull requests, not on every branch push.
 - [ ] **Pin automation.** Nothing bumps the hook pins or the dependency floors, and they drifted
-  10–20 releases in two months. A scheduled `prek update` workflow, or Renovate, gated by the
+  10–20 releases in two months. After the split the hook pins live in the base's config and the
+  floors in each use case. A scheduled `prek update` workflow, or Renovate, gated by the
   generation suite. `prek update` cannot read `template/.pre-commit-config.yaml.jinja`; phase 4 ran
   it in a generated project and copied the revisions back, which a workflow can do too.
-- [ ] **Tagging** (D5). The template has **no git tags**, so `.copier-answers.yml` records a bare
-  commit hash and the `--vcs-ref v1.3.0` examples in the README refer to tags that do not exist.
-  **Once any tag exists, `copier update` pulls to the latest tag rather than `HEAD`** — right for
-  stable releases, wrong while iterating, because fixes stop reaching the canary until tagged.
-  Stay untagged until the canary settles, then cut `v0.1.0` and fix the README examples.
+- [ ] **Tagging** (D5), one tag series per repo. **Once any tag exists, `copier update` moves to
+  the latest PEP 440 tag rather than `HEAD`** unless given `--vcs-ref HEAD` — right for stable
+  releases, wrong while iterating, because fixes stop reaching the canary until tagged. Stay
+  untagged until the canary settles, then cut `v0.1.0`. The README's example now pins a commit.
 - [ ] **Per-release update notes.** The README's "Keeping it in sync" covers the update mechanics.
   A release should also say what a conflict never will: which features were absorbed from
   consumers (`typer_entrypoint.py` superseded the canary's own version, with changed semantics),
   and which interface moves a consumer's own commands must follow (`-v/--verbose` went global, so
   `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
-- [ ] **Generation into unusual git states**, a natural CI job. Unverified: a destination that is
-  already a git repo, and one whose default branch is not `main` (`branch_guard` takes
-  `--protected main master`); the generation tasks assume `git init -b main` succeeds.
-
-## Phase 9 — Layered skills (done 2026-10-05)
-
-- [x] **`project_type` removed** (D11). A generated project differs from one made at `c08a7d0`
-  only in shipping `python-data` and `python-tui` and in its answers file.
-- [x] **`python-data`**: "Recipe: add a data command" with `reference/summary.py`. Fixed the
-  verified defects — `fetchone()[0]` failed ty, `LazyFrame.profile()` deprecated since 1.43 — and
-  re-verified against polars 1.44 and duckdb 1.5, which found two more: registering a polars frame
-  needs `pyarrow`, and duckdb's integer `sum` arrives as `Decimal(38, 0)`.
-- [x] **`python-tui`**: "Recipe: add a TUI command" with `reference/rows.py` (no Textual import)
-  and `reference/browse.py`. Fixed the verified defects — no async test plugin, no `textual-dev`,
-  `BINDINGS` without `ClassVar`, a skill written for Textual 7 — and found that loguru's sink
-  bypasses Textual's stderr redirect, so the app logs with `self.log`. `TEXTUAL=devtools,debug`
-  reaches the console through the project's own script, since `textual run --dev` needs an app it
-  can build without arguments.
-- [x] **Reference commands write errors with `sys.stderr.write`**, as the scaffold does: rich's
-  `err.print` wrapped them at the console width, splitting the path a test looked for, and would
-  read `[...]` in a path or message as markup.
-- [x] **Specs**, 2026-10-05: `examples/spend.md` and `examples/logs.md`.
-- [x] **A sonnet run of each**, 2026-10-05, recorded under "Spec runs". Each found one template
-  defect, both fixed: a positional CSV read in `python-data`, and no test seam for a TUI command.
-- [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
-  mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
-
-## Phase 10 — Base and use-case layers
-
-Prove D12 on the use case that already works before building another. Rehearse each step on
-scratch copies first; the canary's update is the acceptance test.
-
-- [ ] **Settle D15** before moving any file: `pyproject.toml` ownership, layer order, which layer
-  asks the shared questions, and what `finish_branch.py` gates in a brownfield repo.
-- [ ] **Assign every file an owner.** Base: `CLAUDE.md`, `tools/` and its tests,
-  `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
-  `.debugmcp.json`, `.vscode/`, a new `ruff-base.toml` and rumdl and ty config files, and the
-  skills `git-workflow`, `python-debug` and `python-cli` (stack-agnostic, so shared by both CLI use
-  cases). CLI use case: `pyproject.toml`, `README.md`, `src/`, `tests/`,
-  `.claude/rules/cli-typer.md`, and the skills `python-cli-typer`, `python-data` and `python-tui`.
-- [ ] **Split `CLAUDE.md`**: the CLI rows — `build_client`, `run_screen`, `typer-default`,
-  `raw-httpx-client`, `patched-httpx` — move to `.claude/rules/cli-typer.md`. Their convention
-  checks stay in the base's `tools/`; they fire only on code that uses typer or httpx.
-- [ ] **Two mechanical checks.** A generation test in each use case asserting the layers render
-  no file in common, `_skip_if_exists` files aside; and a test shipped in the base's `tools/tests`
-  asserting `pyproject.toml` holds what the base relies on — `filterwarnings = ["error"]`,
-  `tools/tests` in testpaths, the ruff `extend` line — so a drifting use case fails naming the fix.
-- [ ] **Licence questions** (D14) — a side track; if it merged first, only move it into the base.
-- [ ] **New repo `python-template-cli-typer`**, public, with CI on three platforms against the base
-  at `HEAD`. The base's CI checks it out and runs its generation suite against the base commit
-  under test.
-- [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
-  remote URL and the Claude Code memory directory; then every reference to the old name.
-- [ ] **Migrate the canary**: `template-dogfood` to `python-canary-cli-typer`, from one answers file
-  to two. Make it public only once the secrets-audit side track has passed. Rehearse on a scratch
-  clone.
-- [ ] **Later in the phase**: finish the uv-script skill (drafted as a side track) in the base,
-  then `python-canary-base` to exercise it; seed `python-template-cli-stdlib` from
-  `archive/cli-stdlib`.
 
 ## Later
 
+- **The Textual console**, attached through `TEXTUAL=devtools,debug`, is unverified by hand. The
+  mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
 - **DebugMCP on Windows native.** The agent-session half is done in WSL. Still unverified, and
   needing a session started on Windows itself: the `cmd /c` registration, `uv` resolving as the
   adapter command, and both adapters launching through it, including the `python` adapter's
-  launcher, proven so far only on Linux. Phase 8's CI proved on 2026-10-15 that the exec-form
-  hooks' `uv` and `git` resolve there. Known CLI gaps, worked around in the skill rather than
-  fixed: it ignores `launch.json`; it always sets `program`, so pytest and every `src/` module need
-  a launcher, and it cannot pass program arguments; complex values render as dunder trees unless
-  wrapped in `repr()`; the debuggee's output and logpoint output are not captured.
+  launcher, proven so far only on Linux. CI proved on 2026-10-15 that the exec-form hooks' `uv`
+  and `git` resolve there. Known CLI gaps, worked around in the skill rather than fixed: it ignores
+  `launch.json`; it always sets `program`, so pytest and every `src/` module need a launcher, and it
+  cannot pass program arguments; complex values render as dunder trees unless wrapped in `repr()`;
+  the debuggee's output and logpoint output are not captured.
 - **The DebugMCP VS Code extension.** Deferred by choice. It drives VS Code's own debugger over
   HTTP on `localhost:3001` and reuses `launch.json`, but uses the interpreter selected for the
   *open window*: from a `python-template` window it launched the system Python and failed to import
   the package. Open: two windows contending for one port, and coexisting with the CLI, since
   `debugmcp configure` keeps a single `debugmcp` entry.
-- **The generation tests are not offline.** `uv sync` runs during generation and reaches the
-  network on a cold cache. Everything else about them is deterministic.
