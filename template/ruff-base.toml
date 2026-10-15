@@ -1,0 +1,92 @@
+# ruff's shared configuration, owned by the base template. A project's pyproject.toml reaches it
+# with `extend = "ruff-base.toml"` under [tool.ruff] and may then add only `extend-*` keys: its own
+# `select` or `per-file-ignores` would replace the lists here, dropping the whole rule set and the
+# tools/ exemptions. `target-version` is the one scalar that stays in pyproject.toml, because it
+# follows the project's Python floor.
+#
+# ruff is the only tool that merges configuration files. pytest, ty and rumdl take the first file
+# they find and merge nothing, so their settings live in pyproject.toml and repeat in each project.
+
+# ---------------------------------------------------------------------------
+# ruff — replaces black, isort, flake8, pylint, bandit, pyupgrade
+# ---------------------------------------------------------------------------
+line-length = 100
+# Skill reference files are templates for code that lives elsewhere: they import modules that
+# exist only once copied, and tests there need tests/'s exemptions. The generation tests copy them
+# where they belong and gate them there; the conventions hook and ty skip them likewise.
+extend-exclude = [".claude"]
+preview = true  # required: several rules below are preview rules, and `ignore` names rules
+
+[lint]
+# Preview rules are opted into one by one, by code. Selected through a prefix, every preview rule a
+# ruff release adds under it arrives with the upgrade — 124 of them on 0.16.10 — so a version bump
+# alone could change what the gate blocks, or rewrite suppression comments mid-gate.
+explicit-preview-rules = true
+select = [
+    "E", "W", "F", "I", "UP", "N",     # core, imports, modernization, naming
+    "D", "ANN",                        # docstrings + annotations
+    "B",                               # bugbear — B023 loop-var closure capture
+    "C4", "SIM", "PERF", "FURB", "RUF",
+    "RET",                             # RET505 no else-after-return -> guard clauses
+    "TRY", "EM", "BLE",                # exception hygiene, intact tracebacks
+    "LOG", "G", "T20",                 # logging correctness; T20 bans print
+    "PTH", "DTZ", "ARG", "SLF", "FBT", "PT", "S",
+    "PL", "C90",                       # the complexity dials below
+    # Preview rules, each chosen. The first four back rows of CLAUDE.md's enforcement table:
+    "PLR1702", "PLR0914",              # too-many-nested-blocks, too-many-locals
+    "PLW1514",                         # unspecified-encoding
+    "PLC2701",                         # import-private-name
+    # The rest are bug detectors: mutating the list being looped over, `dict` iterated without
+    # `.items()`, a set modified while iterating it, a mutable dataclass default shared between
+    # instances, eager formatting in a logging call, and a context manager whose cleanup is skipped
+    # when the body raises.
+    "B909", "PLE1141", "PLE4703", "RUF045", "RUF065", "RUF075",
+]
+# ruff 0.16 wants rule names rather than codes here, which reads better anyway.
+ignore = [
+    # mutually conflicting docstring rules — pick one of each pair
+    "incorrect-blank-line-before-class",
+    "multi-line-summary-second-line",
+    # docstrings required on public functions/classes, not on every module
+    "undocumented-public-module",
+    "undocumented-public-package",
+    "undocumented-magic-method",
+    "undocumented-public-init",
+    # the formatter owns line length
+    "line-too-long",
+    # conflict with the formatter
+    "missing-trailing-comma",
+    "single-line-implicit-string-concatenation",
+    # redundant with EM (which already forces messages out of the raise)
+    "raise-vanilla-args",
+]
+# Reported, never auto-removed. The edit-time gate runs `--fix` after every save, so an import
+# added one edit ahead of its first use would be deleted before that use lands.
+unfixable = ["unused-import"]
+
+# The maintainability dials. These are what indirectly penalise nested helpers:
+# a nested def consumes a local slot and its body inflates the parent.
+[lint.mccabe]
+max-complexity = 8
+
+[lint.pylint]
+max-nested-blocks = 3
+max-locals = 12
+max-statements = 40
+max-args = 5
+max-branches = 10
+max-returns = 6
+
+[lint.per-file-ignores]
+# Tests assert, use bare literals, and poke at internals — all fine there.
+"tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
+"tools/tests/**" = ["assert", "D", "ANN", "magic-value-comparison", "SLF"]
+# The checker's whole job is printing findings, to stderr.
+"tools/**" = ["T20"]
+# Invoking an external tool IS this module's purpose, so the subprocess warnings cannot be
+# designed away. The command is built from a literal list, never a shell string, and `prek`
+# is resolved from PATH deliberately so the hook follows whatever uv installed.
+"tools/gate.py" = [
+    "subprocess-without-shell-equals-true",
+    "start-process-with-partial-path",
+]

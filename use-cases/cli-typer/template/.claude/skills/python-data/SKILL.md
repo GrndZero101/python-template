@@ -10,7 +10,7 @@ description: >-
 
 # Data command recipes
 
-A data command is an ordinary command of this CLI — **python-cli-modern** owns the command shape,
+A data command is an ordinary command of this CLI — **python-cli-typer** owns the command shape,
 settings and output — whose work is a polars pipeline. Verified against polars 1.44, duckdb 1.5
 and pyarrow 25.
 
@@ -32,7 +32,7 @@ reads a CSV or parquet file of request records and prints requests, 5xx response
 per service. Then:
 
 1. **Register it in `src/<package>/cli.py`**, beside `about`, as "Recipe: add a command" in
-   python-cli-modern shows: `app.command("summary")(summary_command)`.
+   python-cli-typer shows: `app.command("summary")(summary_command)`.
 2. **Rename and reshape it.** Change `RECORD_SCHEMA` to your input's columns, `summarize` to your
    pipeline, and `SUMMARY_SCHEMA` and `build_summary_table` to its output. Keep the layers:
    `parse_records_path` validates the argument, `scan_records` reads, `summarize` computes,

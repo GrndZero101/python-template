@@ -6,7 +6,7 @@ environment variable in its help as `(env: NAME)`, built with `env_var`. Global 
 callback stores them in a `GlobalOptions` (in `config.py`), which each command reads back with
 `global_options(ctx)` and passes whole to `load_settings`.
 
-Why `None`, why not typer's `envvar=`, and why not `[env var: NAME]`: .claude/skills/python-cli-modern/reference/configuration.md.
+Why `None`, why not typer's `envvar=`, and why not `[env var: NAME]`: .claude/skills/python-cli-typer/reference/configuration.md.
 """
 
 import sys

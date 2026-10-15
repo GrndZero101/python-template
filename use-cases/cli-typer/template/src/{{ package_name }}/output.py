@@ -3,7 +3,7 @@
 Data goes to `out` (stdout); anything decorative or human-facing goes to `err` (stderr). The
 format changes only when the caller asks, never because stdout is a pipe.
 
-Why two consoles, and why the format never changes on its own: .claude/skills/python-cli-modern/reference/output.md.
+Why two consoles, and why the format never changes on its own: .claude/skills/python-cli-typer/reference/output.md.
 """
 
 from enum import StrEnum

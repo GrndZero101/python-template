@@ -6,9 +6,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Start a new session** (checkpoint C1). Then phase 10, step 2: assign every file an owner. D15 is
-settled. Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind
-phase 10 so that nothing under `template/` moves twice.
+Phase 10, step 3: neutralise the base-owned text that names the CLI. Step 2 is done (the layers
+exist, see below). Work runs sequentially, with no worktrees or side tracks. The rest of phase 8
+waits behind phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
 
@@ -72,7 +72,7 @@ on. Read-only work — a review, an audit — is still a session started where t
   (2026-10-05): the typer CLI scaffold. Data processing and full-screen TUIs are skills layered on
   it, not project types; `copier copy gh:GrndZero101/python-template <dest>` is verified end to end.
 - **Three recipes ship reference code** that a generation test copies exactly as the recipe says,
-  registers in `cli.py` and gates: `python-cli-modern`'s `status`, `python-data`'s `summary`
+  registers in `cli.py` and gates: `python-cli-typer`'s `status`, `python-data`'s `summary`
   (polars, CSV or parquet) and `python-tui`'s `browse` (Textual, Pilot tests).
 - `copier update` works and is tested. Every `_task` is guarded with
   `when: "{{ _copier_operation == 'copy' }}"`, or the tasks re-run on update and the commit task
@@ -105,7 +105,7 @@ on. Read-only work — a review, an audit — is still a session started where t
   2026-10-04: a `sed -i` `print` passed the edit-time gate and the stop gate blocked it.
 - `cli-modern` ships a **scaffold**, not a demo: an `about` command, global `--verbose`/`--version`,
   a per-command `--output`, each resolving flag, then `<SCRIPT>_*` environment variable, then
-  config file, then default through pydantic-settings. `python-cli-modern` is recipe-first — add a
+  config file, then default through pydantic-settings. `python-cli-typer` is recipe-first — add a
   command, call an HTTP API, a validated argument, add a setting or a secret.
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
@@ -313,25 +313,39 @@ each step on scratch copies first; the canary's update is the acceptance test.
 
 1. [x] **Settle D15**: accepted unamended (2026-10-15) and moved to "Decided".
    **Checkpoint C1**, reached.
-2. [ ] **Assign every file an owner.** Base: `CLAUDE.md`, `tools/` and its tests,
-   `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
-   `.debugmcp.json`, `.vscode/`, a new `ruff-base.toml`, the minimal `pyproject.toml` under
-   `_skip_if_exists`, its own `.copier-answers.base.yml` template, and the skills `git-workflow`,
-   `python-debug` and `python-cli` (stack-agnostic, so shared by both CLI use cases). CLI use case:
-   `pyproject.toml` — with the pytest, ty and rumdl config and the dev group, including `pytest`
-   and `debugpy`, which `.debugmcp.json` launches — `README.md`, `src/`, `tests/`, its own
-   answers-file template, `.claude/rules/cli-typer.md`, and the skills `python-cli-typer`,
-   `python-data` and `python-tui`.
+2. [x] **Assign every file an owner**, done by directory (2026-10-16). `template/` and the root
+   `copier.yml` are the base; `use-cases/cli-typer/` (its own `copier.yml` and `template/`) is the
+   CLI layer, and step 6 lifts it out with its history. The owners are in the root `CLAUDE.md`.
+   Notes a fresh session needs:
+   - `.claude/rules/cli-typer.md` does not exist yet. Step 3 creates it, in
+     `use-cases/cli-typer/template/.claude/rules/`, with the rows it moves out of the base.
+   - The skill rename is done: `python-cli-modern` is `python-cli-typer` everywhere but the
+     spec-run table, which is history.
+   - `ruff-base.toml` holds all of ruff's rules as a top-level file (`[lint]`, not
+     `[tool.ruff.lint]`). `target-version` stays in each `pyproject.toml`, because it follows the
+     project's Python floor. The use case adds only `extend-immutable-calls` for typer.
+   - The base shares four questions, not three: `project_name` as well, because its fallback
+     `pyproject.toml` needs a name. Only `project_name` has a validator, as the others were
+     optional before the split.
+   - The use case's `base_template` defaults to `gh:GrndZero101/python-template` until step 7
+     renames the repo. The README's Path A says to copy the use case from a clone until step 6.
+   - The update tests build their templates with `_snapshot`: a use case is a subdirectory, which
+     copier cannot update from, so each test copies it into a throwaway git repo. The snapshot
+     includes uncommitted changes, so the tests no longer see only committed state.
+   - New tests: each layer writes its own answers file; the use case keeps the `pyproject.toml` it
+     wrote; each layer updates only its own files (D12's claim); the base alone passes its gate.
 3. [ ] **Neutralise base-owned text that names the CLI.** `template/CLAUDE.md`: the rows at :35 and
    :100–102 (`build_client`, `run_screen`, `typer-default`, `raw-httpx-client`, `patched-httpx`)
    move to `.claude/rules/cli-typer.md`, and :40 (`typer.Exit`) and :49 (`cli.py`) are reworded;
    :45 and :94 already name no stack. `tools/convention_rules.py`: the messages at :334, :367 and
-   :450 name `python-cli-modern` reference paths and `options.py` — point them at "the project's
-   CLI skill" or carry the path in the finding's detail, which the skill rename needs anyway; and
+   :450 name `python-cli-typer` reference paths and `options.py` — point them at "the project's
+   CLI skill" or carry the path in the finding's detail, since the base must not know a use case's
+   paths; and
    `silent-exit` fires on `SystemExit` too (:50, :374–379) but its message (:418–421) is worded for
    typer and loguru, so a `cli-stdlib` project would get the wrong fix. The checks themselves stay
    in the base. Skills: `python-cli/SKILL.md:15` and `python-debug/SKILL.md:101–106` point at the
-   `cli-modern` scaffold.
+   `cli-modern` scaffold. Line numbers are as of before step 2; `template/` kept the base files, so
+   they still hold.
 4. [ ] **The mechanical checks**, all in the use case's generation tests, which the base's CI runs
    too. The layers render no file in common, `_skip_if_exists` files aside. Both answers files
    agree on the shared questions. And the use case's `pyproject.toml` holds what the base relies
@@ -340,9 +354,10 @@ each step on scratch copies first; the canary's update is the acceptance test.
    `per-file-ignores` key, and `pytest` and `debugpy` in the dev group. Not in `tools/tests`: a
    test there cannot notice `tools/tests` leaving `testpaths`, because it then never runs.
 5. [ ] **Licence questions** (D14): `copier.yml`; `template/LICENSE` becomes a template; the
-   answers-file template, to lock the year; `README.md.jinja:163–165`, which hard-codes "[MIT]";
-   `pyproject.toml.jinja` if it gains `license =`; and a generation test. Before the split, so the
-   locked-year answers file is copied into both layers.
+   answers-file templates, to lock the year; `use-cases/cli-typer/template/README.md.jinja:163–165`,
+   which hard-codes "[MIT]"; that `pyproject.toml.jinja` and the base's fallback one if they gain
+   `license =`; and a generation test. Before the split, so the locked-year answers file is copied
+   into both layers.
    **Checkpoint C2**, with steps 2–5 merged here and the layering rehearsed on scratch copies.
 6. [ ] **New repo `python-template-cli-typer`**, public. **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old

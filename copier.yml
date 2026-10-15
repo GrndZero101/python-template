@@ -1,78 +1,61 @@
-# copier template metadata. The generated project is everything under `template/`.
+# copier template metadata for the BASE layer: the hooks, the gate, the skills every Python
+# project shares, and a minimal pyproject.toml. Everything it generates is under `template/`.
 #
-# Run with:  copier copy --trust gh:GrndZero101/python-template <destination>
-# Update an already-generated project with:  copier update --trust
+# A use case (use-cases/cli-typer) is a second template applied to the same project. Its one task
+# runs this template with `--defaults`, so the shared questions below are answered from the use
+# case's answers file and nothing is asked twice. Run on its own, this template asks everything,
+# which is how a prototype or a brownfield repo adopts the guards.
+#
+# On its own:  copier copy --trust gh:GrndZero101/python-template <destination>
+# Update:      copier update --trust -a .copier-answers.base.yml
 # --trust is required because of `_tasks` below; copier exits 4 without it.
 _subdirectory: template
 
+# Not the default `.copier-answers.yml`, which belongs to the use case. Two templates on one
+# project need two answers files, or each would overwrite the other's.
+_answers_file: .copier-answers.base.yml
+
+# The use case's answers, when there is one. A missing file reads as an empty dict, so standalone
+# every `default` below falls through to its own fallback.
+_external_data:
+  use_case: .copier-answers.yml
+
+# The pyproject.toml here is a fallback for a project with none. A use case writes its own first,
+# and copier never overwrites a file listed here.
+_skip_if_exists:
+  - pyproject.toml
+
 _message_after_copy: |
-  Project created in {{ _copier_conf.dst_path }}.
-
-  The git repo, the venv and all three prek shims are already wired. Read CLAUDE.md first —
-  the rules there are enforced by a gate, not by convention alone.
+  Base layer applied to {{ _copier_conf.dst_path }}. Read CLAUDE.md first — the rules there are
+  enforced by a gate, not by convention alone.
 
 # ---------------------------------------------------------------------------
-# Questions
+# Questions shared with every use case
 # ---------------------------------------------------------------------------
+# Each is defined in the use case's copier.yml too, and a generation test asserts the two agree.
 project_name:
   type: str
   help: Project name, as a human would write it (e.g. "Weather Tools")
-
-package_name:
-  type: str
-  help: Importable package name, under src/
-  default: "{{ project_name | lower | replace('-', '_') | replace(' ', '_') }}"
-  validator: >-
-    {% if not package_name %}package_name is required
-    {% elif not (package_name | regex_search('^[a-z_][a-z0-9_]*$')) %}
-    must be lower case, start with a letter or underscore, and contain only letters, digits
-    and underscores; got "{{ package_name }}"
-    {% endif %}
-
-script_name:
-  type: str
-  help: Console script name, the command typed in a terminal
-  default: "{{ package_name | replace('_', '-') }}"
-  # Never default to `cli`. On Windows `cli` is a read-only PowerShell alias for `Clear-Item`,
-  # and an alias wins over an executable on PATH, so the command would be unreachable from the
-  # shell most Windows users are in. It is not unique either — every generated project would
-  # install the same name into the same environment.
-  validator: >-
-    {% if not script_name %}script_name is required
-    {% elif script_name == 'cli' %}
-    `cli` is a read-only PowerShell alias for Clear-Item on Windows and would be shadowed;
-    pick something specific to this project
-    {% elif not (script_name | regex_search('^[a-z][a-z0-9-]*$')) %}
-    must be lower case and contain only letters, digits and hyphens; got "{{ script_name }}"
-    {% endif %}
-
-# Typer derives the shell-completion variable by upper-casing prog_name and replacing hyphens
-# with underscores. Computed rather than asked — it is not a decision, just a consequence.
-completion_env_var:
-  type: str
-  default: "_{{ script_name | upper | replace('-', '_') }}_COMPLETE"
-  when: false
-
-project_description:
-  type: str
-  help: One-line description
-  default: ""
+  default: "{{ _external_data.use_case.project_name | default('') }}"
+  validator: "{% if not project_name %}project_name is required{% endif %}"
 
 author_name:
   type: str
   help: Author name
+  default: "{{ _external_data.use_case.author_name | default('') }}"
 
 author_email:
   type: str
   help: Author email
+  default: "{{ _external_data.use_case.author_email | default('') }}"
 
-# A choice, not free text: the scaffold uses `typing.override`, so anything below 3.12 generates a
-# project that passes its gate and then fails at import. `.python-version` is rendered from this,
-# so the venv, the tests and ty all run at the floor and prove it on every run.
+# A choice, not free text: the shipped code uses `typing.override`, so anything below 3.12 passes
+# its gate and then fails at import. `.python-version` is rendered from this, so the venv, the
+# tests and ty all run at the floor and prove it on every run.
 python_version:
   type: str
   help: Minimum Python version
-  default: "3.14"
+  default: "{{ _external_data.use_case.python_version | default('3.14') }}"
   choices:
     - "3.12"
     - "3.13"
@@ -81,8 +64,6 @@ python_version:
 # ---------------------------------------------------------------------------
 # What not to copy
 # ---------------------------------------------------------------------------
-# Every project gets the same files. There is one project shape, the typer CLI; data processing
-# and full-screen TUIs are skills layered on it (python-data, python-tui), not project types.
 _exclude:
   - "copier.yml"
   - "~*"
@@ -94,8 +75,9 @@ _exclude:
 # ---------------------------------------------------------------------------
 # Side effects, run in the generated project
 # ---------------------------------------------------------------------------
-# Each entry is a list, so it is executed directly rather than through a shell — the same
-# portability rule the template's own hooks follow.
+# The base owns every bootstrap task, so a use case need not repeat them. Each entry is a list, so
+# it is executed directly rather than through a shell — the same portability rule the template's
+# own hooks follow.
 #
 # All three prek shims are installed. `prek install` alone wires only pre-commit, which
 # silently disables the commit-message check and makes `git merge --no-ff` into main fail.

@@ -1,33 +1,54 @@
 # Working on this template repository
 
-This repo is a [copier](https://copier.readthedocs.io/) template. The root is **not** a Python
-project: everything that becomes a generated project lives under `template/`, which is what
-`_subdirectory` in `copier.yml` points at.
+This repo holds [copier](https://copier.readthedocs.io/) templates in two layers, applied to the
+same project. The root is **not** a Python project.
+
+- **The base** is the root `copier.yml` plus `template/`: the hooks, `tools/`, `CLAUDE.md`, the
+  shared skills and a fallback `pyproject.toml`. It also stands alone, for a prototype or a repo
+  adopting the guards.
+- **A use case** is a template of its own under `use-cases/<name>/`, with its own `copier.yml` and
+  `template/`. `use-cases/cli-typer/` is the typer CLI. Its one task applies the base to the same
+  directory, so one `copier copy` yields both layers, each with its own answers file.
+- A use case moves to its own repository in phase 10 of `TODO.md`; this layout is how it lives here
+  until then.
 
 @template/CLAUDE.md
 
-The rules imported above govern every file under `template/` — that is the code being shipped, and
-it is held to exactly the standard it preaches. What follows is only what differs at this level.
+The rules imported above govern every file under `template/` and `use-cases/` — that is the code
+being shipped, and it is held to exactly the standard it preaches. What follows is only what
+differs at this level.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `template/` | Becomes the generated project. Holds Jinja; not runnable in place. |
-| `copier.yml` | The questions, the exclusions and the generation tasks. |
-| `tests/test_template.py` | Generates projects and runs their gate. The only check on `template/`. |
+| `template/` | The base layer of a generated project. Holds Jinja; not runnable in place. |
+| `copier.yml` | The base's questions, exclusions and bootstrap tasks. |
+| `use-cases/cli-typer/` | The CLI layer: its own `copier.yml` and `template/`. Same caveats. |
+| `tests/test_template.py` | Generates projects and runs their gate. The only check on the templates. |
 | `.pre-commit-config.yaml` | Governs **this** repo. `.git` is here, so this is what the git hooks read. |
 | `pyproject.toml` | Dev deps and lint config for the root. Not published, not importable. |
 | `TODO.md` | Outstanding work on the template itself. Not shipped. |
 
-A file under `template/` carries a `.jinja` suffix only when it must name something the answers
-decide:
+**Every generated file has exactly one owner**: it is rendered by the base or by a use case, never
+both. Two templates rendering the same path conflict on `copier update` (markers in the file), so
+the split is by directory and a test checks it. The base owns `CLAUDE.md`, `tools/` and its tests,
+`.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
+`.debugmcp.json`, `.vscode/`, `ruff-base.toml`, the skills `git-workflow`, `python-debug` and
+`python-cli`, and `.copier-answers.base.yml`. The one exception is `pyproject.toml`, which the use
+case owns: the base also renders a minimal one under `_skip_if_exists`, which copier never
+overwrites, so it reaches only a project that has none. The use case owns `pyproject.toml`,
+`README.md`, `src/`, `tests/`, `.copier-answers.yml` and the skills `python-cli-typer`,
+`python-data` and `python-tui`.
+
+A file under either `template/` carries a `.jinja` suffix only when it must name something the
+answers decide:
 
 - the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
-  `.copier-answers.yml` and `.python-version`;
+  `.copier-answers.yml`, `.copier-answers.base.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
 - `conftest.py` and the test modules under `tests/`, which import the package by name;
-- the reference tests in `.claude/skills/python-cli-modern/reference/`, for the same reason: they
+- the reference tests in `.claude/skills/python-cli-typer/reference/`, for the same reason: they
   are copied into `tests/` unchanged, so they must already name the package.
 
 Everything else — `CLAUDE.md`, all of `tools/`, every other skill file, and the other source modules
@@ -42,18 +63,19 @@ needs the script name should import it from `config.py` rather than render it ag
 owns the commit-level rules — the message check and `no-commit-to-branch` — lints the repo's own
 markdown, and lints the one Python module the root holds.
 
-**`template/` is not checked in place, and cannot be.** It contains Jinja and has no
-`pyproject.toml` — only `pyproject.toml.jinja` — so `ruff` would fall back to default rules and `ty`
-would find no environment to resolve `httpx` or `typer` through. Its `.pre-commit-config.yaml` is
-suffixed `.jinja` for the same reason: that keeps prek from picking the directory up as a workspace
-member and running a gate there that is guaranteed to fail.
+**`template/` and `use-cases/` are not checked in place, and cannot be.** They contain Jinja and
+have no `pyproject.toml` — only `pyproject.toml.jinja` — so `ruff` would fall back to default rules
+and `ty` would find no environment to resolve `httpx` or `typer` through. Their
+`.pre-commit-config.yaml` is suffixed `.jinja` for the same reason: that keeps prek from picking the
+directory up as a workspace member and running a gate there that is guaranteed to fail.
 
-What covers it instead is `tests/test_template.py`. It generates projects — at the default Python and
-at the floor — and runs **that project's** gate and test suite inside each. This is the stronger check
-of the two — it verifies the thing that actually ships rather than the thing it is made from — but
+What covers them instead is `tests/test_template.py`. It generates projects — the CLI use case with
+the base layered on, at the default Python and at the floor, and the base alone — and runs
+**that project's** gate and test suite inside each. This is the stronger check of the two — it
+verifies the thing that actually ships rather than the thing it is made from — but
 it costs about a minute. It therefore runs only at commit, and only when the commit touches
-something that can change a generated project: `template/`, `tests/`, `copier.yml`, `pyproject.toml`
-or `uv.lock`. A commit of `TODO.md` alone skips it. To skip it deliberately anyway:
+something that can change a generated project: `template/`, `use-cases/`, `tests/`, `copier.yml`,
+`pyproject.toml` or `uv.lock`. A commit of `TODO.md` alone skips it. To skip it deliberately anyway:
 
 ```bash
 SKIP=generation-tests git commit -m "..."
@@ -72,8 +94,8 @@ the dev group.
 The edit-time `PostToolUse` gate uses `find_gate_root` in `template/tools/hook_payload.py`, which
 walks up from the edited file to the nearest `.pre-commit-config.yaml`, bounded by the repo root.
 Inside a generated project that lands on the root, which is the case it exists to serve. In *this*
-repo every file resolves to the root config, and that config excludes `^template/` — so editing
-something under `template/` is not gated as you type. The root's hook passes
+repo every file resolves to the root config, and that config excludes `^(template|use-cases)/` —
+so editing something under either is not gated as you type. The root's hook passes
 `--skip no-commit-to-branch,generation-tests` explicitly, so a save never pays for the generation
 suite either; the generation tests catch template edits at commit instead. Editing a root file the
 config does not match, such as `TODO.md`, likewise leaves the gate standing down rather than

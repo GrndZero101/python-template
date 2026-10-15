@@ -1,8 +1,13 @@
-"""Generation tests for the copier template.
+"""Generation tests for the copier templates.
 
-These are the only thing that verifies `template/`. It holds Jinja expressions and no
-`pyproject.toml`, so it cannot be linted, type-checked or run where it sits — the check is to
-generate a project and then run *that* project's own gate and test suite inside it.
+These are the only thing that verifies `template/` (the base) and `use-cases/cli-typer/template/`
+(the CLI layer). They hold Jinja expressions and no `pyproject.toml`, so they cannot be linted,
+type-checked or run where they sit — the check is to generate a project and then run *that*
+project's own gate and test suite inside it.
+
+A project is made in two steps by one command: copying the use case renders its files, then its one
+task copies the base over them. The tests below generate through the use case, as a user does, and
+point `base_template` at this checkout so the base under test is the working tree.
 
 Not offline: generation runs `uv sync`, which reaches the network on a cold cache. Everything
 else is deterministic — fixed answers, a fresh tmp directory per test, no clock and no rng.
@@ -19,12 +24,13 @@ import pytest
 from pytest_copie.plugin import Copie
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+USE_CASE_DIR = REPO_ROOT / "use-cases" / "cli-typer"
 
 # Every project gets every skill: data and TUI work are layered on the CLI, not chosen at generation.
 SKILLS = {
     "git-workflow",
     "python-cli",
-    "python-cli-modern",
+    "python-cli-typer",
     "python-data",
     "python-debug",
     "python-tui",
@@ -77,6 +83,14 @@ SCRIPT_NAME = "weather-tools"
 # The lowest `python_version` copier.yml offers. Every other test generates at the default.
 PYTHON_FLOOR = "3.12"
 
+# What the base asks when it is applied on its own: the questions the two layers share.
+SHARED_ANSWERS = {
+    "project_name": "Weather Tools",
+    "author_name": "A Dev",
+    "author_email": "dev@example.com",
+    "python_version": "3.14",
+}
+
 BASE_ANSWERS = {
     "project_name": "Weather Tools",
     "package_name": PACKAGE_NAME,
@@ -103,16 +117,18 @@ def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def _generate(
     copie: Copie,
-    template_dir: Path | None = None,
+    use_case_dir: Path | None = None,
+    base_dir: Path | None = None,
     python_version: str | None = None,
 ) -> Path:
     """Generate a project and return its directory, failing the test if copier did not.
 
-    `template_dir` overrides the repo under test, which the update tests need so they can move
-    the template forward without committing to the real one.
+    `use_case_dir` and `base_dir` override the two templates under test, which the update tests
+    need so they can move either one forward without committing to the real repo.
     """
     answers = _answers(python_version)
-    result = copie.copy(extra_answers=answers, template_dir=template_dir)
+    answers["base_template"] = str(base_dir or REPO_ROOT)
+    result = copie.copy(extra_answers=answers, template_dir=use_case_dir or USE_CASE_DIR)
     assert result.exception is None, f"copier raised: {result.exception}"
     assert result.exit_code == 0, f"copier exited {result.exit_code}"
     assert result.project_dir is not None
@@ -136,17 +152,41 @@ requires_prek = _requires("prek")
 requires_copier = _requires("copier")
 
 
-def _clone_template(destination: Path) -> Path:
-    """Clone this repo so a test can commit to the template without touching the real one.
+def _snapshot(source: Path, destination: Path, name: str, *pathspecs: str) -> Path:
+    """Copy a template's working tree into a fresh git repo, so a test can commit to it.
 
-    `copier update` compares the commit recorded in `.copier-answers.yml` against a newer ref, so
-    a meaningful test needs a template it can actually move forward. Only committed state is
-    cloned, which is what a generated project would pull from anyway.
+    `copier update` compares the commit recorded in the answers file against a newer ref, so a
+    meaningful test needs a template it can actually move forward, and one that is a git repo root:
+    copier records no commit for a plain directory. A use case lives in a subdirectory here, so it
+    needs this even though the base could be cloned. Uncommitted changes are included, because the
+    pre-commit hook runs these tests before the commit that would hold them.
     """
-    clone = destination / "template-clone"
-    cloned = _run(["git", "clone", "--quiet", str(REPO_ROOT), str(clone)], destination)
-    assert cloned.returncode == 0, cloned.stderr
-    return clone
+    snapshot = destination / name
+    snapshot.mkdir()
+    listed = _run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *pathspecs],
+        source,
+    )
+    assert listed.returncode == 0, listed.stderr
+    for relative in filter(None, listed.stdout.split("\0")):
+        origin = source / relative
+        if not origin.is_file():  # staged for deletion, or a directory entry
+            continue
+        (snapshot / relative).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(origin, snapshot / relative)
+    assert _run(["git", "init", "--quiet", "-b", "main"], snapshot).returncode == 0
+    _commit_all(snapshot, "chore: snapshot the template under test")
+    return snapshot
+
+
+def _snapshot_base(destination: Path) -> Path:
+    """Snapshot the base template: `copier.yml` and everything it generates from."""
+    return _snapshot(REPO_ROOT, destination, "base-snapshot", "copier.yml", "template")
+
+
+def _snapshot_use_case(destination: Path) -> Path:
+    """Snapshot the CLI use case, which becomes its own repo's root once it is split out."""
+    return _snapshot(USE_CASE_DIR, destination, "use-case-snapshot")
 
 
 def _commit_all(repo: Path, message: str) -> None:
@@ -248,10 +288,41 @@ def test_generation_leaves_a_committed_repo_on_main(copie: Copie) -> None:
 
 
 @requires_uv
-def test_answers_file_is_written_for_copier_update(copie: Copie) -> None:
+def test_each_layer_writes_its_own_answers_file(copie: Copie) -> None:
+    """Two templates on one project need two answers files, or each overwrites the other's."""
     project = _generate(copie)
-    answers = (project / ".copier-answers.yml").read_text(encoding="utf-8")
-    assert f"package_name: {PACKAGE_NAME}" in answers
+    use_case = (project / ".copier-answers.yml").read_text(encoding="utf-8")
+    assert f"package_name: {PACKAGE_NAME}" in use_case
+    base = (project / ".copier-answers.base.yml").read_text(encoding="utf-8")
+    assert "package_name" not in base, "the base recorded a question it does not ask"
+    assert "author_name: A Dev" in base, "the base should have read the use case's answers"
+
+
+@requires_uv
+def test_the_use_case_keeps_the_pyproject_it_wrote(copie: Copie) -> None:
+    """The base's fallback pyproject.toml is `_skip_if_exists`; if it won, the CLI would be gone."""
+    project = _generate(copie)
+    pyproject = (project / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'{SCRIPT_NAME} = "{PACKAGE_NAME}.cli:main"' in pyproject
+    assert 'extend = "ruff-base.toml"' in pyproject
+    assert (project / "ruff-base.toml").is_file()
+
+
+@requires_uv
+@requires_prek
+def test_the_base_alone_is_a_project_that_passes_its_gate(copie: Copie) -> None:
+    """A prototype or a brownfield repo adopts the base with no use case: its fallback must hold."""
+    result = copie.copy(extra_answers=SHARED_ANSWERS, template_dir=REPO_ROOT)
+    assert result.exception is None, f"copier raised: {result.exception}"
+    assert result.project_dir is not None
+    project = result.project_dir
+    assert (project / ".copier-answers.base.yml").is_file()
+    assert not (project / ".copier-answers.yml").exists()
+    assert not (project / "src").exists(), "the base alone must ship no source"
+    gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
+    assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
+    tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
+    assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
 
 
 # --- the generated project's own gate -----------------------------------------------------
@@ -304,7 +375,7 @@ def test_generated_project_works_at_the_python_floor(copie: Copie) -> None:
 
 # The skills' reference files, and where their recipes say to copy them.
 SKILLS_DIR = Path(".claude") / "skills"
-REFERENCE_DIR = SKILLS_DIR / "python-cli-modern" / "reference"
+REFERENCE_DIR = SKILLS_DIR / "python-cli-typer" / "reference"
 REFERENCE_MODULES = ["http_client.py", "status.py"]
 REFERENCE_TESTS = ["test_http_client.py", "test_status.py"]
 DATA_REFERENCE_DIR = SKILLS_DIR / "python-data" / "reference"
@@ -414,29 +485,38 @@ def test_debug_launcher_runs_a_source_module_with_relative_imports(copie: Copie)
 #
 # The reason copier was chosen over cookiecutter: an improvement to CLAUDE.md or a skill can be
 # pulled into projects that already exist. These tests are what make that claim true rather than
-# assumed. Each clones the repo so the template can be moved forward without touching the real one.
+# assumed. Each snapshots a template into a throwaway git repo, so it can be moved forward without
+# touching the real one. The snapshot includes uncommitted changes (see `_snapshot`); the commits
+# the test makes on top of it are what `copier update` diffs.
 #
-# UNLIKE EVERY OTHER TEST HERE, these see only COMMITTED state. `copier update` needs two real
-# commits to diff between, so the clone cannot include the working tree the way `copie.copy()`
-# does. A change to copier.yml that is not yet committed will not be under test.
+# Two layers means two updates: `copier update -a .copier-answers.base.yml` for the base, a plain
+# `copier update` for the use case. Each needs a clean tree and each touches only its own files.
 
 MARKER = "A line added by the template after this project was generated."
 
 
+UPDATE_BASE = ["copier", "update", "--trust", "--defaults", "-a", ".copier-answers.base.yml"]
+UPDATE_USE_CASE = ["copier", "update", "--trust", "--defaults"]
+
+
+def _append(path: Path, text: str) -> None:
+    """Append `text` to a file, as a template author's edit would."""
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+
+
 @requires_uv
 @requires_copier
-def test_update_pulls_a_later_template_change_into_an_existing_project(
+def test_update_pulls_a_later_base_change_into_an_existing_project(
     copie: Copie, tmp_path: Path
 ) -> None:
-    clone = _clone_template(tmp_path)
-    project = _generate(copie, template_dir=clone)
+    base = _snapshot_base(tmp_path)
+    project = _generate(copie, base_dir=base)
     assert MARKER not in (project / "CLAUDE.md").read_text(encoding="utf-8")
 
-    claude_md = clone / "template" / "CLAUDE.md"
-    claude_md.write_text(claude_md.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8")
-    _commit_all(clone, "docs: add a marker line")
+    _append(base / "template" / "CLAUDE.md", f"\n{MARKER}\n")
+    _commit_all(base, "docs: add a marker line")
 
-    updated = _run(["copier", "update", "--trust", "--defaults"], project)
+    updated = _run(UPDATE_BASE, project)
     assert updated.returncode == 0, updated.stdout + updated.stderr
     assert MARKER in (project / "CLAUDE.md").read_text(encoding="utf-8")
 
@@ -445,36 +525,58 @@ def test_update_pulls_a_later_template_change_into_an_existing_project(
 @requires_copier
 def test_update_preserves_a_file_the_project_has_edited(copie: Copie, tmp_path: Path) -> None:
     """The case that decides whether updating is safe: local work must not be silently lost."""
-    clone = _clone_template(tmp_path)
-    project = _generate(copie, template_dir=clone)
+    use_case = _snapshot_use_case(tmp_path)
+    project = _generate(copie, use_case_dir=use_case)
 
     local_edit = "# A line this project added for itself.\n"
     readme = project / "README.md"
-    readme.write_text(readme.read_text(encoding="utf-8") + local_edit, encoding="utf-8")
+    _append(readme, local_edit)
     _commit_all(project, "docs: local change")
 
-    template_readme = clone / "template" / "README.md.jinja"
-    template_readme.write_text(
-        template_readme.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8"
-    )
-    _commit_all(clone, "docs: change the readme upstream")
+    _append(use_case / "template" / "README.md.jinja", f"\n{MARKER}\n")
+    _commit_all(use_case, "docs: change the readme upstream")
 
-    updated = _run(["copier", "update", "--trust", "--defaults"], project)
+    updated = _run(UPDATE_USE_CASE, project)
     assert updated.returncode == 0, updated.stdout + updated.stderr
     assert local_edit in readme.read_text(encoding="utf-8"), "local work was discarded"
+
+
+@requires_uv
+@requires_copier
+def test_each_layer_updates_only_its_own_files(copie: Copie, tmp_path: Path) -> None:
+    """D12's claim: a base fix reaches a project without a use-case release, and the reverse."""
+    base = _snapshot_base(tmp_path)
+    use_case = _snapshot_use_case(tmp_path)
+    project = _generate(copie, use_case_dir=use_case, base_dir=base)
+
+    _append(base / "template" / "CLAUDE.md", f"\n{MARKER}\n")
+    _commit_all(base, "docs: change the base")
+    _append(use_case / "template" / "README.md.jinja", f"\n{MARKER}\n")
+    _commit_all(use_case, "docs: change the use case")
+    claude_md = project / "CLAUDE.md"
+    readme = project / "README.md"
+
+    base_update = _run(UPDATE_BASE, project)
+    assert base_update.returncode == 0, base_update.stdout + base_update.stderr
+    assert MARKER in claude_md.read_text(encoding="utf-8")
+    assert MARKER not in readme.read_text(encoding="utf-8"), "a base update touched the use case"
+
+    _commit_all(project, "chore: apply the base update")
+    use_case_update = _run(UPDATE_USE_CASE, project)
+    assert use_case_update.returncode == 0, use_case_update.stdout + use_case_update.stderr
+    assert MARKER in readme.read_text(encoding="utf-8")
 
 
 @requires_uv
 @requires_prek
 @requires_copier
 def test_a_project_still_passes_its_gate_after_updating(copie: Copie, tmp_path: Path) -> None:
-    clone = _clone_template(tmp_path)
-    project = _generate(copie, template_dir=clone)
+    base = _snapshot_base(tmp_path)
+    project = _generate(copie, base_dir=base)
 
-    claude_md = clone / "template" / "CLAUDE.md"
-    claude_md.write_text(claude_md.read_text(encoding="utf-8") + f"\n{MARKER}\n", encoding="utf-8")
-    _commit_all(clone, "docs: add a marker line")
-    _run(["copier", "update", "--trust", "--defaults"], project)
+    _append(base / "template" / "CLAUDE.md", f"\n{MARKER}\n")
+    _commit_all(base, "docs: add a marker line")
+    _run(UPDATE_BASE, project)
 
     gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
     assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
