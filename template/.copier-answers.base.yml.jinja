@@ -2,4 +2,4 @@
 # `copier update -a .copier-answers.base.yml` reads it to re-apply base changes. Do not delete it,
 # and do not edit it by hand — copier overwrites it on every update. The use case's answers are in
 # .copier-answers.yml, which a plain `copier update` reads.
-{{ _copier_answers | to_nice_yaml -}}
+{{ dict(_copier_answers, copyright_year=copyright_year) | to_nice_yaml -}}

@@ -105,11 +105,12 @@ BASE_ANSWERS = {
 }
 
 
-def _answers(python_version: str | None = None) -> dict[str, str]:
-    """Return the full answer set, optionally at another Python version."""
+def _answers(python_version: str | None = None, **overrides: str) -> dict[str, str]:
+    """Return the full answer set, optionally at another Python version or with other answers."""
     answers = dict(BASE_ANSWERS)
     if python_version is not None:
         answers["python_version"] = python_version
+    answers.update(overrides)
     return answers
 
 
@@ -123,13 +124,14 @@ def _generate(
     use_case_dir: Path | None = None,
     base_dir: Path | None = None,
     python_version: str | None = None,
+    **overrides: str,
 ) -> Path:
     """Generate a project and return its directory, failing the test if copier did not.
 
     `use_case_dir` and `base_dir` override the two templates under test, which the update tests
     need so they can move either one forward without committing to the real repo.
     """
-    answers = _answers(python_version)
+    answers = _answers(python_version, **overrides)
     answers["base_template"] = str(base_dir or REPO_ROOT)
     result = copie.copy(extra_answers=answers, template_dir=use_case_dir or USE_CASE_DIR)
     assert result.exception is None, f"copier raised: {result.exception}"
@@ -337,6 +339,81 @@ def test_the_base_alone_is_a_project_that_passes_its_gate(copie: Copie) -> None:
     assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+# --- the licence ---------------------------------------------------------------------------
+
+HOLDER = "Acme Ltd"
+# A phrase only that licence's text contains, and the SPDX id pyproject.toml should carry.
+LICENCE_MARKERS = {
+    "MIT": ("Permission is hereby granted, free of charge", "MIT"),
+    "Apache-2.0": ("Apache License\n", "Apache-2.0"),
+    "Proprietary": ("All rights reserved.", "LicenseRef-Proprietary"),
+}
+
+
+def _recorded_year(project: Path) -> str:
+    """Return the year the answers file locked in, which must look like a year."""
+    year = str(_load_yaml(project / ".copier-answers.yml")["copyright_year"])
+    assert re.fullmatch(r"\d{4}", year), f"copyright_year is {year!r}"
+    return year
+
+
+@requires_uv
+@pytest.mark.parametrize("licence", sorted(LICENCE_MARKERS))
+def test_the_licence_follows_the_answers(copie: Copie, licence: str) -> None:
+    """D14: a generated project names its own holder and licence, never the template author's."""
+    project = _generate(copie, license=licence, copyright_holder=HOLDER)
+    text = (project / "LICENSE").read_text(encoding="utf-8")
+    marker, spdx = LICENCE_MARKERS[licence]
+    assert marker in text
+    assert f"{_recorded_year(project)} {HOLDER}" in text
+    assert "GrndZero101" not in text
+    pyproject = (project / "pyproject.toml").read_text(encoding="utf-8")
+    assert f'license = "{spdx}"' in pyproject
+    readme = (project / "README.md").read_text(encoding="utf-8")
+    assert "(LICENSE)" in readme
+    assert (licence in readme) or licence == "Proprietary"
+
+
+@requires_uv
+def test_the_holder_defaults_to_the_author_and_the_licence_to_mit(copie: Copie) -> None:
+    project = _generate(copie)
+    text = (project / "LICENSE").read_text(encoding="utf-8")
+    assert text.startswith("MIT License\n\nCopyright (c) ")
+    assert f"{_recorded_year(project)} {BASE_ANSWERS['author_name']}" in text
+
+
+@requires_uv
+@requires_copier
+def test_update_keeps_the_year_it_recorded(copie: Copie, tmp_path: Path) -> None:
+    """A computed answer is recomputed on every update unless the recipe locks it (D14).
+
+    The answers file is edited to a year the clock cannot produce, so a recomputed year is
+    distinguishable from a kept one without waiting for New Year.
+    """
+    base = _snapshot_base(tmp_path)
+    project = _generate(copie, base_dir=base)
+    for name in (".copier-answers.yml", ".copier-answers.base.yml"):
+        answers = project / name
+        year = _recorded_year(project)
+        answers.write_text(
+            answers
+            .read_text(encoding="utf-8")
+            .replace(f"copyright_year: '{year}'", "copyright_year: '1999'")
+            .replace(f"copyright_year: {year}", "copyright_year: '1999'"),
+            encoding="utf-8",
+        )
+    _commit_all(project, "chore: pretend the project is old")
+    _append(base / "template" / "CLAUDE.md", f"\n{MARKER}\n")
+    _commit_all(base, "docs: add a marker line")
+
+    updated = _run(UPDATE_BASE, project)
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    assert "1999" in (project / "LICENSE").read_text(encoding="utf-8")
+    assert "copyright_year: '1999'" in (project / ".copier-answers.base.yml").read_text(
+        encoding="utf-8"
+    )
 
 
 # --- the contract between the layers ------------------------------------------------------

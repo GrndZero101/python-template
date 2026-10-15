@@ -7,6 +7,7 @@ authors = [
     { name = "{{ author_name }}", email = "{{ author_email }}" }
 ]
 requires-python = ">={{ python_version }}"
+license = "{% if license == 'Proprietary' %}LicenseRef-Proprietary{% else %}{{ license }}{% endif %}"
 dependencies = [
     "loguru>=0.7.3",
     "pydantic>=2.13.4",
