@@ -311,7 +311,7 @@ wheels = [
 ]
 
 [[package]]
-name = "python-template-dev"
+name = "python-template-base-dev"
 version = "0"
 source = { virtual = "." }
 

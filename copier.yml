@@ -6,7 +6,7 @@
 # answered from the use case's answers file and nothing is asked twice. Run on its own, this
 # template asks everything, which is how a prototype or a brownfield repo adopts the guards.
 #
-# On its own:  copier copy --trust gh:GrndZero101/python-template <destination>
+# On its own:  copier copy --trust gh:GrndZero101/python-template-base <destination>
 # Update:      copier update --trust -a .copier-answers.base.yml
 # --trust is required because of `_tasks` below; copier exits 4 without it.
 _subdirectory: template
@@ -124,7 +124,7 @@ _tasks:
     when: "{{ _copier_operation == 'copy' }}"
   - command: ["git", "add", "-A"]
     when: "{{ _copier_operation == 'copy' }}"
-  - command: ["git", "commit", "-m", "chore: generate project from python-template"]
+  - command: ["git", "commit", "-m", "chore: generate project from python-template-base"]
     when: "{{ _copier_operation == 'copy' }}"
   - command: ["prek", "install"]
     when: "{{ _copier_operation == 'copy' }}"
