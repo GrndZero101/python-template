@@ -31,11 +31,10 @@ The state to expect:
   is now the only automatic check of the hooks, the licence and the update tests.
 - Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
   first whenever a CLI change depends on a base change.
-- Nothing relies on GitHub's redirect from the old name, except what the author fixes outside
-  these repos: the canary's `.copier-answers.yml` (`_src_path`) and `README.md` link, edited from
-  a session in the canary (commit `2957d4c` exists under the new name, so `_src_path` simply
-  becomes `gh:GrndZero101/python-template-base`), and the stale old-path entries in
-  `~/.claude.json`, removed with Claude Code closed. Check both before step 8.
+- Nothing relies on GitHub's redirect from the old name. The canary followed at `c218913`: its
+  `_src_path` is `gh:GrndZero101/python-template-base` at the same `_commit: 2957d4c`, which
+  exists under the new name, and its README and description name the base too. The stale
+  old-path entries in `~/.claude.json` were removed with Claude Code closed.
 - Renaming the directory left the `.venv` pointing at the old path (`Failed to spawn: pytest`):
   `rm -rf .venv && uv sync` fixed it. Any other clone moved on disk needs the same.
 
