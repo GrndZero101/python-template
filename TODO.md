@@ -6,9 +6,10 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 10, step 5: the licence questions. Steps 2 to 4 are done (the layers exist, the base names no
-stack, and the contract between them is tested). Work runs sequentially, with no worktrees or side
-tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**Checkpoint C2: start a new session.** Then phase 10, step 6: the new repo
+`python-template-cli-typer`, seeded from this repo's history (never `git init`), with CI on three
+platforms against the base at `HEAD`. Work runs sequentially, with no worktrees or side tracks. The
+rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
 
@@ -346,12 +347,17 @@ each step on scratch copies first; the canary's update is the acceptance test.
    what the base relies on. The ruff keys forbidden beside `extend` are `select`, `ignore`,
    `per-file-ignores` and `unfixable`, not just the first two D15 named: each replaces a base
    list. Each check was shown to fail when its rule was broken.
-5. [ ] **Licence questions** (D14): `copier.yml`; `template/LICENSE` becomes a template; the
-   answers-file templates, to lock the year; `use-cases/cli-typer/template/README.md.jinja:163–165`,
-   which hard-codes "[MIT]"; that `pyproject.toml.jinja` and the base's fallback one if they gain
-   `license =`; and a generation test. Before the split, so the locked-year answers file is copied
-   into both layers.
-   **Checkpoint C2**, with steps 2–5 merged here and the layering rehearsed on scratch copies.
+5. [x] **Licence questions** (D14, 2026-10-16). Both `copier.yml` files ask `license` (MIT,
+   Apache-2.0, Proprietary) and `copyright_holder`, and compute `copyright_year`; both
+   answers-file templates write the year back, so an update keeps it (a test edits the recorded
+   year to 1999 and checks the update leaves it). `template/LICENSE` is `LICENSE.jinja`, holding
+   the three texts, the Apache one verbatim from the Apache Software Foundation's text (found in
+   an installed package, not typed from memory). Both `pyproject.toml.jinja` files gain
+   `license = "<SPDX>"` (`LicenseRef-Proprietary` for Proprietary), and `uv build` accepts all
+   three. The README's licence line follows the answer. The root `LICENSE` stays MIT: it is this
+   repo's own.
+   **Checkpoint C2**, reached: steps 2–5 are merged here, and the layering is rehearsed by the
+   update tests and by scratch generations.
 6. [ ] **New repo `python-template-cli-typer`**, public. **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
    template at the commit recorded in the canary's answers file, and that commit must exist in the

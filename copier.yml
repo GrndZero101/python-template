@@ -61,6 +61,29 @@ python_version:
     - "3.13"
     - "3.14"
 
+# What the licence is, and whose name is on it. The year is recorded when the project is generated.
+# A computed value is dropped from the answers file unless the answers-file template adds it back,
+# and then recomputed on every update, so `copier update` would quietly roll the year forward:
+# `default` reads the recorded year if there is one, and the answers-file template writes it down.
+license:
+  type: str
+  help: Licence
+  default: "{{ _external_data.use_case.license | default('MIT') }}"
+  choices:
+    - MIT
+    - Apache-2.0
+    - Proprietary
+
+copyright_holder:
+  type: str
+  help: Name on the copyright line
+  default: "{{ _external_data.use_case.copyright_holder | default(author_name) }}"
+
+copyright_year:
+  type: str
+  default: "{{ _external_data.use_case.copyright_year | default(copyright_year | default('%Y' | strftime)) }}"
+  when: false
+
 # ---------------------------------------------------------------------------
 # What not to copy
 # ---------------------------------------------------------------------------

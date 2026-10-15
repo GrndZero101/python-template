@@ -51,7 +51,8 @@ git switch -c feat/first-thing                    # never work on main
 ```
 
 You will be asked for: project name, package name, console script name, description, author name
-and email, and minimum Python version (3.12, 3.13 or 3.14).
+and email, minimum Python version (3.12, 3.13 or 3.14), licence (MIT, Apache-2.0 or Proprietary)
+and the name on its copyright line.
 
 Every project is a CLI on typer, pydantic-settings, rich and loguru, with a scaffold: one
 placeholder `about` command, with global and command flags that each resolve flag, then

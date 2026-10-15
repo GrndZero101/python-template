@@ -44,7 +44,7 @@ overwrites, so it reaches only a project that has none. The use case owns `pypro
 A file under either `template/` carries a `.jinja` suffix only when it must name something the
 answers decide:
 
-- the project files `pyproject.toml`, `README.md`, `.pre-commit-config.yaml`,
+- the project files `pyproject.toml`, `README.md`, `LICENSE`, `.pre-commit-config.yaml`,
   `.copier-answers.yml`, `.copier-answers.base.yml` and `.python-version`;
 - `cli.py` and `config.py`, which hold the script name and the environment-variable prefix;
 - `conftest.py` and the test modules under `tests/`, which import the package by name;

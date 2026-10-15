@@ -8,6 +8,7 @@
 name = "{{ project_name | lower | replace(' ', '-') | replace('_', '-') }}"
 version = "0.1.0"
 requires-python = ">={{ python_version }}"
+license = "{% if license == 'Proprietary' %}LicenseRef-Proprietary{% else %}{{ license }}{% endif %}"
 authors = [
     { name = "{{ author_name }}", email = "{{ author_email }}" }
 ]

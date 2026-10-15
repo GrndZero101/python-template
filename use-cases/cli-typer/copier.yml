@@ -63,8 +63,8 @@ project_description:
   help: One-line description
   default: ""
 
-# The next three are also asked by the base template, which reads these answers instead of asking
-# again. A generation test asserts the two definitions agree.
+# Every question from here through `copyright_year` is also asked by the base template, which
+# reads these answers instead of asking again. A generation test asserts the two definitions agree.
 author_name:
   type: str
   help: Author name
@@ -84,6 +84,29 @@ python_version:
     - "3.12"
     - "3.13"
     - "3.14"
+
+# What the licence is, and whose name is on it. The year is recorded when the project is generated.
+# A computed value is dropped from the answers file unless the answers-file template adds it back,
+# and then recomputed on every update, so `copier update` would quietly roll the year forward:
+# `default` reads the recorded year if there is one, and the answers-file template writes it down.
+license:
+  type: str
+  help: Licence
+  default: "MIT"
+  choices:
+    - MIT
+    - Apache-2.0
+    - Proprietary
+
+copyright_holder:
+  type: str
+  help: Name on the copyright line
+  default: "{{ author_name }}"
+
+copyright_year:
+  type: str
+  default: "{{ copyright_year | default('%Y' | strftime) }}"
+  when: false
 
 # An answer, not a constant, so the generation tests and the base's CI can point it at a local
 # checkout. It is recorded in `.copier-answers.yml`, which makes the base's origin visible.
