@@ -9,8 +9,10 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 **Step 9, the uv-script skill.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
 from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
 history was clean, its package is renamed and its author email scrubbed, and it is public. The
-canary's follow-ups under step 8 are closed, and the update docs now cover both layers. Next is
-step 9, the uv-script skill. Work runs sequentially, with no worktrees or side
+canary's follow-ups under step 8 are closed, and the update docs now cover both layers. A blank
+email can be avoided too: both READMEs show copier's user settings file, filled from `git config`,
+and a CLI test pins that such a file cannot split the layers' answers. Next is step 9, the
+uv-script skill. Work runs sequentially, with no worktrees or side
 tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
@@ -552,6 +554,12 @@ Done: CI for this repo (2026-10-15), under "Done" above.
   consumers (`typer_entrypoint.py` superseded the canary's own version, with changed semantics),
   and which interface moves a consumer's own commands must follow (`-v/--verbose` went global, so
   `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
+- [ ] **A setup helper** for a first-time user (raised 2026-10-16): install `uv`, `copier` and
+  `prek`, write copier's settings file from `git config` (the READMEs' tip does this by hand), and
+  check `gh` if present. Open: a POSIX `sh` script, which needs nothing installed but gets
+  `curl | sh`-style trust questions, or a `uv run` script with inline dependencies, which needs `uv`
+  first and can then use copier's API. zsh is the author's shell but not a fair floor. Not a
+  template file: it runs before any project exists.
 
 ## Later
 
