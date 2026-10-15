@@ -6,9 +6,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Start a new session** (checkpoint C0). Then phase 10, step 1: settle D15 from the answers the
-2026-10-15 review proposed. The licence side track may run alongside. The rest of phase 8 waits
-behind phase 10 so that nothing under `template/` moves twice.
+**Start a new session** (checkpoint C1). Then phase 10, step 2: assign every file an owner. D15 is
+settled. Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind
+phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
 
@@ -54,40 +54,15 @@ A checkpoint falls:
 Phase 10's checkpoints are named in its steps, C1 to C5. C4 is mandatory, not advisory: the
 rename moves the directory the session started in.
 
-## How work runs in parallel
+## How work runs
 
-Decided 2026-10-15. **One main thread, at most one side track at a time.**
-
-- **The main thread is phase 10**: one session at a time, in order, each step ending mergeable.
-  Its steps move the files each next step depends on, so two sessions would only collide.
-- **A side track** touches files the main thread will not touch before the side track merges.
-  It runs in its own worktree and session, finishes with `finish_branch.py` like any branch, and
-  is ticked below when merged. Start the next only after that. Read-only work — a review, an
-  audit — needs no worktree; start a session where the files are.
-- **Why only one:** the author reviews every decision and merge, so a second side track mostly
-  adds context switching; each session pays its own context, against goal 3; and two local
-  generation suites slow each other down. Push the side track's branch to let CI run its suite.
-- **Mechanics**, from the main checkout:
-
-  ```bash
-  git worktree add ../python-template-<track> -b <type>/<track>
-  cd ../python-template-<track> && uv sync && claude
-  ```
-
-  `finish_branch.py` ends by switching to `main`, and git refuses that while another worktree has
-  `main` checked out. So finish in the worktree only while the main checkout is on a branch;
-  otherwise `git worktree remove ../python-template-<track>` first and finish from the main
-  checkout. If `main` moved meanwhile, `finish_branch.py` says so and the **git-workflow** skill
-  covers the rebase. A session started in a worktree runs that tree's hooks, on that tree.
-  Memory is keyed on the directory, so this file is the hand-off. `claude --worktree` is untried
-  here, and a worktree nested in the main checkout could dirty its tree.
-
-### Side tracks
-
-- [ ] **Licence questions (D14).** `copier.yml`; `template/LICENSE` becomes a template; the
-  answers-file template, to lock the year; `README.md.jinja:163–165`, which hard-codes "[MIT]";
-  `pyproject.toml.jinja` if it gains `license =`; and a generation test. Before the split, so the
-  locked-year answers file is copied into both layers.
+Decided 2026-10-15, amended the same day. **Sequential: one session, one branch, one step at a
+time.** An earlier plan ran side tracks in git worktrees beside phase 10. It was dropped before
+any ran: the author reviews every decision and merge, so a second track mostly adds context
+switching; each session pays its own context, against goal 3; two local generation suites slow
+each other down; and `finish_branch.py` ends by switching to `main`, which git refuses while
+another worktree has it checked out. Phase 10's steps also move the files each next step depends
+on. Read-only work — a review, an audit — is still a session started where the files are.
 
 ## Status snapshot
 
@@ -151,43 +126,6 @@ Open:
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
 | D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the canary settles, then `v0.1.0`. See phase 8. |
-| D15 | The base on its own, and in a brownfield repo | Phase 10, step 1 | The proposed answers below. |
-
-**D15, open.** The base is a use case in itself (2026-10-15): a skeleton with every guard for
-prototyping before the shape is known, or dropped into a brownfield repo with the least
-disruption. The 2026-10-15 review proposed these answers; each was checked against the code.
-
-- **Who owns `pyproject.toml`.** The use case, when layered. The base renders a minimal one under
-  `_skip_if_exists`, which copier never overwrites and leaves out of the update patch, for the
-  standalone and brownfield cases — so the ownership check exempts it. Ruff is the only tool that
-  merges configs: the use case writes `extend = "ruff-base.toml"` and then **only additive keys**
-  (`extend-select`, `extend-per-file-ignores`, `extend-exclude`), because its own `select` or
-  `per-file-ignores` would replace the base's lists, dropping the whole rule set and the `tools/**`
-  exemptions. pytest, ty and rumdl take the first config file they find and merge nothing, so a
-  base-owned `pytest.ini`, `ty.toml` or `.rumdl.toml` would lock every use case and brownfield repo
-  out of adding a setting (FastAPI's async tests need their own); their config stays in
-  `pyproject.toml`, guarded by the contract test in phase 10.
-- **Order, and the shared questions.** Keep the spike's: one `copier copy` of the use case, whose
-  only task runs `copier copy --trust --defaults` of the base, and the base owns every bootstrap
-  task. The base defines the shared questions (author, licence, Python version) with
-  `default: "{{ _external_data.use_case.<key> | default('') }}"`, so layered under `--defaults` it
-  asks nothing, and standalone it asks everything; a missing answers file yields an empty dict.
-  The base's source is an answer in the use case (`base_template`, default
-  `gh:GrndZero101/python-template-base`), so the generation tests and the base's CI can point it at
-  a local checkout. The base's `copier.yml` sets `_answers_file: .copier-answers.base.yml`, so no
-  `-a` is needed. Cost: shared questions are defined twice; a generation test asserts both
-  answers files agree on them.
-- **Applying the base to an existing repo** (the canary, a brownfield repo). It is a `copy`, so
-  every task runs: `git init`, `uv sync`, `git add -A`, `git commit` on whatever branch is checked
-  out, and the `prek install`s. `copier copy --skip-tasks` (`-T`) avoids it, followed by the three
-  `prek install`s by hand. A `bootstrap_git` question only if brownfield adoption becomes real.
-  "Generation into unusual git states" — a destination that is already a repo, a default branch
-  other than `main` — belongs here, not in phase 8.
-- **Brownfield gating.** `finish_branch.py` runs `prek run --all-files` (finish_branch.py:209), and
-  `ty` checks the whole project whatever files it is given (gate.py:20–23), so the edit-time and
-  stop gates would fail a legacy codebase at the first save too. No machinery now: brownfield has
-  not reached `main`. When it does: a `--changed-only` flag on `finish_branch.py` reusing
-  `stop_gate.changed_files`, and `exclude` lists in the ty and rumdl config the adopter can edit.
 
 Decided:
 
@@ -246,6 +184,45 @@ Decided:
   the answers-file template dumping
   `{{ dict(_copier_answers, copyright_year=copyright_year) | to_nice_yaml }}`. Checked: copier
   9.17 loads `strftime` by default.
+- **D15** (2026-10-15) — **the base on its own, and in a brownfield repo.** The base is a use case
+  in itself: a skeleton with every guard for prototyping before the shape is known, or dropped
+  into a brownfield repo with the least disruption. The 2026-10-15 review's proposed answers were
+  each checked against the code, and accepted unamended.
+
+  **Who owns `pyproject.toml`.** The use case, when layered. The base renders a minimal one under
+  `_skip_if_exists`, which copier never overwrites and leaves out of the update patch, for the
+  standalone and brownfield cases — so the ownership check exempts it. Ruff is the only tool that
+  merges configs: the use case writes `extend = "ruff-base.toml"` and then **only additive keys**
+  (`extend-select`, `extend-per-file-ignores`, `extend-exclude`), because its own `select` or
+  `per-file-ignores` would replace the base's lists, dropping the whole rule set and the `tools/**`
+  exemptions. pytest, ty and rumdl take the first config file they find and merge nothing, so a
+  base-owned `pytest.ini`, `ty.toml` or `.rumdl.toml` would lock every use case and brownfield repo
+  out of adding a setting (FastAPI's async tests need their own); their config stays in
+  `pyproject.toml`, guarded by the contract test in phase 10.
+
+  **Order, and the shared questions.** Keep the spike's: one `copier copy` of the use case, whose
+  only task runs `copier copy --trust --defaults` of the base, and the base owns every bootstrap
+  task. The base defines the shared questions (author, licence, Python version) with
+  `default: "{{ _external_data.use_case.<key> | default('') }}"`, so layered under `--defaults` it
+  asks nothing, and standalone it asks everything; a missing answers file yields an empty dict.
+  The base's source is an answer in the use case (`base_template`, default
+  `gh:GrndZero101/python-template-base`), so the generation tests and the base's CI can point it at
+  a local checkout. The base's `copier.yml` sets `_answers_file: .copier-answers.base.yml`, so no
+  `-a` is needed. Cost: shared questions are defined twice; a generation test asserts both
+  answers files agree on them.
+
+  **Applying the base to an existing repo** (the canary, a brownfield repo). It is a `copy`, so
+  every task runs: `git init`, `uv sync`, `git add -A`, `git commit` on whatever branch is checked
+  out, and the `prek install`s. `copier copy --skip-tasks` (`-T`) avoids it, followed by the three
+  `prek install`s by hand. A `bootstrap_git` question only if brownfield adoption becomes real.
+  "Generation into unusual git states" — a destination that is already a repo, a default branch
+  other than `main` — belongs here, not in phase 8.
+
+  **Brownfield gating.** `finish_branch.py` runs `prek run --all-files` (finish_branch.py:209), and
+  `ty` checks the whole project whatever files it is given (gate.py:20–23), so the edit-time and
+  stop gates would fail a legacy codebase at the first save too. No machinery now: brownfield has
+  not reached `main`. When it does: a `--changed-only` flag on `finish_branch.py` reusing
+  `stop_gate.changed_files`, and `exclude` lists in the ty and rumdl config the adopter can edit.
 
 ## Done: phases 1–9, and the lessons that still apply
 
@@ -334,8 +311,8 @@ Prove D12 on the use case that already works before building another. One sessio
 order; each step ends mergeable, and the checkpoints say where a new session starts. Rehearse
 each step on scratch copies first; the canary's update is the acceptance test.
 
-1. [ ] **Settle D15**: accept or amend the proposed answers, and move D15 to "Decided".
-   **Checkpoint C1.**
+1. [x] **Settle D15**: accepted unamended (2026-10-15) and moved to "Decided".
+   **Checkpoint C1**, reached.
 2. [ ] **Assign every file an owner.** Base: `CLAUDE.md`, `tools/` and its tests,
    `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
    `.debugmcp.json`, `.vscode/`, a new `ruff-base.toml`, the minimal `pyproject.toml` under
@@ -362,7 +339,10 @@ each step on scratch copies first; the canary's update is the acceptance test.
    `extra-paths` and `.claude` exclusion, `extend = "ruff-base.toml"` with no `select` or
    `per-file-ignores` key, and `pytest` and `debugpy` in the dev group. Not in `tools/tests`: a
    test there cannot notice `tools/tests` leaving `testpaths`, because it then never runs.
-5. [ ] **Licence questions** (D14), if the side track has not already landed them.
+5. [ ] **Licence questions** (D14): `copier.yml`; `template/LICENSE` becomes a template; the
+   answers-file template, to lock the year; `README.md.jinja:163–165`, which hard-codes "[MIT]";
+   `pyproject.toml.jinja` if it gains `license =`; and a generation test. Before the split, so the
+   locked-year answers file is copied into both layers.
    **Checkpoint C2**, with steps 2–5 merged here and the layering rehearsed on scratch copies.
 6. [ ] **New repo `python-template-cli-typer`**, public. **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
