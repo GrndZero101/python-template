@@ -15,12 +15,15 @@ else is deterministic — fixed answers, a fresh tmp directory per test, no cloc
 
 import json
 import os
+import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from pytest_copie.plugin import Copie
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -329,10 +332,118 @@ def test_the_base_alone_is_a_project_that_passes_its_gate(copie: Copie) -> None:
     assert (project / ".copier-answers.base.yml").is_file()
     assert not (project / ".copier-answers.yml").exists()
     assert not (project / "src").exists(), "the base alone must ship no source"
+    _assert_pyproject_serves_the_base(project / "pyproject.toml")
     gate = _run(["prek", "run", "--all-files", "--skip", "no-commit-to-branch"], project)
     assert gate.returncode == 0, f"{gate.stdout}\n{gate.stderr}"
     tests = _run(["uv", "run", "python", "-m", "pytest", "-q"], project)
     assert tests.returncode == 0, f"{tests.stdout}\n{tests.stderr}"
+
+
+# --- the contract between the layers ------------------------------------------------------
+#
+# Two templates on one project only work if they stay apart where they must and agree where they
+# share. These are the three ways that breaks, each caught here rather than by a user's update.
+
+
+def _rendered_paths(template: Path) -> set[str]:
+    """Return the paths a template would generate: its files, minus the `.jinja` suffix."""
+    return {
+        path.relative_to(template).as_posix().removesuffix(".jinja")
+        for path in template.rglob("*")
+        if path.is_file()
+    }
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_the_layers_render_no_file_in_common() -> None:
+    """A path both layers render conflicts on update, with markers in the file.
+
+    Only what the base lists under `_skip_if_exists` may overlap: copier never overwrites it and
+    leaves it out of the update patch, so the use case's version always wins.
+    """
+    base = _rendered_paths(REPO_ROOT / "template")
+    use_case = _rendered_paths(USE_CASE_DIR / "template")
+    skipped = set(_load_yaml(REPO_ROOT / "copier.yml")["_skip_if_exists"])
+    shared = (base & use_case) - skipped
+    assert shared == set(), f"rendered by both layers: {sorted(shared)}; give each file one owner"
+    assert skipped <= use_case, "a `_skip_if_exists` file the use case does not write is not shared"
+
+
+def _questions(copier_yml: Path) -> dict[str, dict[str, Any]]:
+    """Return a template's questions: every top-level key not starting with an underscore."""
+    config = _load_yaml(copier_yml)
+    return {key: value for key, value in config.items() if not key.startswith("_")}
+
+
+def test_the_layers_define_the_shared_questions_alike() -> None:
+    """The base asks what the use case did not, so a drift here asks a user twice or not at all.
+
+    The base falls back to a use case's answer, so its `default` differs by design; what must
+    agree is the question itself: its type, its help text and its choices.
+    """
+    base = _questions(REPO_ROOT / "copier.yml")
+    use_case = _questions(USE_CASE_DIR / "copier.yml")
+    missing = sorted(set(base) - set(use_case))
+    assert missing == [], f"base questions the use case does not ask: {missing}"
+    for name, question in base.items():
+        for key in ("type", "help", "choices"):
+            assert question.get(key) == use_case[name].get(key), f"{name}: `{key}` differs"
+
+
+@requires_uv
+def test_the_answers_files_agree_on_the_shared_questions(copie: Copie) -> None:
+    """Generated, the base must have recorded exactly what the use case did."""
+    project = _generate(copie)
+    base = _load_yaml(project / ".copier-answers.base.yml")
+    use_case = _load_yaml(project / ".copier-answers.yml")
+    shared = {key for key in base if not key.startswith("_")}
+    assert shared == set(_questions(REPO_ROOT / "copier.yml"))
+    for name in sorted(shared):
+        assert base[name] == use_case[name], (
+            f"{name}: base {base[name]!r}, use case {use_case[name]!r}"
+        )
+
+
+# What replaces a list in ruff-base.toml instead of adding to it. `extend-*` keys are the way in.
+RUFF_REPLACING_KEYS = ("select", "ignore", "per-file-ignores", "unfixable")
+
+
+def _requirement_names(requirements: list[str]) -> set[str]:
+    """Return the distribution names in a list of requirement strings."""
+    return {re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0] for requirement in requirements}
+
+
+def _assert_pyproject_serves_the_base(pyproject: Path) -> None:
+    """Fail unless `pyproject.toml` holds what the base's machinery relies on.
+
+    ruff merges configs, so it extends the base's. pytest, ty and rumdl take the first config they
+    find and merge nothing, so their settings repeat in each project and are checked here. This
+    cannot be a test under tools/tests: one there never notices `tools/tests` leaving `testpaths`,
+    because it then never runs.
+    """
+    config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    tool = config["tool"]
+    pytest_options = tool["pytest"]["ini_options"]
+    assert "error" in pytest_options["filterwarnings"], "a deprecation must fail the test"
+    assert "tools/tests" in pytest_options["testpaths"], "the hooks' tests would never run"
+    assert "tools" in pytest_options["pythonpath"], "the hooks' tests could not import them"
+    assert "tools" in tool["ty"]["environment"]["extra-paths"], "ty cannot resolve tools/"
+    assert ".claude" in tool["ty"]["src"]["exclude"], "ty would check skill reference code"
+    ruff = tool["ruff"]
+    assert ruff.get("extend") == "ruff-base.toml", "ruff would not read the base's rules"
+    replacing = [key for key in RUFF_REPLACING_KEYS if key in ruff or key in ruff.get("lint", {})]
+    assert replacing == [], f"{replacing} would replace the base's list; use `extend-*`"
+    dev = _requirement_names(config["dependency-groups"]["dev"])
+    assert {"pytest", "debugpy"} <= dev, "the hooks run pytest and .debugmcp.json launches debugpy"
+
+
+@requires_uv
+def test_the_use_case_pyproject_holds_what_the_base_relies_on(copie: Copie) -> None:
+    project = _generate(copie)
+    _assert_pyproject_serves_the_base(project / "pyproject.toml")
 
 
 # --- the generated project's own gate -----------------------------------------------------
