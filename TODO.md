@@ -6,12 +6,11 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Step 9, and the canary's follow-ups.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
+**Step 9, the uv-script skill.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
 from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
-history was clean, its package is renamed and its author email scrubbed, and it is public. Next
-is the one open follow-up listed under step 8, documenting a rename, which touches both repos'
-READMEs, and then step 9, the uv-script skill. The other two follow-ups, squash keeping commit
-bodies and the blank `author_email`, are done. Work runs sequentially, with no worktrees or side
+history was clean, its package is renamed and its author email scrubbed, and it is public. The
+canary's follow-ups under step 8 are closed, and the update docs now cover both layers. Next is
+step 9, the uv-script skill. Work runs sequentially, with no worktrees or side
 tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
@@ -463,11 +462,11 @@ each step on scratch copies first; the canary's update is the acceptance test.
      auto mode refuses history rewriting.
 
    Follow-ups the canary found:
-   - [ ] **Document renaming a project** in both READMEs' "Keeping it in sync": changing
-     `package_name` loses local edits to template files under `src/` (diff
-     `git show HEAD:src/<old>/<file>` against the new render and carry them across), leaves
-     project-only modules and their imports behind, and needs
-     `uv sync --reinstall-package <new>` while `script_name` stays the same.
+   - [x] ~~**Document renaming a project**~~ — dropped 2026-10-16. The canary's rename was part of
+     the restructuring, and the pain makes a rename rare enough not to document. Looking at the
+     sync docs for it found the real gap instead, fixed the same day: a generated CLI project's
+     README updated only the use case, never the base, and the base README still described the
+     CLI. Both now give the two-layer update flow.
    - [x] **A blank `author_email`** rendered `email = ""` in `pyproject.toml`. Fixed 2026-10-16 in
      both repos: the key is left out when the answer is blank, the question's help (identical in
      both `copier.yml`s, as a CLI test requires) suggests GitHub's noreply address, and each suite
