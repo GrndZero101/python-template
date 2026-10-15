@@ -15,8 +15,23 @@ name: CI
 
 # Every branch, not just main: pushing a branch is how to see Windows and macOS before merging.
 # There is no pull_request trigger — work arrives by merge into main, never by PR.
+#
+# Only a push that can change the result runs: the paths `generation-tests` in
+# .pre-commit-config.yaml lists — keep the two in step — plus the root gate's config and this
+# file. An allow-list, not `paths-ignore: ["**.md"]`: markdown under template/ ships, and a
+# generated project's gate checks it. A push touching only TODO.md, README.md, CLAUDE.md or
+# examples/ runs nothing; the commit hooks have already checked that markdown locally. Run the
+# workflow by hand (workflow_dispatch) to force a run.
 on:
   push:
+    paths:
+      - "template/**"
+      - "tests/**"
+      - "copier.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".pre-commit-config.yaml"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
