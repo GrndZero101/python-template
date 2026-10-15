@@ -6,7 +6,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 8: CI shipped in generated projects.
+Phase 10: split this repo into a base layer and the typer CLI use case (D12–D15). The rest of
+phase 8 waits behind it, since shipped CI, pins and tags all land differently once there are two
+layers.
 
 ## How work is judged
 
@@ -25,7 +27,7 @@ Phase 8: CI shipped in generated projects.
   where a docstring pointer did not.
 - **Done means**: the generation suite and `prek run --all-files` pass; anything that changes what
   a skill tells a model has been run through a generated project's gate, not just read; and a
-  phase that changes what generated projects receive ends with a `copier update` of the dogfood.
+  phase that changes what generated projects receive ends with a `copier update` of the canary.
 - **Format template code in a generated project before committing.** `template/` is not linted in
   place, so a formatting slip surfaces only in the generation suite, a minute later, at commit.
   Generate a scratch project, copy the file in, `prek run ruff-format`, copy it back.
@@ -66,7 +68,7 @@ Phase 8: CI shipped in generated projects.
 - Hooks are **exec form** with `${CLAUDE_PROJECT_DIR}` paths and launch through
   `uv run --no-project --no-config`, so neither a `cd` nor a conflicted `pyproject.toml` breaks
   them. Bash writes (heredocs, `sed -i`) skip the edit-time gate by design; the stop gate and
-  `finish_branch.py` are the backstop, and both run the tests. Proven in the dogfood on
+  `finish_branch.py` are the backstop, and both run the tests. Proven in the canary on
   2026-10-04: a `sed -i` `print` passed the edit-time gate and the stop gate blocked it on
   `ruff-check` and `pytest`; both hooks wrote `.gate.log`, the stop gate as `stop-gate`.
 - `cli-modern` ships a **scaffold**, not a demo: an `about` command, global `--verbose`/`--version`,
@@ -77,9 +79,10 @@ Phase 8: CI shipped in generated projects.
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
-- **The dogfood**, `GrndZero101/template-dogfood`: a private `cli-modern` consumer with its own
+- **The canary**, today `GrndZero101/template-dogfood`, to become the public
+  `python-canary-cli-typer` in phase 10 (D13): a private `cli-modern` consumer with its own
   `weather` command and script `tdf-cli`, at `2957d4c` (2026-10-05), the two spec-run fixes:
-  no conflicts, eight files, skills and `CLAUDE.md` only. The dogfood's gate excludes `.claude/`
+  no conflicts, eight files, skills and `CLAUDE.md` only. The canary's gate excludes `.claude/`
   and it depends on neither polars nor textual, so its session copied the reference code into a
   scratch project and ran it: all 26 reference tests passed, and the `python-data` claims held
   against polars 1.44.2 — a positional `scan_csv(schema=)` silently mislabels swapped columns, and
@@ -100,7 +103,22 @@ Open:
 
 | # | Decision | Needed by | Recommendation |
 |---|---|---|---|
-| D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the dogfood settles, then `v0.1.0`. See phase 8. |
+| D5 | Tagging, which changes `copier update` semantics | Phase 8 | Stay untagged until the canary settles, then `v0.1.0`. See phase 8. |
+| D15 | The base on its own, and in a brownfield repo | Phase 10 | See below. |
+
+**D15, open.** The base is a use case in itself (2026-10-15): a skeleton with every guard for
+prototyping before the shape is known, or dropped into a brownfield repo with the least
+disruption. Questions the split must answer:
+
+- **Who owns `pyproject.toml`.** Standalone, the base needs a minimal one; layered, the use case
+  owns it; brownfield, the repo already has one. Candidate: the base renders it under
+  `_skip_if_exists`, which copier never patches once the file exists — so the ownership check
+  must exempt it, and a brownfield repo adds the `extend = "ruff-base.toml"` line by hand.
+- **Which layer applies first, and which asks the shared questions** (author, licence, Python
+  version). The spike applied the use case first and had its task copy the base, which read the
+  use case's answers through `_external_data`. A standalone base must ask them itself.
+- **Brownfield gating.** The edit-time and stop gates already check only changed files, but
+  `finish_branch.py` runs `prek run --all-files`, which a legacy codebase would fail wholesale.
 
 Decided:
 
@@ -125,6 +143,36 @@ Decided:
   (every one broke on a first attempt). FastAPI is a separate project. Why not layer directories
   for two CLI scaffolds: `_exclude` matches rendered paths, so same-named modules needed
   Jinja-named directories, which the 2026-10-05 attempt showed to be unreadable.
+- **D12** (2026-10-15) — **layered templates.** A shared base template plus one thin template per
+  use case, applied to the same project with separate answers files, as copier documents. A spike
+  with two local templates proved it: one `copier copy` of the use case produced both layers, its
+  task running `copier copy` of the base; the base read the use case's answers through
+  `_external_data`; `copier update -a .copier-answers.base.yml` and a plain `copier update` each
+  touched only their own layer; a local edit survived. **No update chain**: a project records both
+  sources, so a base fix reaches it without a use-case release. The costs: an update is two
+  commands, each needing a clean tree; a file both layers render conflicts (proven — markers in
+  `pyproject.toml`), so ownership must be disjoint and checked; pytest config and the dev group
+  repeat in each use case's `pyproject.toml`, since only ruff (`extend`), rumdl and ty can read a
+  base-owned file; and the base's CI must run every use case's suite. Rules split as `CLAUDE.md`
+  (base) plus `.claude/rules/<use case>.md`, which Claude Code loads at the same priority.
+  Rejected: copying `tools/` per repo (drift), and vendoring the base into each use case as a
+  subtree (a real update chain).
+- **D13** (2026-10-15) — **names, and no redirects.** This repo becomes `python-template-base`;
+  use cases are `python-template-cli-typer` (today's scaffold), `-cli-stdlib`, `-api-fastapi`, and
+  `js-template-web-vue` for the Vue front end in `~/tmp/operator/inventory-app-design-spec.md`.
+  uv scripts with PEP 723 metadata are a **skill in the base**, not a repo. The skill
+  `python-cli-modern` becomes `python-cli-typer`. Each use case gets a public
+  `python-canary-<use case>`; the base gets `python-canary-base` only once it has the uv-script
+  skill to exercise. The sole user is the author, so renames break cleanly: every reference is
+  updated, and nothing may rely on GitHub's redirect from an old name. "Dogfood" is retired for
+  corporate use. The local directory moves too, and with it the Claude Code memory directory,
+  which is keyed on the path.
+- **D14** (2026-10-15) — **licence is a question.** `template/LICENSE` ships "Copyright (c) 2026
+  GrndZero101" literally, so every generated project names the template's author. The base asks
+  `license` (MIT default, Apache-2.0, Proprietary) and `copyright_holder` (default `author_name`;
+  not git config, which copier can read only through an extension each user must install), and
+  records the year at generation: `'%Y' | strftime` under `when: false`, dumped into the answers
+  file so updates keep it. Checked: copier 9.17 loads the filter by default.
 
 ## Done: phases 1–6, and fixes from the spec runs
 
@@ -177,7 +225,7 @@ Open from the runs:
 
 - [ ] The gate's pause on conflict markers and the conflicted-`pyproject.toml` guard are proven
   only by generation tests, never by a consumer update with a real conflict. The `7a5941e` and
-  `2957d4c` dogfood updates had none; still watching.
+  `2957d4c` canary updates had none; still watching.
 - [ ] The original demo code is at `d8e26b0`, for comparing against what a run builds.
 - [ ] **Watch, from the `spend` run** — act on a second occurrence, each a line in a skill: a
   command with more than five parameters trips `PLR0913` and `PLR0917`, and the answer is
@@ -210,7 +258,7 @@ Open from the runs:
   as a bare `ValueError`, so the file is parsed with `yaml.safe_load` (`pyyaml` declared
   directly). Unknown keys, non-mappings, bad YAML and a missing named file each fail naming the
   file; a secret's value is masked in validation errors. `conftest.py` points `XDG_CONFIG_HOME`
-  into `tmp_path`. The dogfood's update proved the per-command wiring leaked: its own `weather.py`
+  into `tmp_path`. The canary's update proved the per-command wiring leaked: its own `weather.py`
   accepted `--config` and ignored it. Fixed 2026-10-05 by passing `GlobalOptions` whole and
   required — `load_settings(global_options(ctx), output=...)` — so a new global option needs no
   command edit, and a command that omits it fails `ty` and raises `TypeError`.
@@ -244,11 +292,11 @@ Open from the runs:
 - [ ] **Tagging** (D5). The template has **no git tags**, so `.copier-answers.yml` records a bare
   commit hash and the `--vcs-ref v1.3.0` examples in the README refer to tags that do not exist.
   **Once any tag exists, `copier update` pulls to the latest tag rather than `HEAD`** — right for
-  stable releases, wrong while iterating, because fixes stop reaching the dogfood until tagged.
-  Stay untagged until the dogfood settles, then cut `v0.1.0` and fix the README examples.
+  stable releases, wrong while iterating, because fixes stop reaching the canary until tagged.
+  Stay untagged until the canary settles, then cut `v0.1.0` and fix the README examples.
 - [ ] **Per-release update notes.** The README's "Keeping it in sync" covers the update mechanics.
   A release should also say what a conflict never will: which features were absorbed from
-  consumers (`typer_entrypoint.py` superseded the dogfood's own version, with changed semantics),
+  consumers (`typer_entrypoint.py` superseded the canary's own version, with changed semantics),
   and which interface moves a consumer's own commands must follow (`-v/--verbose` went global, so
   `tdf-cli weather -v cleve` became `tdf-cli -v weather cleve`, and nothing warned).
 - [ ] **Generation into unusual git states**, a natural CI job. Unverified: a destination that is
@@ -277,6 +325,37 @@ Open from the runs:
   defect, both fixed: a positional CSV read in `python-data`, and no test seam for a TUI command.
 - [ ] **Unverified by hand:** the Textual console attached through `TEXTUAL=devtools,debug`. The
   mechanism is read from `textual_dev/cli.py`; it needs two real terminals to see.
+
+## Phase 10 — Base and use-case layers
+
+Prove D12 on the use case that already works before building another. Rehearse each step on
+scratch copies first; the canary's update is the acceptance test.
+
+- [ ] **Settle D15** before moving any file: `pyproject.toml` ownership, layer order, which layer
+  asks the shared questions, and what `finish_branch.py` gates in a brownfield repo.
+- [ ] **Assign every file an owner.** Base: `CLAUDE.md`, `tools/` and its tests,
+  `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`, `.python-version`, `LICENSE`,
+  `.debugmcp.json`, `.vscode/`, a new `ruff-base.toml` and rumdl and ty config files, and the
+  skills `git-workflow`, `python-debug` and `python-cli` (stack-agnostic, so shared by both CLI use
+  cases). CLI use case: `pyproject.toml`, `README.md`, `src/`, `tests/`,
+  `.claude/rules/cli-typer.md`, and the skills `python-cli-typer`, `python-data` and `python-tui`.
+- [ ] **Split `CLAUDE.md`**: the CLI rows — `build_client`, `run_screen`, `typer-default`,
+  `raw-httpx-client`, `patched-httpx` — move to `.claude/rules/cli-typer.md`. Their convention
+  checks stay in the base's `tools/`; they fire only on code that uses typer or httpx.
+- [ ] **Two mechanical checks.** A generation test in each use case asserting the layers render
+  no file in common, `_skip_if_exists` files aside; and a test shipped in the base's `tools/tests`
+  asserting `pyproject.toml` holds what the base relies on — `filterwarnings = ["error"]`,
+  `tools/tests` in testpaths, the ruff `extend` line — so a drifting use case fails naming the fix.
+- [ ] **Licence questions** (D14).
+- [ ] **New repo `python-template-cli-typer`**, public, with CI on three platforms against the base
+  at `HEAD`. The base's CI checks it out and runs its generation suite against the base commit
+  under test.
+- [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
+  remote URL and the Claude Code memory directory; then every reference to the old name.
+- [ ] **Migrate the canary**: `template-dogfood` to `python-canary-cli-typer`, from one answers file
+  to two. Audit its history for secrets before making it public. Rehearse on a scratch clone.
+- [ ] **Later in the phase**: the uv-script skill in the base, then `python-canary-base` to
+  exercise it; seed `python-template-cli-stdlib` from `archive/cli-stdlib`.
 
 ## Later
 
