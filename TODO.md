@@ -6,9 +6,9 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-Phase 10, step 4: the mechanical checks. Steps 2 and 3 are done (the layers exist and the base
-names no stack). Work runs sequentially, with no worktrees or side tracks. The rest of phase 8
-waits behind phase 10 so that nothing under `template/` moves twice.
+Phase 10, step 5: the licence questions. Steps 2 to 4 are done (the layers exist, the base names no
+stack, and the contract between them is tested). Work runs sequentially, with no worktrees or side
+tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 ## How work is judged
 
@@ -339,13 +339,13 @@ each step on scratch copies first; the canary's update is the acceptance test.
    `use-cases/cli-typer/template/.claude/rules/cli-typer.md`; the `convention_rules.py` messages
    point at `.claude/skills/*/reference/` rather than a named skill, and `silent-exit`'s message
    covers stdlib logging as well as loguru. A generation test keeps those names out of the base.
-4. [ ] **The mechanical checks**, all in the use case's generation tests, which the base's CI runs
-   too. The layers render no file in common, `_skip_if_exists` files aside. Both answers files
-   agree on the shared questions. And the use case's `pyproject.toml` holds what the base relies
-   on: `filterwarnings = ["error"]`, `tools/tests` in `testpaths`, `pythonpath = ["tools"]`, ty's
-   `extra-paths` and `.claude` exclusion, `extend = "ruff-base.toml"` with no `select` or
-   `per-file-ignores` key, and `pytest` and `debugpy` in the dev group. Not in `tools/tests`: a
-   test there cannot notice `tools/tests` leaving `testpaths`, because it then never runs.
+4. [x] **The mechanical checks** (2026-10-16), in `tests/test_template.py` under "the contract
+   between the layers": the layers render no file in common but the base's `_skip_if_exists`; the
+   two `copier.yml` files define every base question alike (type, help, choices) and the generated
+   answers files agree; and the `pyproject.toml` of the use case and of the base alone both hold
+   what the base relies on. The ruff keys forbidden beside `extend` are `select`, `ignore`,
+   `per-file-ignores` and `unfixable`, not just the first two D15 named: each replaces a base
+   list. Each check was shown to fail when its rule was broken.
 5. [ ] **Licence questions** (D14): `copier.yml`; `template/LICENSE` becomes a template; the
    answers-file templates, to lock the year; `use-cases/cli-typer/template/README.md.jinja:163–165`,
    which hard-codes "[MIT]"; that `pyproject.toml.jinja` and the base's fallback one if they gain
