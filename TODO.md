@@ -9,11 +9,10 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 **Step 9, and the canary's follow-ups.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
 from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
 history was clean, its package is renamed and its author email scrubbed, and it is public. Next
-are the two open follow-ups listed under step 8, in order — the blank `author_email`, then
-documenting a rename, each touching both repos, base pushed first — and then step 9, the uv-script
-skill. The third follow-up, squash keeping commit bodies, is done. Work runs sequentially, with no
-worktrees or side tracks. The rest
-of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+is the one open follow-up listed under step 8, documenting a rename, which touches both repos'
+READMEs, and then step 9, the uv-script skill. The other two follow-ups, squash keeping commit
+bodies and the blank `author_email`, are done. Work runs sequentially, with no worktrees or side
+tracks. The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
 
@@ -469,8 +468,10 @@ each step on scratch copies first; the canary's update is the acceptance test.
      `git show HEAD:src/<old>/<file>` against the new render and carry them across), leaves
      project-only modules and their imports behind, and needs
      `uv sync --reinstall-package <new>` while `script_name` stays the same.
-   - [ ] **A blank `author_email`** renders `email = ""` in `pyproject.toml`. Omit the key when it
-     is blank, and suggest the GitHub noreply address in the question's help.
+   - [x] **A blank `author_email`** rendered `email = ""` in `pyproject.toml`. Fixed 2026-10-16 in
+     both repos: the key is left out when the answer is blank, the question's help (identical in
+     both `copier.yml`s, as a CLI test requires) suggests GitHub's noreply address, and each suite
+     has a test generating with a blank email.
    - [x] **`finish_branch.py` drops commit bodies when it squashes**: the canary's rename lost its
      explanation. Fixed 2026-10-15: the squashed commit is MESSAGE, then each commit's body in
      order (a repeated paragraph once), then their trailers once each as the last paragraph, where
