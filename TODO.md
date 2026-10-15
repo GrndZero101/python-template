@@ -8,8 +8,8 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 **Step 9, and the canary's follow-ups.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
 from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
-history was clean, its package is renamed and its author email scrubbed. Making it public is the
-author's call, and nothing stands in the way. Next is step 9, the uv-script skill, and the three
+history was clean, its package is renamed and its author email scrubbed, and it is public. Next is
+step 9, the uv-script skill, and the three
 follow-ups listed under step 8. Work runs sequentially, with no worktrees or side tracks. The rest
 of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
@@ -31,7 +31,7 @@ The state to expect:
 - Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
   first whenever a CLI change depends on a base change.
 - Nothing relies on GitHub's redirect from an old name. The canary is
-  `GrndZero101/python-canary-cli-typer`, still private, at `71af808`. Its history was rewritten
+  `GrndZero101/python-canary-cli-typer`, public since 2026-10-15, at `71af808`. Its history was rewritten
   on 2026-10-15 (step 8), so canary hashes from before that no longer exist anywhere.
   `.copier-answers.yml` names `gh:GrndZero101/python-template-cli-typer` at `ac50467`, and
   `.copier-answers.base.yml` names `gh:GrndZero101/python-template-base` at `07a1f78`. Its package
@@ -144,8 +144,8 @@ on. Read-only work — a review, an audit — is still a session started where t
 - Agent debugging is the **standalone DebugMCP CLI**, registered per user as `debugmcp-cli`.
   Projects ship `.debugmcp.json`, the two launchers and the `python-debug` skill. Proven headless
   in WSL; neither adapter can pass program arguments, so the skill drives commands through tests.
-- **The canary**, the private `GrndZero101/python-canary-cli-typer` (public when the author
-  decides; the audit is clean, D13): a consumer of both layers with its own `weather` command,
+- **The canary**, the public `GrndZero101/python-canary-cli-typer` (since 2026-10-15, after a
+  clean audit, D13): a consumer of both layers with its own `weather` command,
   script `tdf-cli` and package `python_canary_cli_typer`. Its author email, in its answers and in
   every commit, is the GitHub noreply address. **Drive it from a session started in
   its own directory**: Claude Code loads hooks and skills from the session's project, so from here
@@ -434,7 +434,7 @@ each step on scratch copies first; the canary's update is the acceptance test.
    on a scratch clone. Then rename the repo to `python-canary-cli-typer`. Make it public only
    after a secrets audit of its whole history: read-only, from a session in its directory.
    **Checkpoint C5**: a new session started in the canary, to confirm its hooks, skills, gate
-   and tests. Reached 2026-10-15:
+   and tests. Reached 2026-10-15, and the canary made public the same day:
    - All four hooks fire and block: the branch guard refused a Write on `main`; on a probe branch
      the edit-time gate and the stop gate both blocked a `print` and a nested `def`. Skills load,
      the gate is green (bar `no-commit-to-branch`, which always fails on `main`), and the suite
