@@ -1,4 +1,4 @@
-# python-template
+# python-template-base
 
 A [copier](https://copier.readthedocs.io/) template for Python projects built around one idea:
 every rule in the generated `CLAUDE.md` exists so a human (or an AI agent) can stop the program and
@@ -34,7 +34,7 @@ cd my-project
 ```
 
 The base also works alone, for a prototype or a repo adopting the guards:
-`copier copy --trust gh:GrndZero101/python-template my-project`.
+`copier copy --trust gh:GrndZero101/python-template-base my-project`.
 
 `--trust` is required because the template declares `_tasks` — the ones that run `git init`,
 `uv sync` and install the shims. Without it copier exits 4 with "Template uses potentially unsafe
@@ -132,8 +132,8 @@ Do not delete `.copier-answers.yml` — `copier update` reads it to know what yo
 ## Path B — work on the template itself
 
 ```bash
-git clone https://github.com/GrndZero101/python-template
-cd python-template
+git clone https://github.com/GrndZero101/python-template-base
+cd python-template-base
 uv sync
 prek install -t pre-commit -t commit-msg -t pre-merge-commit
 ```
@@ -158,7 +158,7 @@ working tree, clone python-template-cli-typer beside this repo:
 ```bash
 cd ../python-template-cli-typer
 uv sync
-BASE_TEMPLATE_DIR=../python-template uv run pytest
+BASE_TEMPLATE_DIR=../python-template-base uv run pytest
 ```
 
 To look at real output rather than an assertion, generate through the CLI use case with the base

@@ -6,9 +6,11 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C3 reached: start a new session.** Step 6 of phase 10 is done: the CLI layer lives in
-its own public repository, `GrndZero101/python-template-cli-typer`, and both repos' CI is green on
-Linux, Windows and macOS. Next is step 7, the rename, which needs the author's go-ahead. Work runs
+**Checkpoint C4 reached: start a new session.** Step 7 of phase 10 is done (2026-10-15): this repo
+is `GrndZero101/python-template-base` on GitHub, on disk and in `origin`; the Claude Code memory
+lives in the new project directory and the old one is deleted; and neither repo names the bare
+`python-template` any more, the bootstrap commit message included. Next is step 8, migrating the
+canary — by hand or from a session outside it, rehearsed on a scratch clone first. Work runs
 sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
 nothing under `template/` moves twice.
 
@@ -27,9 +29,15 @@ The state to expect:
   `.gitignore`, because copier reads an untracked nested repository as a submodule with no
   `.gitmodules` and fails. This repo's CI runs the CLI suite against the commit under test, which
   is now the only automatic check of the hooks, the licence and the update tests.
-- Local `main` here is ahead of `origin/main` until the author pushes it. The CLI repo's CI uses
-  the base's GitHub `main`, so push it before relying on a green run there.
-- The rename (step 7) has not happened and needs the go-ahead.
+- Both repos' `main` are pushed. The CLI repo's CI uses the base's GitHub `main`, so push the base
+  first whenever a CLI change depends on a base change.
+- Nothing relies on GitHub's redirect from the old name, except what the author fixes outside
+  these repos: the canary's `.copier-answers.yml` (`_src_path`) and `README.md` link, edited from
+  a session in the canary (commit `2957d4c` exists under the new name, so `_src_path` simply
+  becomes `gh:GrndZero101/python-template-base`), and the stale old-path entries in
+  `~/.claude.json`, removed with Claude Code closed. Check both before step 8.
+- Renaming the directory left the `.venv` pointing at the old path (`Failed to spawn: pytest`):
+  `rm -rf .venv && uv sync` fixed it. Any other clone moved on disk needs the same.
 
 ## How work is judged
 
@@ -87,11 +95,13 @@ on. Read-only work — a review, an audit — is still a session started where t
 
 ## Status snapshot
 
-- A working copier template, **published** at
-  [GrndZero101/python-template](https://github.com/GrndZero101/python-template): `copier.yml` at the
-  root, the generated project under `template/` via `_subdirectory`. **One project shape**
-  (2026-10-05): the typer CLI scaffold. Data processing and full-screen TUIs are skills layered on
-  it, not project types; `copier copy gh:GrndZero101/python-template <dest>` is verified end to end.
+- Two copier templates, both **published**: the base at
+  [GrndZero101/python-template-base](https://github.com/GrndZero101/python-template-base) and the
+  typer CLI at
+  [GrndZero101/python-template-cli-typer](https://github.com/GrndZero101/python-template-cli-typer),
+  each with `copier.yml` at the root and its files under `template/` via `_subdirectory`. **One
+  project shape** (2026-10-05): the typer CLI scaffold. Data processing and full-screen TUIs are
+  skills layered on it, not project types.
 - **Three recipes ship reference code** that a generation test copies exactly as the recipe says,
   registers in `cli.py` and gates: `python-cli-typer`'s `status`, `python-data`'s `summary`
   (polars, CSV or parquet) and `python-tui`'s `browse` (Textual, Pilot tests).
@@ -348,8 +358,8 @@ each step on scratch copies first; the canary's update is the acceptance test.
    - The base shares four questions, not three: `project_name` as well, because its fallback
      `pyproject.toml` needs a name. Only `project_name` has a validator, as the others were
      optional before the split.
-   - The use case's `base_template` defaults to `gh:GrndZero101/python-template` until step 7
-     renames the repo. The README's Path A says to copy the use case from a clone until step 6.
+   - The use case's `base_template` defaulted to `gh:GrndZero101/python-template` until step 7
+     renamed the repo; it is now `gh:GrndZero101/python-template-base`.
    - The update tests build their templates with `_snapshot`: a use case is a subdirectory, which
      copier cannot update from, so each test copies it into a throwaway git repo. The snapshot
      includes uncommitted changes, so the tests no longer see only committed state.
@@ -386,9 +396,13 @@ each step on scratch copies first; the canary's update is the acceptance test.
    new repo. CI on three platforms against the base at `HEAD`; the base's CI checks it out and runs
    its generation suite against the base commit under test, through `base_template`.
    **Checkpoint C3**, reached.
-7. [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
-   remote URL and the Claude Code memory directory; then every reference to the old name.
-   **Checkpoint C4, mandatory**: the session's directory no longer exists.
+7. [x] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
+   remote URL and the Claude Code memory directory; then every reference to the old name. Done
+   2026-10-15: the author renamed the repo, directory and remote by hand; the memory was copied
+   across and the old project directory deleted; both repos' references followed, the bootstrap
+   commit message becoming `chore: generate project from python-template-base` and the root dev
+   project `python-template-base-dev`.
+   **Checkpoint C4, mandatory**: the session's directory no longer exists. Reached.
 8. [ ] **Migrate the canary** to two answers files. **Order matters**: `copier update` deletes every
    file the old render had and the new one lacks, with no check for local edits (copier 9.17
    `_remove_old_files`). So:
@@ -446,7 +460,7 @@ before moving a file.
    the portability rules, so do not trim the matrix.
 7. **Leftovers named for step 7.** The base's bootstrap commit message, the `base_template`
    default, `tests/` assertions on "python-template" and the README's Path A (which says to clone
-   and copy the use case) all change with the rename or the split.
+   and copy the use case) all change with the rename or the split. All done in step 7.
 
 ## Phase 8 — CI, releases and updates (after phase 10)
 
