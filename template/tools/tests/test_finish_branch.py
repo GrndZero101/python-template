@@ -94,6 +94,22 @@ def test_squashes_several_commits_into_one_merged_with_no_ff(
     assert _branches(root) == {"main"}
 
 
+def test_the_squash_keeps_every_body_and_each_trailer_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _repo(tmp_path, monkeypatch)
+    trailer = "Co-Authored-By: A <a@example.com>"
+    _commit(root, "a.py", f"chore(x): wip\n\nWhy a exists.\n\n{trailer}")
+    _commit(root, "b.py", "chore(x): no body")
+    _commit(root, "c.py", f"chore(x): more\n\nWhy c exists.\n\nWhy a exists.\n\n{trailer}")
+    prek = _Prek()
+    assert main(["feat(x): add a and c"], runner=prek) == 0
+    expected = f"feat(x): add a and c\n\nWhy a exists.\n\nWhy c exists.\n\n{trailer}"
+    assert _git(root, "log", "-1", "--format=%B", "main^2") == expected
+    assert prek.messages[0] == expected, "the message check sees the whole message"
+    assert _git(root, "log", "-1", "--format=%B", "main") == "feat(x): add a and c"
+
+
 def test_a_one_commit_branch_reuses_its_subject(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
