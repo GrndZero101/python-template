@@ -6,21 +6,30 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Checkpoint C2 reached: start a new session.** Steps 2–5 of phase 10 are merged on local `main`,
-which was pushed to `origin/main` on 2026-10-16. Next is step 6, the new repo
-`python-template-cli-typer`. Work runs sequentially, with no worktrees or side tracks. The rest of
-phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**Checkpoint C3 reached: start a new session.** Step 6 of phase 10 is done: the CLI layer lives in
+its own public repository, `GrndZero101/python-template-cli-typer`, and both repos' CI is green on
+Linux, Windows and macOS. Next is step 7, the rename, which needs the author's go-ahead. Work runs
+sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
+nothing under `template/` moves twice.
 
-Read step 6 and "Before step 6" under Phase 10 first, then `CLAUDE.md` for the layout and the
-ownership rules. The state to expect:
+The state to expect:
 
-- `template/` and the root `copier.yml` are the base. `use-cases/cli-typer/` is the CLI layer, with
-  its own `copier.yml` and `template/`. One `copier copy` of the use case yields both layers.
-- `tests/test_template.py` is the one suite: 41 tests, about a minute. `uv run pytest -k <name>`
-  to iterate; `prek run --all-files` is the whole gate. Finish a branch with
+- This repo is the base alone: `template/` and the root `copier.yml`. `tests/test_template.py`
+  holds one test, the base alone (about fifteen seconds); `uv run pytest` runs it,
+  `prek run --all-files` is the whole gate. Finish a branch with
   `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
-- Only the push of `main` has happened. The new repo and the rename have not, and each needs the
-  author's go-ahead.
+- The CLI repo is the sibling directory `../python-template-cli-typer`, seeded from this repo's
+  history (a plain clone, so every old hash survives). Its suite (40 tests) generates through the
+  CLI template with the base layered on; `BASE_TEMPLATE_DIR` names the base checkout, and without
+  it the tests use the base on GitHub. It has no `tools/` and no hooks of its own, by decision: the
+  root gate there is prek hygiene, ruff, rumdl and the generation tests.
+- Each repo's CI checks the other out (`base/` there, `cli/` here) and ignores that directory in
+  `.gitignore`, because copier reads an untracked nested repository as a submodule with no
+  `.gitmodules` and fails. This repo's CI runs the CLI suite against the commit under test, which
+  is now the only automatic check of the hooks, the licence and the update tests.
+- Local `main` here is ahead of `origin/main` until the author pushes it. The CLI repo's CI uses
+  the base's GitHub `main`, so push it before relying on a green run there.
+- The rename (step 7) has not happened and needs the go-ahead.
 
 ## How work is judged
 
@@ -275,13 +284,13 @@ put this repo under CI. The detail is in `git log`.
 
 ## Spec runs
 
-Resumed 2026-10-05 for the layered skills. By hand, as [examples/README.md](examples/README.md)
+Resumed 2026-10-05 for the layered skills. By hand, as `examples/README.md` in the CLI repo
 describes — a fresh project, the spec handed unedited to sonnet, the gate and tests run by hand,
-then a review in a separate `opus` session in plan mode driven by
-[examples/evaluate.md](examples/evaluate.md). Each template finding becomes an item here, checked
-against the code first. Rerun both specs after any phase that changes what a skill or the gate
-tells a model; the fixes from the currency run — the validated-argument recipe, the corrected
-spec, `finish_branch.py` running the tests — are not yet measured.
+then a review in a separate `opus` session in plan mode driven by `examples/evaluate.md` there. Each
+template finding becomes an item here, checked against the code first. Rerun both specs after any
+phase that changes what a skill or the gate tells a model; the fixes from the currency run — the
+validated-argument recipe, the corrected spec, `finish_branch.py` running the tests — are not yet
+measured.
 
 | Date | Spec | Model | Template | Gate | Tests | `/cost` | Verdict and main findings |
 |---|---|---|---|---|---|---|---|
@@ -369,13 +378,14 @@ each step on scratch copies first; the canary's update is the acceptance test.
    repo's own.
    **Checkpoint C2**, reached: steps 2–5 are merged here, and the layering is rehearsed by the
    update tests and by scratch generations.
-6. [ ] **New repo `python-template-cli-typer`**, public (read "Before step 6" below first).
+6. [x] **New repo `python-template-cli-typer`**, public (read "Before step 6" below first). Done:
+   both CIs green.
    **Seed it from this repo's history** —
    clone, then remove base-owned files — never `git init`: `copier update` re-renders the old
    template at the commit recorded in the canary's answers file, and that commit must exist in the
    new repo. CI on three platforms against the base at `HEAD`; the base's CI checks it out and runs
    its generation suite against the base commit under test, through `base_template`.
-   **Checkpoint C3**, once its CI is green.
+   **Checkpoint C3**, reached.
 7. [ ] **Rename** (D13): this repo to `python-template-base` on GitHub, the local directory, the
    remote URL and the Claude Code memory directory; then every reference to the old name.
    **Checkpoint C4, mandatory**: the session's directory no longer exists.
