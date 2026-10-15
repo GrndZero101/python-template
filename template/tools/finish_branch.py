@@ -8,8 +8,8 @@ rather than remembered. Run it from the branch being finished:
     uv run python tools/finish_branch.py --no-merge "fix(cli): exit 2 on a bad flag"
 
 **Default — squash.** The branch's commits are squashed onto a new branch cut from the current
-`main`, committed there with MESSAGE, and merged into `main` with `--no-ff` and the same subject.
-Both branches are then deleted. A branch that is already one commit on top of `main` is merged as
+`main`, committed there with MESSAGE as the subject and the squashed commits' bodies below it, and
+merged into `main` with `--no-ff` and the same subject. Both branches are then deleted. A branch that is already one commit on top of `main` is merged as
 it is, and MESSAGE may be omitted to reuse its subject.
 
 **`--keep-commits` — rebase in place**, for a branch that genuinely holds more than one change.
@@ -131,6 +131,38 @@ def _restore(target: Plan, runner: Runner, scratch: str) -> None:
     _git(runner, target.root, "branch", "-D", scratch)
 
 
+def _prose(body: str, trailers: str) -> list[str]:
+    """Return the paragraphs of `body`, less its closing trailer block if git found one."""
+    paragraphs = [part.strip() for part in body.split("\n\n") if part.strip()]
+    trailer_lines = {line.strip() for line in trailers.splitlines()}
+    if paragraphs and trailer_lines:
+        last = {line.strip() for line in paragraphs[-1].splitlines()}
+        if last <= trailer_lines:
+            paragraphs.pop()
+    return paragraphs
+
+
+def squashed_message(target: Plan, runner: Runner) -> str:
+    """Return MESSAGE, then the prose of every commit being squashed, then their trailers.
+
+    A paragraph that several commits repeat appears once, and each trailer (`Co-Authored-By:`)
+    once, in the last paragraph, which is the only place git reads trailers from.
+    """
+    span = f"{target.base}..{target.branch}"
+    shas = _require(_git(runner, target.root, "rev-list", "--reverse", span), "listing")
+    paragraphs: list[str] = []
+    trailers: list[str] = []
+    for sha in shas.splitlines():
+        body = _require(_git(runner, target.root, "log", "-1", "--format=%b", sha), "reading")
+        found = _git(runner, target.root, "log", "-1", "--format=%(trailers:only)", sha)
+        found_trailers = _require(found, f"reading {sha}'s trailers")
+        paragraphs.extend(_prose(body, found_trailers))
+        trailers.extend(found_trailers.splitlines())
+    closing = "\n".join(dict.fromkeys(trailers))
+    sections = [target.message, *dict.fromkeys(paragraphs), closing]
+    return "\n\n".join(section for section in sections if section)
+
+
 def squash(target: Plan, runner: Runner) -> str:
     """Return the branch to merge, holding the whole change as one commit.
 
@@ -138,6 +170,7 @@ def squash(target: Plan, runner: Runner) -> str:
     """
     if target.commits == 1 and target.on_base_tip:
         return target.branch
+    message = squashed_message(target, runner)
     scratch = f"{target.branch}{SQUASH_SUFFIX}"
     _require(
         _git(runner, target.root, "switch", "--quiet", "-c", scratch, target.base), "branching"
@@ -153,7 +186,7 @@ def squash(target: Plan, runner: Runner) -> str:
         raise FinishError(msg)
     # `--no-verify` because `verify` gates this commit next, on every path; letting the hooks run
     # here too would gate the same tree twice.
-    committed = _git(runner, target.root, "commit", "--quiet", "--no-verify", "-m", target.message)
+    committed = _git(runner, target.root, "commit", "--quiet", "--no-verify", "-m", message)
     if committed.code != 0:
         _restore(target, runner, scratch)
         msg = f"the squashed commit failed, so nothing was merged.\n{committed.output}"

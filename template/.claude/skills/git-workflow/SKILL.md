@@ -69,7 +69,8 @@ uv run python tools/finish_branch.py "feat(geo): add coordinate lookup"
 From the branch being finished, with a clean tree. It:
 
 1. squashes the branch onto a fresh branch cut from the current `main`, and commits it with your
-   message;
+   message as the subject and the branch's commit bodies below it, each trailer once at the end —
+   so the *why* written in a commit body as you go survives the squash;
 2. runs **the full gate, the tests and the message check itself**, on every path — never trusting
    that the git hooks ran, since a missing shim skips them silently;
 3. merges it into `main` with `--no-ff` and the same subject;

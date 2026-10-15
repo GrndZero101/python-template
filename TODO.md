@@ -8,9 +8,11 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 **Step 9, and the canary's follow-ups.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
 from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
-history was clean, its package is renamed and its author email scrubbed, and it is public. Next is
-step 9, the uv-script skill, and the three
-follow-ups listed under step 8. Work runs sequentially, with no worktrees or side tracks. The rest
+history was clean, its package is renamed and its author email scrubbed, and it is public. Next
+are the two open follow-ups listed under step 8, in order — the blank `author_email`, then
+documenting a rename, each touching both repos, base pushed first — and then step 9, the uv-script
+skill. The third follow-up, squash keeping commit bodies, is done. Work runs sequentially, with no
+worktrees or side tracks. The rest
 of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
@@ -469,8 +471,11 @@ each step on scratch copies first; the canary's update is the acceptance test.
      `uv sync --reinstall-package <new>` while `script_name` stays the same.
    - [ ] **A blank `author_email`** renders `email = ""` in `pyproject.toml`. Omit the key when it
      is blank, and suggest the GitHub noreply address in the question's help.
-   - [ ] **`finish_branch.py` drops commit bodies when it squashes**: the canary's rename lost its
-     explanation. Keep the squashed commits' bodies in the one commit.
+   - [x] **`finish_branch.py` drops commit bodies when it squashes**: the canary's rename lost its
+     explanation. Fixed 2026-10-15: the squashed commit is MESSAGE, then each commit's body in
+     order (a repeated paragraph once), then their trailers once each as the last paragraph, where
+     git reads them. The merge commit keeps the subject alone. Reaches the canary on its next base
+     update.
 9. [ ] **Later in the phase**: the uv-script skill, written directly in the base after the split —
    `tests/test_template.py:24–31` asserts the exact skill set, so a draft before the split would
    collide with it — then `python-canary-base` to exercise it; seed `python-template-cli-stdlib`
