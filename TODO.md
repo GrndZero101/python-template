@@ -9,13 +9,12 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 **The setup helper**, under "Setup helper (after step 9)", built by following the uv-script skill.
 Step 9 is done (2026-10-16): the base ships `python-uv-script` with a reference script and test, a
 ty hook that actually checks scripts, and the project root on pytest's path; the CLI repo's half
-(the skill set, `pythonpath`) is pushed too. First, from a session started in the canary's
-directory, update both of its layers (a plain `copier update` for the use case, then
-`-a .copier-answers.base.yml` for the base, each on a clean tree) and confirm its gate and suite:
-that is step 9's acceptance test, and the hook swap is the kind of change it exists to catch. Then
-the helper, here, with the notes under "What step 9 settled for the helper". Work runs
-sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
-nothing under `template/` moves twice.
+(the skill set, `pythonpath`) is pushed too. Its acceptance test passed on 2026-10-17: the canary
+took both layers' updates with no conflicts, a green gate and suite, and a ty hook proven to fail
+on a broken script (step 9, "Acceptance test"). So the helper is next, here, with the notes under
+"What step 9 settled for the helper". The test turned up two small follow-ups, listed under step
+9; neither blocks the helper. Work runs sequentially, with no worktrees or side tracks. The rest
+of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
 
 The state to expect:
 
@@ -39,10 +38,11 @@ The state to expect:
   out the CLI's `main` before the CLI half is there. Push the CLI half straight after, then
   `gh run rerun <id> --failed` the base's run (2026-10-16, the blank `author_email`).
 - Nothing relies on GitHub's redirect from an old name. The canary is
-  `GrndZero101/python-canary-cli-typer`, public since 2026-10-15, at `71af808`. Its history was rewritten
-  on 2026-10-15 (step 8), so canary hashes from before that no longer exist anywhere.
-  `.copier-answers.yml` names `gh:GrndZero101/python-template-cli-typer` at `ac50467`, and
-  `.copier-answers.base.yml` names `gh:GrndZero101/python-template-base` at `07a1f78`. Its package
+  `GrndZero101/python-canary-cli-typer`, public since 2026-10-15, at `6615e62` (step 9's update,
+  pushed 2026-10-17). Its history was rewritten on 2026-10-15 (step 8), so canary hashes from
+  before that no longer exist anywhere. `.copier-answers.yml` names
+  `gh:GrndZero101/python-template-cli-typer` at `cf14b42`, and `.copier-answers.base.yml` names
+  `gh:GrndZero101/python-template-base` at `0bd228a`. Its package
   is `python_canary_cli_typer`; its script is still `tdf-cli`. The old `template-dogfood` memory
   directory and `~/.claude.json` entries are gone.
 - Renaming the directory left the `.venv` pointing at the old path (`Failed to spawn: pytest`):
@@ -525,6 +525,28 @@ each step on scratch copies first; the canary's update is the acceptance test.
      project with a message naming the CLI skill's `http_client.py`, which is not there. A script
      satisfies it with a `build_client` of its own (the skill says so). Either the message says
      that when no reference exists, or the rule moves to the use case's rules.
+   - [x] **Acceptance test** (2026-10-17, from a session started in the canary): on a branch,
+     `copier update --trust --defaults`, `uv sync`, commit, then the same with
+     `-a .copier-answers.base.yml`, finished with `finish_branch.py` as `6615e62` and pushed. No
+     conflicts and no `.rej`. The CLI layer changed `README.md` (the two-layer update flow) and
+     `pyproject.toml` (`pythonpath`); the base brought the ty hook, the skill, the `CLAUDE.md`
+     line, `finish_branch.py` and git-workflow. Both answers files changed only `_commit`, and
+     both `_tasks` lists are copy-only, so `--trust` ran nothing. `prek run --all-files` green;
+     273 passed, one skip. A probe script in `scripts/` with a PEP 723 header and a type error
+     failed the new ty hook, so the swap checks scripts rather than merely passing. Seen again and
+     harmless: the base update's `MissingFileWarning` (step 8), and copier's "Make sure Git >= 2.24
+     is installed" beside git 2.56.
+   - [ ] **The READMEs say an agent's permission classifier refuses `--trust`.** In auto mode on
+     2026-10-17 it allowed both updates. Three places: both repos' `README.md` and the CLI repo's
+     `template/README.md.jinja`. Say what holds instead: the flag lets the template run its
+     `_tasks`, which are copy-only, so an update runs none of them.
+   - [ ] **Every hook with no `stages` runs at every installed stage.** The generated
+     `.pre-commit-config.yaml` sets no `default_stages`, so a commit lists the whole gate again at
+     `commit-msg`. Most hooks skip there for want of files, but ty is `always_run` and checks the
+     whole project a second time on every commit (seen in the canary, with the old ty hook and the
+     new). The `pre-merge-commit` run is the merge's gate and stays. Candidate:
+     `default_stages: [pre-commit, pre-merge-commit, manual]`, then confirm that `prek run
+     --all-files`, `finish_branch.py` and the update tests still run every hook.
    **Later in the phase**: `python-canary-base` to exercise the skill; seed
    `python-template-cli-stdlib` from `archive/cli-stdlib`.
 
