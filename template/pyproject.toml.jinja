@@ -55,4 +55,5 @@ filterwarnings = ["error"]
 # tests/ is the product's suite. tools/tests/ tests the template's machinery, kept apart so tests/
 # holds only what a new test should be modelled on.
 testpaths = ["tests", "tools/tests"]
-pythonpath = ["tools"]  # so the hooks and the conventions checker are importable by their tests
+# tools/ so the hooks' tests import them; the root so a test imports a uv script as scripts.<name>.
+pythonpath = ["tools", "."]

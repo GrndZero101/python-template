@@ -33,8 +33,9 @@ both. Two templates rendering the same path conflict on `copier update` (markers
 the split is by directory and a test in the CLI repo's suite checks it. The base owns `CLAUDE.md`,
 `tools/` and its tests, `.claude/settings.json`, `.pre-commit-config.yaml`, `.gitignore`,
 `.python-version`, `LICENSE`, `.debugmcp.json`, `.vscode/`, `ruff-base.toml`, the skills
-`git-workflow`, `python-debug` and `python-cli`, and `.copier-answers.base.yml`. The one exception
-is `pyproject.toml`, which the use case owns: the base also renders a minimal one under
+`git-workflow`, `python-debug`, `python-cli` and `python-uv-script`, and
+`.copier-answers.base.yml`. The one exception is `pyproject.toml`, which the use case owns: the
+base also renders a minimal one under
 `_skip_if_exists`, which copier never overwrites, so it reaches only a project that has none. The
 use case owns `pyproject.toml`, `README.md`, `src/`, `tests/`, `.copier-answers.yml`,
 `.claude/rules/cli-typer.md` and the skills `python-cli-typer`, `python-data` and `python-tui`.
@@ -45,7 +46,9 @@ must name something the answers decide:
 - the project files `pyproject.toml`, `README.md`, `LICENSE`, `.pre-commit-config.yaml`,
   `.copier-answers.yml`, `.copier-answers.base.yml` and `.python-version`;
 - in a use case, the source and test modules that name the script or import the package, which the
-  CLI repo's `CLAUDE.md` lists.
+  CLI repo's `CLAUDE.md` lists;
+- the `python-uv-script` skill's reference script, whose header carries the project's Python floor
+  and the date it was generated.
 
 Everything else — `CLAUDE.md`, all of `tools/`, every other skill file — ships literally.
 

@@ -18,6 +18,9 @@ already committed, is caught too.
   *Why: same reason, plus a fresh type object per call breaks `isinstance` and pickling.*
 - One responsibility per module. Several small modules beat one large one.
   *Why: an agent re-reads whole files; small files mean cheaper, more accurate edits.*
+- A one-file tool run with `uv run` is a *uv script*: `scripts/<name>.py` with a PEP 723 header,
+  copied from the **python-uv-script** skill's reference. Its dependencies are declared in the
+  header *and* the dev group, by `uv add`.
 
 ## Debuggability
 

@@ -6,20 +6,22 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**Step 9, the uv-script skill.** Step 8 is done (2026-10-15) and Checkpoint C5 reached:
-from a session in the canary its hooks, skills, gate and tests work, the secrets audit of its whole
-history was clean, its package is renamed and its author email scrubbed, and it is public. The
-canary's follow-ups under step 8 are closed, and the update docs now cover both layers. A blank
-email can be avoided too: both READMEs show copier's user settings file, filled from `git config`,
-and a CLI test pins that such a file cannot split the layers' answers. Next is step 9, the
-uv-script skill, then the setup helper planned under "Setup helper", built by following it. Work
-runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so
-that nothing under `template/` moves twice.
+**The setup helper**, under "Setup helper (after step 9)", built by following the uv-script skill.
+Step 9 is done (2026-10-16): the base ships `python-uv-script` with a reference script and test, a
+ty hook that actually checks scripts, and the project root on pytest's path; the CLI repo's half
+(the skill set, `pythonpath`) is pushed too. First, from a session started in the canary's
+directory, update both of its layers (a plain `copier update` for the use case, then
+`-a .copier-answers.base.yml` for the base, each on a clean tree) and confirm its gate and suite:
+that is step 9's acceptance test, and the hook swap is the kind of change it exists to catch. Then
+the helper, here, with the notes under "What step 9 settled for the helper". Work runs
+sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10 so that
+nothing under `template/` moves twice.
 
 The state to expect:
 
 - This repo is the base alone: `template/` and the root `copier.yml`. `tests/test_template.py`
-  holds one test, the base alone (about fifteen seconds); `uv run pytest` runs it,
+  holds three tests, two of which generate the base alone and run its gate (about thirty-five
+  seconds together, five when every cache is warm); `uv run pytest` runs them,
   `prek run --all-files` is the whole gate. Finish a branch with
   `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
 - The CLI repo is the sibling directory `../python-template-cli-typer`, seeded from this repo's
@@ -131,9 +133,13 @@ on. Read-only work — a review, an audit — is still a session started where t
   per project. `--basetemp` on `D:` plus `--durations=15` would test it, in a Windows uplift.
   `prek` is in the root dev group, so CI's version comes from `uv.lock`; with `CI=true` a missing
   tool fails a test rather than skipping it.
-- Toolchain: `uv`, `ruff` v0.16.10, `ty` v0.0.84, `prek` 0.5.4, `rumdl` v0.2.78, `copier` 9.17.0.
+- Toolchain: `uv`, `ruff` v0.16.10, `ty` 0.0.84, `prek` 0.5.4, `rumdl` v0.2.78, `copier` 9.17.0.
   Preview rules are selected one by one (`explicit-preview-rules`); pytest names its strict options
-  individually and turns warnings into errors.
+  individually and turns warnings into errors. **ty is a local hook** since 2026-10-16,
+  `uv run --with ty==0.0.84 ty check`, not ty-pre-commit: that hook runs uv's preview `uv check`,
+  which skips every file with a PEP 723 header and forwards no flag, so a uv script was never
+  type-checked. The pin is the `ty==` in `template/.pre-commit-config.yaml.jinja`, one place, and
+  `prek update` does not move it.
 - `template/tools/`, eleven modules: the hooks `branch_guard` (`PreToolUse`: no edits on `main`),
   `gate` (`PostToolUse`: the gate on every Edit/Write, concise, pausing on conflict markers),
   `stop_gate` (`Stop`: changed files and the tests, measured from the merge-base, blocking once)
@@ -487,10 +493,40 @@ each step on scratch copies first; the canary's update is the acceptance test.
      order (a repeated paragraph once), then their trailers once each as the last paragraph, where
      git reads them. The merge commit keeps the subject alone. Reaches the canary on its next base
      update.
-9. [ ] **Later in the phase**: the uv-script skill, written directly in the base after the split —
-   `tests/test_template.py:24–31` asserts the exact skill set, so a draft before the split would
-   collide with it — then `python-canary-base` to exercise it; seed `python-template-cli-stdlib`
-   from `archive/cli-stdlib`.
+9. [x] **The uv-script skill** (2026-10-16): `python-uv-script` in the base, recipe-first like
+   the stack skills, with `reference/yaml_to_json.py.jinja` and its test, which a generation test
+   copies where the recipe says, gates, tests, then breaks with a type error to prove ty sees it.
+   What the experiments settled, each the reason for a line in the skill:
+   - ty-pre-commit's `uv check` skips PEP 723 files, so ty is now a local hook (see the toolchain
+     line). The per-script alternative, `uv check --script`, takes one file and checks a script
+     environment that `uv run` syncs *inexactly*: a dependency dropped from the header stays
+     installed until `uv run --exact`. That is why the reference test's one subprocess is
+     `uv run --exact scripts/<name>.py --help`.
+   - A script's dependencies are declared twice, `uv add --script` for the header and
+     `uv add --dev` for the project venv, which pytest, ty and the debugger use. Tests import
+     `scripts.<name>`, so `pythonpath` in both `pyproject.toml.jinja` files lists `"."` (a listed
+     `scripts` in ty's `extra-paths` errors when the directory is absent; `"."` always exists).
+   - The header's `requires-python` is rendered from the answer: ruff rewrites syntax to the
+     project's `target-version` (py314 turned `except (A, B):` into `except A, B:`) while ty checks
+     a script at its header's version, so a lower header fails ty. For the same reason the
+     reference uses two `except` clauses, not a tuple: it must survive `ruff --fix` unchanged at
+     every floor, or the generation test's single gate run fails on "files were modified".
+   - The header goes above the docstring: `uv add --script` edits a leading block but adds a second
+     one when the block sits lower. No shebang (inert on Windows, needs an exec bit); no
+     `uv lock --script` (the `uv-lock` hook never refreshes a `<name>.py.lock`); `exclude-newer` as
+     a full RFC 3339 timestamp is the pin.
+   - The exact skill set is asserted in the CLI repo, `tests/test_template.py` `SKILLS`, so a base
+     skill is two pushes and a rerun, as "Next up" describes.
+   - Not yet measured by a model: the setup helper exercises the script rules at this repo's root,
+     not the generated-project wiring (`scripts/`, the ty hook, `uv add --dev`). One short spec run
+     in a scratch base-alone project belongs in the canary-base session, before any line is added
+     to the skill on a hunch.
+   - [ ] `raw-httpx-client` lives in the base's `convention_rules.py` and fires in a base-alone
+     project with a message naming the CLI skill's `http_client.py`, which is not there. A script
+     satisfies it with a `build_client` of its own (the skill says so). Either the message says
+     that when no reference exists, or the rule moves to the use case's rules.
+   **Later in the phase**: `python-canary-base` to exercise the skill; seed
+   `python-template-cli-stdlib` from `archive/cli-stdlib`.
 
 ### Before step 6
 
@@ -607,6 +643,16 @@ versions. Subcommands, each re-runnable:
 It is held to the template's own rules (no `print`, a stderr logger, functions small enough to
 step through), so it is a real example of the uv-script skill from step 9: build the skill first,
 then this by following it.
+
+**What step 9 settled for the helper** (2026-10-16). The skill's rules hold here with three
+differences from a generated project. The root `.pre-commit-config.yaml` has no ty hook, so the
+helper needs the same local hook the template now ships (it will then check
+`tests/test_template.py` too, for the first time). Its tests import it as a top-level module from
+the root, so the root `pyproject.toml` needs `pythonpath = ["."]`. And its header's
+`requires-python` must be the root's floor, 3.14, unless the root's ruff `target-version` is
+lowered with it: ruff rewrites syntax up to the target and ty checks the script at the header's
+version. The header goes first in the file; the shim's `exec uv run --script <helper>` and the URL
+form are unaffected.
 
 **Open:**
 
