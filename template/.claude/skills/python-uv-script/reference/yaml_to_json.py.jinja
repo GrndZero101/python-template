@@ -1,0 +1,77 @@
+# /// script
+# requires-python = ">={{ python_version }}"
+# dependencies = ["pyyaml>=6.0"]
+#
+# [tool.uv]
+# exclude-newer = "{{ '%Y-%m-%dT00:00:00Z' | strftime }}"
+# ///
+"""Convert a YAML document to JSON, for tools that read only JSON. A worked uv script.
+
+    mkdir -p scripts tests
+    cp .claude/skills/python-uv-script/reference/yaml_to_json.py scripts/
+    cp .claude/skills/python-uv-script/reference/test_yaml_to_json.py tests/
+    uv add --dev pyyaml
+
+    uv run scripts/yaml_to_json.py deploy.yaml             # JSON on stdout, one line
+    uv run scripts/yaml_to_json.py deploy.yaml --indent 2
+
+The header above is what lets `uv run` build the script's own environment anywhere, with no
+project around it. The same dependencies go in the project's dev group too, so the project's venv
+can import the script for its tests, for `ty` and for the debugger.
+"""
+
+import argparse
+import json
+import logging
+import sys
+from pathlib import Path
+
+import yaml
+
+logger = logging.getLogger(__name__)
+RUNTIME_FAILURE = 1
+
+
+def load_yaml(path: Path) -> object:
+    """Return the document in `path`. An empty file loads as `None`."""
+    with path.open(encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def to_json(document: object, indent: int | None = None) -> str:
+    """Render `document` as JSON with sorted keys, ending in a newline."""
+    return json.dumps(document, indent=indent, sort_keys=True) + "\n"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Return the command-line parser."""
+    parser = argparse.ArgumentParser(description="Convert a YAML document to JSON.")
+    parser.add_argument("path", type=Path, help="the YAML file to read")
+    parser.add_argument("--indent", type=int, default=None, help="pretty-print with this indent")
+    parser.add_argument("-v", "--verbose", action="store_true", help="log at DEBUG level")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point. Returns an exit code; never calls sys.exit itself."""
+    args = _build_parser().parse_args(argv)
+    level = logging.DEBUG if args.verbose else logging.INFO
+    # force: basicConfig is a no-op once a handler exists, and a test calls main more than once.
+    logging.basicConfig(
+        level=level, stream=sys.stderr, format="%(levelname)s %(message)s", force=True
+    )
+    logger.debug("reading %s", args.path)
+    try:
+        document = load_yaml(args.path)
+    except OSError:
+        logger.exception("cannot read %s", args.path)
+        return RUNTIME_FAILURE
+    except yaml.YAMLError:
+        logger.exception("%s is not valid YAML", args.path)
+        return RUNTIME_FAILURE
+    sys.stdout.write(to_json(document, args.indent))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

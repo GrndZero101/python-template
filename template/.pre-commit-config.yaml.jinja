@@ -52,10 +52,21 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.84
+  # ty, run directly rather than through ty-pre-commit. That hook runs uv's `uv check`, which
+  # skips every file with a PEP 723 header and forwards no flags, so a uv script under scripts/
+  # would never be type-checked. `uv run --with` layers ty over the project's venv, so a script's
+  # dependencies resolve from the dev group like everything else. The whole project is checked on
+  # every run, as ty-pre-commit does: a change in one file can break another.
+  - repo: local
     hooks:
       - id: ty
+        name: ty
+        entry: uv run --with ty==0.0.84 ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        always_run: true
+        require_serial: true
 
   - repo: https://github.com/rvben/rumdl-pre-commit
     rev: v0.2.78
