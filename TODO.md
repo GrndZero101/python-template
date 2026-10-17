@@ -537,10 +537,11 @@ each step on scratch copies first; the canary's update is the acceptance test.
      failed the new ty hook, so the swap checks scripts rather than merely passing. Seen again and
      harmless: the base update's `MissingFileWarning` (step 8), and copier's "Make sure Git >= 2.24
      is installed" beside git 2.56.
-   - [ ] **The READMEs say an agent's permission classifier refuses `--trust`.** In auto mode on
-     2026-10-17 it allowed both updates. Three places: both repos' `README.md` and the CLI repo's
-     `template/README.md.jinja`. Say what holds instead: the flag lets the template run its
-     `_tasks`, which are copy-only, so an update runs none of them.
+   - [x] **The READMEs said an agent's permission classifier refuses `--trust`.** In auto mode on
+     2026-10-17 it allowed both updates. Fixed the same day in both repos' `README.md` and the CLI
+     repo's `template/README.md.jinja`: the flag lets the template run its `_tasks`, which are
+     copy-only, so an update runs none of them; an agent runs it with `--defaults` and explicit
+     answers to new questions, since it cannot answer prompts.
    - [ ] **Every hook with no `stages` runs at every installed stage.** The generated
      `.pre-commit-config.yaml` sets no `default_stages`, so a commit lists the whole gate again at
      `commit-msg`. Most hooks skip there for want of files, but ty is `always_run` and checks the
