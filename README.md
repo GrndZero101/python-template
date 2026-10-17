@@ -12,12 +12,25 @@ for the conventions no linter covers, and the shared Claude Code skills.
 
 ## Prerequisites
 
+`uv` at or above the template's floor, installed by
+[the standalone installer](https://docs.astral.sh/uv/getting-started/installation/), so that
+`uv self update` works; then copier and prek as uv tools. From a clone of this repo, the setup
+helper checks all of it:
+
+```bash
+sh bootstrap.sh doctor          # report what is installed and configured; change nothing
+```
+
+With no `uv` it offers to install the pinned one, and with one below the floor it offers to update
+it (`--yes`, before the command, agrees in advance). A Homebrew or pip `uv` cannot update itself,
+so it stops and says how to move to the standalone install. Every generated project's
+`pyproject.toml` holds the same floor as `required-version`, so uv itself refuses to run below it.
+The rest is still by hand for now:
+
 ```bash
 uv tool install copier
 uv tool install prek
 ```
-
-`uv` itself: see [the uv docs](https://docs.astral.sh/uv/getting-started/installation/).
 
 ---
 
@@ -212,6 +225,8 @@ See [CLAUDE.md](CLAUDE.md) for why, and for the branching and merge rules.
 - **`copier.yml`** — the base's questions, exclusions and bootstrap tasks.
 - **`tests/test_template.py`** — generates the base alone and runs its gate. The only local check
   on the template; CI also runs the CLI repo's suite against it.
+- **`bootstrap.sh`, `bootstrap.py`** — the setup helper: a POSIX `sh` shim that makes sure of
+  `uv` at the pin (`UV_VERSION`), then a uv script with the commands. Tested in `tests/`.
 - **`.pre-commit-config.yaml`** — the gate for this repository.
 - **`TODO.md`** — outstanding work.
 

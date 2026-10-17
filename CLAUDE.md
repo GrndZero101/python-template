@@ -26,6 +26,8 @@ same rules. What follows is only what differs at this level.
 | `tests/test_template.py` | Generates the base alone and runs its gate. CI adds the CLI repo's suite. |
 | `.pre-commit-config.yaml` | Governs **this** repo. `.git` is here, so this is what the git hooks read. |
 | `pyproject.toml` | Dev deps and lint config for the root. Not published, not importable. |
+| `bootstrap.sh`, `bootstrap.py` | The setup helper: a POSIX `sh` shim holding the `uv` pin, then a uv script. Not shipped. |
+| `tests/test_bootstrap*.py` | The helper's tests, and the check that every copy of the `uv` pin agrees. |
 | `TODO.md` | Outstanding work on the template itself. Not shipped. |
 
 **Every generated file has exactly one owner**: it is rendered by the base or by a use case, never
@@ -56,7 +58,7 @@ Everything else — `CLAUDE.md`, all of `tools/`, every other skill file — shi
 
 `.git` sits at the root, so `prek install` wires the git hooks to the **root** config. That config
 owns the commit-level rules — the message check and `no-commit-to-branch` — lints the repo's own
-markdown, and lints the one Python module the root holds.
+markdown, and lints the root's own Python and shell: the tests and the setup helper.
 
 **`template/` is not checked in place, and cannot be.** It contains Jinja and has no
 `pyproject.toml` — only `pyproject.toml.jinja` — so `ruff` would fall back to default rules and `ty`
