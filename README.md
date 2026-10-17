@@ -115,10 +115,11 @@ uv run python tools/finish_branch.py "chore(template): update from the templates
 `<commit>` is the `_commit` value copier just wrote to that layer's answers file.
 `finish_branch.py` squashes the branch, runs the gate and the tests, and merges it into `main`.
 
-**Run `copier update` yourself, not through an agent.** `--trust` is required because the template
-declares `_tasks`. Every task is guarded to run on `copy` only, but copier asks for the flag anyway,
-and it is the flag an agent's permission classifier refuses. Run it in a terminal of your own,
-where copier can also prompt you; hand the agent the result to resolve and check.
+**`--trust` runs nothing on an update.** It lets a template run its `_tasks`, and copier asks for
+it whenever a template declares any, exiting 4 without it. Every task here is guarded to run on
+`copy` only, so an update runs none of them. An agent can run the update too, but it cannot answer
+copier's prompts: give it `--defaults`, with new questions answered explicitly (below). Run it in a
+terminal of your own when you want copier to ask.
 
 **`uv sync` before any check.** A dependency the template dropped stays installed in `.venv` until
 you sync. `ty` then still resolves an import that `pyproject.toml` no longer provides, and the gate
