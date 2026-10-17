@@ -72,8 +72,29 @@ repos:
       - id: ruff-format
         exclude: ^template/
 
+  # bootstrap.sh runs before anything else is installed, under whatever /bin/sh is: dash on Ubuntu,
+  # bash in POSIX mode on macOS. --shell=sh holds it to POSIX, whatever its shebang says.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: [--shell=sh]
+        exclude: ^template/
+
   - repo: local
     hooks:
+      # The template's ty hook, as template/.pre-commit-config.yaml.jinja explains: ty-pre-commit
+      # skips every file with a PEP 723 header, which is bootstrap.py. pyproject.toml excludes
+      # template/ from it.
+      - id: ty
+        name: ty
+        entry: uv run --with ty==0.0.84 ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+
       # The template's own custom checker, reused on the repo that ships it. It is a literal
       # .py file, so it runs here unchanged.
       - id: conventions
@@ -88,7 +109,8 @@ repos:
       # price of the template not being lintable in place. The layered projects are CI's job.
       #
       # `files:` scopes it to what can change a generated project: the template, the copier
-      # config, the tests themselves, and the dependencies that run them. A commit touching only
+      # config, the tests themselves, and the dependencies that run them; and to the bootstrap
+      # files, whose tests are quick and live beside the generation tests. A commit touching only
       # TODO.md or this repo's own docs skips it. `.github/workflows/ci.yml` filters pushes on the
       # same paths; change both together. The PostToolUse hook in .claude/settings.json
       # skips it too, so a minute-long suite never runs on save. To skip it at commit as well:
@@ -101,5 +123,5 @@ repos:
         entry: uv run pytest tests
         language: system
         pass_filenames: false
-        files: ^(template/|tests/|copier\.yml$|pyproject\.toml$|uv\.lock$)
+        files: ^(template/|tests/|copier\.yml$|pyproject\.toml$|uv\.lock$|bootstrap\.(sh|py)$)
         stages: [pre-commit]

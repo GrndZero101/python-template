@@ -6,13 +6,21 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**The setup helper, `bootstrap.sh` and `bootstrap.py`**, under "Setup helper (after step 9)",
-built by following the uv-script skill. Its four open questions were decided on 2026-10-17
-(listed there), so nothing blocks it: start with the shim and the `uv` pin, then `doctor`. Read
-"What step 9 settled for the helper" first. Step 9 is done, acceptance test included, and its
-three follow-ups were cleared on 2026-10-17 (the `raw-httpx-client` message, the READMEs'
-`--trust` paragraph, `default_stages`). Work runs sequentially, with no worktrees or side tracks.
-The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**The setup helper's next pieces**, under "Setup helper (after step 9)". The shim, the `uv` pin
+in this repo and `doctor` were merged on 2026-10-17; read "Built so far" there first. Next, in
+order:
+
+1. **The pin in the CLI repo** — a session started in `../python-template-cli-typer`, since hooks
+   and memory belong to the directory a session starts in. `[tool.uv] required-version` in its
+   `template/pyproject.toml.jinja` and its root `pyproject.toml`, `version:` on both setup-uv
+   steps of its CI, and a test there holding them to `UV_VERSION` in the base's `bootstrap.sh`
+   (the checkout `BASE_TEMPLATE_DIR` names, or `base/` on CI). Push the base first, as ever.
+2. **`setup`**, back here: `uv tool install`/`upgrade` copier and prek, and copier's settings file.
+3. **`new`**, **`pins`**, **`update`**, then the canary's `copier update` that closes the helper,
+   since generated projects now receive `required-version`.
+
+Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
+so that nothing under `template/` moves twice.
 
 Running two generation suites at once failed the CLI repo's
 `test_generated_project_works_at_the_python_floor` once (2026-10-17); alone, and in a full rerun,
@@ -692,6 +700,32 @@ form are unaffected.
   READMEs' `copier update` commands stay true.
 - **Run from a clone only, for now.** `curl … | sh` needs a tag or a commit in the URL, never
   `main`, so it waits for phase 8's tagging. The shim's step 4 has the clone form only until then.
+
+**Built so far** (2026-10-17, branch `feat/bootstrap-shim`): `bootstrap.sh`, `bootstrap.py`
+with `doctor`, `tests/test_bootstrap_sh.py` and `tests/test_bootstrap.py`; shellcheck
+(`shellcheck-py`, `--shell=sh`) and the template's local ty hook in the root gate; the pin in the
+root and template pyprojects and both setup-uv steps here. What differs from the plan above, and
+why:
+
+- **The pin is 0.12.21**, the uv every test had run on, not the latest (0.13.1): a floor, so
+  nobody is pushed to update for nothing. `pins --update uv` moves it later.
+- **The shim checks the version first, then `--dry-run` only at or above the pin.** In the
+  planned order, a uv older than 0.7.3 fails `--dry-run` with the same exit 2 as a Homebrew uv,
+  and telling them apart would mean parsing text. Below the pin, `uv self update <pin>` is itself
+  the self-update check; a uv too old for `self version` reads as `0` and takes that path.
+- **The shim puts uv's directory first on PATH before the hand-off.** A uv it just installed is
+  on no PATH, so the helper's own `uv` calls failed (`FileNotFoundError`), found only by running
+  it on a bare HOME: `env -i HOME=<empty> PATH=/usr/bin:/bin sh bootstrap.sh --yes doctor`.
+  The CI-only test now runs `doctor` that way, not `--help`, which never called uv.
+- **The installer's output goes to stderr**: stdout is the helper's report.
+- **`--yes` and `-v` go before the command** (`sh bootstrap.sh --yes setup`): the shim reads only
+  `$1`, and argparse takes top-level options only there. The helper accepts `--yes` already;
+  `setup` is the first command to use it.
+- **`doctor`** reports uv, copier and prek from `uv tool list` (the one parsed output: lines
+  `name vX.Y.Z`), git's `user.name` and `user.email`, copier's settings file (copier's own
+  per-platform path, or `COPIER_SETTINGS_PATH`) and `gh auth status`. The settings file and gh
+  are advice (`warn`) and never fail it; anything else exits 1. Every probe of the machine is a
+  `Probe` field, so the tests run it on a fake machine.
 
 **Tests:** shellcheck with `--shell=sh` in the root gate. The shim's branches tested with a stub
 `uv` on PATH for each case (missing, not self-updatable, below the pin, at it, above it), plus one

@@ -19,6 +19,8 @@ requires-python = ">=3.14"
 
 [tool.uv]
 package = false
+# The uv floor, bootstrap.sh's UV_VERSION: uv refuses to run below it, naming the fix.
+required-version = ">=0.12.21"
 
 [dependency-groups]
 dev = [
@@ -32,6 +34,8 @@ dev = [
 # --template is required by pytest-copie and names the directory holding copier.yml.
 addopts = "-q --tb=short --template=."
 testpaths = ["tests"]
+# The root, so the tests import bootstrap.py as a module.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
@@ -70,6 +74,10 @@ ignore = [
     "subprocess-without-shell-equals-true",
     "start-process-with-partial-path",
 ]
+
+[tool.ty.src]
+# Jinja, and its own project once generated: tests/test_template.py checks it there.
+exclude = ["template"]
 
 [tool.rumdl]
 line-length = 100
