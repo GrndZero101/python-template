@@ -5,7 +5,11 @@ machine — commands, PATH lookups, the environment — is a `Probe` the test bu
 a real command; tests/test_bootstrap_sh.py runs the helper for real, through the shim.
 """
 
+import json
+import shutil
 import subprocess
+import urllib.error
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,22 +17,38 @@ import pytest
 import yaml
 
 from bootstrap import (
+    BASE_UV_SITES,
+    CLI_REPO_NAME,
     CLI_TEMPLATE,
+    CLI_UV_SITES,
+    PIN_COMMIT_BODY,
+    UV_RELEASES,
     Check,
+    PinSite,
     Probe,
     choose_email,
     copier_settings_path,
     doctor,
     main,
+    move_uv,
     new,
     noreply_email,
     parse_tool_list,
+    pin_checks,
+    read_pin,
     render,
+    resolve_target,
+    rewrite_pin,
     settings_text,
     setup,
     upgrade_uv_tools,
+    version_key,
     write_settings,
 )
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PIN = read_pin(REPO_ROOT)
+NEWER = "99.1.2"
 
 TOOL_LIST = """copier v9.18.2
 - copier
@@ -46,19 +66,31 @@ NOREPLY = "123+adev@users.noreply.github.com"
 class FakeMachine:
     """Answers commands from a table; a command missing from it fails, as an unknown one would.
 
-    Questions get `agree` for an answer, and both they and the commands are kept, in order.
+    Questions get `agree` for an answer, and both they and the commands are kept, in order. PyPI
+    answers with `latest` for uv's newest release, or cannot be reached when it is None.
     """
 
     answers: dict[tuple[str, ...], tuple[int, str]] = field(default_factory=dict)
     installed: set[str] = field(default_factory=ON_PATH.copy)
     agree: bool = False
+    latest: str | None = PIN
     ran: list[tuple[str, ...]] = field(default_factory=list)
+    envs: dict[tuple[str, ...], Mapping[str, str] | None] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
 
-    def run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+    def run(
+        self, command: list[str], env: Mapping[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
         self.ran.append(tuple(command))
+        self.envs[tuple(command)] = env
         returncode, stdout = self.answers.get(tuple(command), (1, ""))
         return subprocess.CompletedProcess(command, returncode, stdout, "")
+
+    def fetch(self, url: str) -> bytes:
+        assert url == UV_RELEASES
+        if self.latest is None:
+            raise urllib.error.URLError(url)
+        return json.dumps({"info": {"version": self.latest}}).encode()
 
     def attach(self, command: list[str]) -> int:
         self.ran.append(tuple(command))
@@ -97,6 +129,7 @@ def _probe(machine: FakeMachine, home: Path, *, interactive: bool = False) -> Pr
         system="Linux",
         confirm=machine.confirm,
         interactive=interactive,
+        fetch=machine.fetch,
     )
 
 
@@ -437,3 +470,203 @@ def test_main_new_on_a_machine_doctor_fails_runs_no_copier(
     assert captured.out == ""
     assert "FAIL copier" in captured.err
     assert "bootstrap.sh setup" in captured.err
+
+
+# --- pins ---------------------------------------------------------------------------------
+
+
+def _repos(tmp_path: Path) -> tuple[Path, Path]:
+    """Return a base and a CLI repo holding real copies of every file the uv pin is written in.
+
+    The CLI repo's files are the base's, which write the pin the same way.
+    """
+    base = tmp_path / "base"
+    cli = tmp_path / CLI_REPO_NAME
+    for root, sites in ((base, BASE_UV_SITES), (cli, CLI_UV_SITES)):
+        for site in sites:
+            destination = root / site.path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(REPO_ROOT / site.path, destination)
+    return base, cli
+
+
+def _git(root: Path, *args: str) -> tuple[str, ...]:
+    return ("git", "-C", str(root), *args)
+
+
+def _commit(root: Path, version: str) -> tuple[str, ...]:
+    message = f"build(uv): raise the uv floor to {version}"
+    return _git(root, "commit", "-m", message, "-m", PIN_COMMIT_BODY)
+
+
+def _movable(base: Path, cli: Path | None = None, version: str = NEWER) -> FakeMachine:
+    """A machine on which each repo is clean, and switching, staging and committing there work."""
+    machine = FakeMachine(latest=version)
+    machine.answers["uv", "self", "version", "--short"] = (0, f"{version}\n")
+    repos = [(base, BASE_UV_SITES)]
+    if cli is not None:
+        repos.append((cli, CLI_UV_SITES))
+    for root, sites in repos:
+        machine.answers[_git(root, "status", "--porcelain")] = (0, "")
+        machine.answers[_git(root, "switch", "--create", f"build/uv-{version}", "main")] = (0, "")
+        paths = [str(Path(site.path)) for site in sites]
+        machine.answers[_git(root, "add", "--", *paths)] = (0, "")
+        machine.answers[_commit(root, version)] = (0, "")
+    return machine
+
+
+def _contents(*roots: Path) -> dict[Path, str]:
+    contents: dict[Path, str] = {}
+    for root in roots:
+        for path in root.rglob("*"):
+            if path.is_file():
+                contents[path] = path.read_text(encoding="utf-8")
+    return contents
+
+
+def _pins_found(root: Path, sites: tuple[PinSite, ...]) -> set[str]:
+    found: set[str] = set()
+    for site in sites:
+        text = (root / site.path).read_text(encoding="utf-8")
+        found.update(match["version"] for match in site.pattern.finditer(text))
+    return found
+
+
+def test_version_key_compares_numerically() -> None:
+    assert version_key("0.13.0") > version_key("0.9.10")
+
+
+def test_rewrite_pin_moves_every_copy_in_a_file() -> None:
+    text = 'a\n  version: "1.0.0"\nb\n  version: "1.0.0"\n'
+    moved = rewrite_pin(text, CLI_UV_SITES[2], "1.0.0", "2.0.0")
+    assert moved == 'a\n  version: "2.0.0"\nb\n  version: "2.0.0"\n'
+
+
+@pytest.mark.parametrize("text", ["UV_VERSION=1.0.1\n", "no pin here\n"])
+def test_rewrite_pin_refuses_a_file_not_holding_the_pin(text: str) -> None:
+    assert rewrite_pin(text, BASE_UV_SITES[0], "1.0.0", "2.0.0") is None
+
+
+def test_rewrite_pin_keeps_crlf_line_endings() -> None:
+    moved = rewrite_pin("UV_VERSION=1.0.0\r\n", BASE_UV_SITES[0], "1.0.0", "2.0.0")
+    assert moved == "UV_VERSION=2.0.0\r\n"
+
+
+@pytest.mark.parametrize(
+    ("rev", "expected"), [("1.0.0", "2.0.0"), ("1.5.0", "2.0.0"), ("2.1.0", "2.1.0")]
+)
+def test_rewrite_pin_raises_an_at_least_site_only_below_the_new_pin(
+    rev: str, expected: str
+) -> None:
+    hook = "  - repo: https://github.com/astral-sh/uv-pre-commit\n    rev: {}\n    hooks:\n"
+    moved = rewrite_pin(hook.format(rev), BASE_UV_SITES[-1], "1.0.0", "2.0.0")
+    assert moved == hook.format(expected)
+
+
+@pytest.mark.parametrize(
+    ("latest", "ok", "detail"),
+    [
+        (PIN, True, f"{PIN}, the latest"),
+        (NEWER, False, f"{PIN}, latest {NEWER}: sh bootstrap.sh pins --update uv"),
+        (None, False, f"{PIN}, latest unknown"),
+    ],
+)
+def test_pin_checks_show_the_pin_beside_the_latest_release(
+    tmp_path: Path, latest: str | None, ok: bool, detail: str
+) -> None:
+    checks = pin_checks(_probe(FakeMachine(latest=latest), tmp_path), REPO_ROOT)
+    assert checks == [Check("uv", ok=ok, detail=detail, required=ok)]
+
+
+@pytest.mark.parametrize(
+    ("requested", "latest", "expected"),
+    [
+        (None, NEWER, NEWER),
+        ("99.0.0", NEWER, "99.0.0"),
+        (PIN, NEWER, PIN),
+        ("0.1.0", NEWER, None),
+        ("latest", NEWER, None),
+        (None, None, None),
+    ],
+)
+def test_resolve_target_takes_the_latest_or_a_higher_version(
+    tmp_path: Path, requested: str | None, latest: str | None, expected: str | None
+) -> None:
+    probe = _probe(FakeMachine(latest=latest), tmp_path)
+    assert resolve_target(probe, PIN, requested) == expected
+
+
+def test_move_uv_moves_every_copy_and_commits_on_a_branch_in_each_repo(tmp_path: Path) -> None:
+    base, cli = _repos(tmp_path)
+    machine = _movable(base, cli)
+    assert move_uv(_probe(machine, tmp_path), base, cli, NEWER)
+    assert _pins_found(base, BASE_UV_SITES) == {NEWER}
+    assert _pins_found(cli, CLI_UV_SITES) == {NEWER}
+    for root in (base, cli):
+        env = machine.envs[_commit(root, NEWER)]
+        assert env is not None
+        assert env["SKIP"] == "generation-tests"
+
+
+def test_move_uv_changes_nothing_while_either_repo_is_dirty(tmp_path: Path) -> None:
+    base, cli = _repos(tmp_path)
+    machine = _movable(base, cli)
+    machine.answers[_git(cli, "status", "--porcelain")] = (0, " M README.md\n")
+    before = _contents(base, cli)
+    assert not move_uv(_probe(machine, tmp_path), base, cli, NEWER)
+    assert _contents(base, cli) == before
+    assert not any("switch" in command for command in machine.ran)
+
+
+def test_move_uv_changes_nothing_when_a_copy_disagrees(tmp_path: Path) -> None:
+    base, cli = _repos(tmp_path)
+    ci = cli / CLI_UV_SITES[2].path
+    ci.write_text(ci.read_text(encoding="utf-8").replace(PIN, "0.1.0", 1), encoding="utf-8")
+    machine = _movable(base, cli)
+    before = _contents(base, cli)
+    assert not move_uv(_probe(machine, tmp_path), base, cli, NEWER)
+    assert _contents(base, cli) == before
+    assert not any("switch" in command for command in machine.ran)
+
+
+def test_main_pins_reports_on_stdout_and_exits_0_even_when_behind(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["pins"], _probe(FakeMachine(latest=NEWER), tmp_path), REPO_ROOT) == 0
+    assert capsys.readouterr().out.startswith(f"warn uv  {PIN}, latest {NEWER}")
+
+
+def test_main_pins_update_finds_the_cli_repo_beside_this_one(tmp_path: Path) -> None:
+    base, cli = _repos(tmp_path)
+    machine = _movable(base, cli)
+    assert main(["pins", "--update", "uv"], _probe(machine, tmp_path), base) == 0
+    assert _pins_found(cli, CLI_UV_SITES) == {NEWER}
+
+
+def test_main_pins_update_refuses_a_floor_above_the_running_uv(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base, cli = _repos(tmp_path)
+    machine = _movable(base, cli)
+    machine.answers["uv", "self", "version", "--short"] = (0, f"{PIN}\n")
+    before = _contents(base, cli)
+    assert main(["pins", "--update", "uv"], _probe(machine, tmp_path), base) == 1
+    assert f"uv self update {NEWER}" in capsys.readouterr().err
+    assert _contents(base, cli) == before
+    assert not any(command[0] == "git" for command in machine.ran)
+
+
+def test_main_pins_update_needs_the_cli_repo(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base, cli = _repos(tmp_path)
+    shutil.rmtree(cli)
+    assert main(["pins", "--update", "uv"], _probe(_movable(base), tmp_path), base) == 1
+    assert "--cli-repo" in capsys.readouterr().err
+
+
+def test_main_pins_update_to_the_pin_is_nothing_to_do(tmp_path: Path) -> None:
+    base, _ = _repos(tmp_path)
+    machine = FakeMachine()
+    assert main(["pins", "--update", "uv", "--to", PIN], _probe(machine, tmp_path), base) == 0
+    assert machine.ran == []

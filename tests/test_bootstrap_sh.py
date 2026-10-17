@@ -21,6 +21,13 @@ SHIM = REPO_ROOT / "bootstrap.sh"
 HELPER = REPO_ROOT / "bootstrap.py"
 PIN = re.search(r"^UV_VERSION=(\S+)$", SHIM.read_text(encoding="utf-8"), re.MULTILINE)
 UV_VERSION = PIN.group(1) if PIN else ""
+_MAJOR, _MINOR, _PATCH = (int(part) for part in UV_VERSION.split("."))
+# A patch, a minor and a major release above the pin, wherever it is.
+ABOVE_THE_PIN = (
+    f"{_MAJOR}.{_MINOR}.{_PATCH + 1}",
+    f"{_MAJOR}.{_MINOR + 1}.0",
+    f"{_MAJOR + 1}.0.0",
+)
 
 # What the shim and the stub installer run, linked into the stub PATH from wherever they really are.
 SHIM_TOOLS = ("sh", "awk", "dirname", "mkdir", "cp")
@@ -125,7 +132,7 @@ def _handoff(*args: str) -> str:
 
 
 @posix_only
-@pytest.mark.parametrize("version", [UV_VERSION, "0.12.22", "0.13.0", "1.0.0"])
+@pytest.mark.parametrize("version", [UV_VERSION, *ABOVE_THE_PIN])
 def test_a_standalone_uv_at_or_above_the_pin_hands_off(tmp_path: Path, version: str) -> None:
     run = _run_shim(tmp_path, StubUv(version=version), "doctor")
     assert run.returncode == 0, run.stderr
@@ -250,3 +257,9 @@ def test_every_copy_of_the_uv_pin_agrees() -> None:
     setups = ci.count("uses: astral-sh/setup-uv@")
     versions = re.findall(r'^\s+version: "(.*)"$', ci, re.MULTILINE)
     assert versions == [UV_VERSION] * setups, "each setup-uv step must run the floor"
+    gate = (REPO_ROOT / "template" / ".pre-commit-config.yaml.jinja").read_text(encoding="utf-8")
+    hook = re.search(r"/uv-pre-commit\n\s+rev: v?(\S+)$", gate, re.MULTILINE)
+    assert hook, "no uv-pre-commit hook in the template's gate"
+    rev = tuple(int(part) for part in hook.group(1).split("."))
+    pin = tuple(int(part) for part in UV_VERSION.split("."))
+    assert rev >= pin, "uv-pre-commit runs the uv of its rev, which the floor refuses below the pin"

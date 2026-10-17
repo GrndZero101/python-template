@@ -10,14 +10,15 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo the same day
 (`db884f7` there: both pyprojects, both setup-uv steps, and
 `test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
-moving the pin here without the CLI repo fails this repo's CI). `setup` and `new` were merged
-later that day; the settings-defaults fix planned with `new` proved unneeded (see "Built so far").
-Read "Built so far" there first. Next, in order:
+moving the pin here without the CLI repo fails this repo's CI). `setup`, `new` and `pins` were
+merged later that day; the settings-defaults fix planned with `new` proved unneeded (see "Built so
+far"). Read "Built so far" there first. Next:
 
-1. **`pins`**, here. `pins --update uv` must move the CLI repo's four copies too, or this repo's
-   CI fails on the CLI suite.
-2. **`update`**, then the canary's `copier update` that closes the helper, since generated
+1. **`update`**, then the canary's `copier update` that closes the helper, since generated
    projects now receive `required-version`.
+
+The pin itself has not moved: it is still 0.12.21, uv's latest 0.13.1. Moving it is a decision
+for the author, not a step: `sh bootstrap.sh pins --update uv`, after `uv self update 0.13.1`.
 
 Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
 so that nothing under `template/` moves twice.
@@ -748,6 +749,28 @@ why:
   is. `Probe` gained `attach`, the run that keeps the terminal. copier missing from PATH while a
   uv tool names `uv tool update-shell`. Run for real through the shim against both local checkouts,
   with `--defaults --data ...` after `--`: exit 0, path on stdout, both answers files agree.
+- **`pins`** (branch `feat/bootstrap-pins`) shows the uv pin beside PyPI's latest
+  (`pypi.org/pypi/uv/json`, no token), as `warn` when behind, exit 0 either way. `--update uv`
+  (`--to VERSION`, default the latest; `--cli-repo`, default the sibling clone) moves every copy,
+  here and in the CLI repo, on `build/uv-<version>` cut from `main` in each, committed with
+  `SKIP=generation-tests` (the CLI repo's suite would test against the base on GitHub, whose pin
+  has not moved), then prints the finish-and-push order. Nothing changes until both checkouts are
+  clean and every copy holds the current pin. The copies are the `PinSite` table in
+  `bootstrap.py`; the agreement tests in both repos stay independent of it, so they check its
+  work. Run for real on scratch clones with a uv 0.13.1 installed there (its receipt kept there by
+  `XDG_CONFIG_HOME`): both branches committed, and both went through `finish_branch.py`, the CLI's
+  with `BASE_TEMPLATE_DIR`, full suites green. That run found three things the fakes could not:
+  - **A floor above the running uv stops every `uv run`**, the commit's own `ty` hook first, so
+    `--update` refuses until `uv self version` reaches the target, naming `uv self update <v>`.
+  - **`uv-pre-commit`'s `rev` is a copy too**: its `uv-lock` hook runs the uv of its rev, which the
+    floor refuses, so a generated project's gate failed. It is an `at_least` site, raised only
+    when below the new pin (an autoupdate may run it ahead), and the base's agreement test now
+    asserts rev ≥ pin. The CLI template's `uv_build>=0.12.21,<0.13.0` is not a copy: its suite
+    passed at 0.13.1 as it is. It belongs with phase 8's dependency floors.
+  - **Never `git commit --all` where a hook runs git elsewhere.** It hands hooks a temporary
+    `GIT_INDEX_FILE`, which every git they start inherits, so the generation suite's projects
+    failed with `invalid object` and `unable to read`. `pins` stages by name; so should anyone
+    committing here by hand while `generation-tests` is in the gate.
 - **Not a bug after all: copier settings and the base layer's author defaults.** The `setup`
   session read copier's `settings.defaults.get(name, question.default)` and concluded a settings
   file overrides the base's `_external_data` defaults when the CLI task applies the base, so
