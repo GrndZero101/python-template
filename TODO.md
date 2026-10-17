@@ -521,10 +521,11 @@ each step on scratch copies first; the canary's update is the acceptance test.
      not the generated-project wiring (`scripts/`, the ty hook, `uv add --dev`). One short spec run
      in a scratch base-alone project belongs in the canary-base session, before any line is added
      to the skill on a hunch.
-   - [ ] `raw-httpx-client` lives in the base's `convention_rules.py` and fires in a base-alone
-     project with a message naming the CLI skill's `http_client.py`, which is not there. A script
-     satisfies it with a `build_client` of its own (the skill says so). Either the message says
-     that when no reference exists, or the rule moves to the use case's rules.
+   - [x] **`raw-httpx-client` named a reference a base-alone project lacks.** Fixed 2026-10-17:
+     the message still points to a CLI skill's `http_client.py`, then says a uv script or a
+     project without one defines its own `build_client` (timeouts, User-Agent, `transport=`). The
+     rule stays in the base, which owns `tools/`, and reads only the AST, so the message is static
+     rather than probing for the file.
    - [x] **Acceptance test** (2026-10-17, from a session started in the canary): on a branch,
      `copier update --trust --defaults`, `uv sync`, commit, then the same with
      `-a .copier-answers.base.yml`, finished with `finish_branch.py` as `6615e62` and pushed. No
