@@ -542,13 +542,14 @@ each step on scratch copies first; the canary's update is the acceptance test.
      repo's `template/README.md.jinja`: the flag lets the template run its `_tasks`, which are
      copy-only, so an update runs none of them; an agent runs it with `--defaults` and explicit
      answers to new questions, since it cannot answer prompts.
-   - [ ] **Every hook with no `stages` runs at every installed stage.** The generated
-     `.pre-commit-config.yaml` sets no `default_stages`, so a commit lists the whole gate again at
-     `commit-msg`. Most hooks skip there for want of files, but ty is `always_run` and checks the
-     whole project a second time on every commit (seen in the canary, with the old ty hook and the
-     new). The `pre-merge-commit` run is the merge's gate and stays. Candidate:
-     `default_stages: [pre-commit, pre-merge-commit, manual]`, then confirm that `prek run
-     --all-files`, `finish_branch.py` and the update tests still run every hook.
+   - [x] **Every hook with no `stages` ran at every installed stage**, so a commit listed the
+     whole gate again at `commit-msg`, and ty, `always_run`, checked the whole project twice per
+     commit. Fixed 2026-10-17: `default_stages: [pre-commit, pre-merge-commit, manual]` in the
+     generated config and the root's. Checked against `main`'s config with `prek run -c`:
+     `commit-msg` now runs only the message check, and `pre-merge-commit` and the default
+     `prek run --all-files` select exactly the hooks they did. A hook's own `stages` still wins,
+     so `no-commit-to-branch` and `generation-tests` are untouched. Reaches the canary on its next
+     base update.
    **Later in the phase**: `python-canary-base` to exercise the skill; seed
    `python-template-cli-stdlib` from `archive/cli-stdlib`.
 
