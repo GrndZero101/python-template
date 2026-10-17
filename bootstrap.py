@@ -11,6 +11,7 @@ Run it through the shim, never directly:
 
     sh bootstrap.sh doctor          # report what is installed and configured; change nothing
     sh bootstrap.sh setup           # install or upgrade the uv tools, write copier's settings
+    sh bootstrap.sh new my-project  # generate a project from the CLI template, once doctor passes
 
 bootstrap.sh has already made sure of a standalone uv at or above its pin, so nothing here checks
 that again. Stdlib only, so there is nothing to download on a bare machine.
@@ -30,10 +31,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-NOT_READY = 1
+FAILED = 1
 
 # The uv tools a project's workflow runs: copier to generate and update, prek for the gate.
 UV_TOOLS = ("copier", "prek")
+
+# What `new` copies: the CLI use case, which applies the base to the same directory itself.
+CLI_TEMPLATE = "gh:GrndZero101/python-template-cli-typer"
 
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
@@ -49,6 +53,15 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
 
 
+def _attach(command: list[str]) -> int:
+    """Run `command` at the terminal, for the questions it asks, and return its exit code.
+
+    Its stdout goes to stderr, which is still the terminal, so the helper's own stdout stays data.
+    """
+    logger.debug("running %s", command)
+    return subprocess.run(command, stdout=sys.stderr, check=False).returncode  # noqa: S603
+
+
 def _confirm(question: str) -> bool:
     """Ask `question` on stderr, which leaves stdout to the report, and read a yes or no."""
     sys.stderr.write(f"bootstrap: {question}? [y/N] ")
@@ -61,6 +74,7 @@ class Probe:
     """Everything the helper reads from the machine, or asks its user, so a test can fake it."""
 
     run: Runner = _run
+    attach: Callable[[list[str]], int] = _attach
     which: Callable[[str], str | None] = shutil.which
     env: Mapping[str, str] = field(default_factory=os.environ.copy)
     home: Path = field(default_factory=Path.home)
@@ -281,6 +295,38 @@ def setup(probe: Probe, *, assume_yes: bool, noreply: bool) -> bool:
     return tools_ok and settings_ok
 
 
+def _occupied(path: Path) -> bool:
+    """Return whether `path` is a file, or a directory with anything in it."""
+    return path.exists() and (not path.is_dir() or any(path.iterdir()))
+
+
+def new(probe: Probe, destination: Path, *, template: str, copier_args: list[str]) -> bool:
+    """Generate a project at `destination` with copier, once doctor passes. Return whether it did."""
+    checks = doctor(probe)
+    failed = failed_checks(checks)
+    if failed:
+        sys.stderr.write(render(checks))
+        logger.error("not ready (%s): run sh bootstrap.sh setup first", ", ".join(failed))
+        return False
+    if _occupied(destination):
+        logger.error("%s is already there and not an empty directory; name a new one", destination)
+        return False
+    if probe.which("copier") is None:
+        logger.error("copier is not on PATH: run uv tool update-shell, then open a new shell")
+        return False
+    command = ["copier", "copy", "--trust", *copier_args, template, str(destination)]
+    returncode = probe.attach(command)
+    if returncode != 0:
+        logger.error("copier copy exited %d; its error is above", returncode)
+        return False
+    return True
+
+
+def failed_checks(checks: list[Check]) -> list[str]:
+    """Return the names of the required checks that failed."""
+    return [check.name for check in checks if check.required and not check.ok]
+
+
 def render(checks: list[Check]) -> str:
     """Return the report: one aligned line per check, `ok`, `FAIL`, or `warn` for advice."""
     width = max(len(check.name) for check in checks)
@@ -314,6 +360,19 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="answer author_email with your GitHub noreply address",
     )
+    new_parser = commands.add_parser(
+        "new", help="generate a project from the CLI template, once doctor passes"
+    )
+    new_parser.add_argument("destination", help="the project's directory: new, or empty")
+    new_parser.add_argument(
+        "--template", default=CLI_TEMPLATE, help="the template to copy (default: %(default)s)"
+    )
+    new_parser.add_argument(
+        "copier_args",
+        nargs="*",
+        metavar="-- COPIER_ARG",
+        help="after --, passed to copier copy as is: -- --vcs-ref <commit>",
+    )
     return parser
 
 
@@ -326,17 +385,24 @@ def main(argv: list[str] | None = None, probe: Probe | None = None) -> int:
         level=level, stream=sys.stderr, format="%(levelname)s %(message)s", force=True
     )
     probe = probe or Probe()
+    if args.command == "new":
+        # Resolved now, so stdout names it absolutely: cd "$(sh bootstrap.sh new my-project)".
+        destination = Path(args.destination).resolve()
+        if not new(probe, destination, template=args.template, copier_args=args.copier_args):
+            return FAILED
+        sys.stdout.write(f"{destination}\n")
+        return 0
     done = True
     if args.command == "setup":
         done = setup(probe, assume_yes=args.yes, noreply=args.noreply)
     # setup ends with doctor's report too, so a run shows what it left.
     checks = doctor(probe)
     sys.stdout.write(render(checks))
-    failed = [check.name for check in checks if check.required and not check.ok]
+    failed = failed_checks(checks)
     if failed:
         logger.error("not ready: %s", ", ".join(failed))
     if failed or not done:
-        return NOT_READY
+        return FAILED
     return 0
 
 

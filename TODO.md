@@ -10,14 +10,14 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo the same day
 (`db884f7` there: both pyprojects, both setup-uv steps, and
 `test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
-moving the pin here without the CLI repo fails this repo's CI). `setup` was merged later that day.
+moving the pin here without the CLI repo fails this repo's CI). `setup` and `new` were merged
+later that day; the settings-defaults fix planned with `new` proved unneeded (see "Built so far").
 Read "Built so far" there first. Next, in order:
 
-1. **`new`**, here, and with it the settings-defaults fix in the CLI repo that "Built so far"
-   describes under `setup`: `new` is the first command whose output it changes.
-2. **`pins`**, **`update`**, then the canary's `copier update` that closes the helper, since
-   generated projects now receive `required-version`. `pins --update uv` must move the CLI repo's
-   four copies too, or this repo's CI fails on the CLI suite.
+1. **`pins`**, here. `pins --update uv` must move the CLI repo's four copies too, or this repo's
+   CI fails on the CLI suite.
+2. **`update`**, then the canary's `copier update` that closes the helper, since generated
+   projects now receive `required-version`.
 
 Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
 so that nothing under `template/` moves twice.
@@ -739,19 +739,26 @@ why:
   and with no terminal git's email wins. `Probe` gained `confirm` and `interactive` for this. Run
   for real through the shim with `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and `COPIER_SETTINGS_PATH`
   pointed at a scratch directory: first run, rerun (`unchanged`) and refusal all as designed.
-- **Found while building `setup`: a settings default overrides the base layer's own defaults.**
-  copier reads `settings.defaults.get(name, question.default)` (`_user_data.py`, copier 9.19), so
-  the default is replaced, not just pre-filled, and ranks below only data passed in and recorded
-  answers. The base's `author_name` and `author_email` defaults, which read the use case's answers
-  through `_external_data`, therefore never render once the settings file names them. The CLI
-  task runs the base with `--defaults`, so the base records the settings value even when the user
-  typed something else at the CLI prompt: a blank email to leave it out, say. Today nothing
-  visible differs (the base's only use of either is its fallback `pyproject.toml`, which the use
-  case's replaces), but `.copier-answers.base.yml` disagrees with `.copier-answers.yml`, and any
-  future use renders the wrong value. Fix in the CLI repo's `_tasks`: pass each shared question as
-  `"--data", "author_name={{ author_name }}"` and so on, since data passed in outranks settings;
-  test it there with `COPIER_SETTINGS_PATH` set to a file naming values that differ from the
-  answers.
+- **`new <dir>`** (branch `feat/bootstrap-new`) runs `doctor` and stops on a failed required
+  check, with the report on stderr and `setup` named as the fix; refuses a destination that is a
+  file or a directory with anything in it; then runs `copier copy --trust <template> <dir>` with
+  the terminal attached, copier's stdout sent to stderr, so the helper's stdout is only the new
+  project's absolute path (`cd "$(sh bootstrap.sh new my-project)"`). `--template` (default the
+  CLI template's `gh:` URL) points it at a local checkout; anything after `--` goes to copier as
+  is. `Probe` gained `attach`, the run that keeps the terminal. copier missing from PATH while a
+  uv tool names `uv tool update-shell`. Run for real through the shim against both local checkouts,
+  with `--defaults --data ...` after `--`: exit 0, path on stdout, both answers files agree.
+- **Not a bug after all: copier settings and the base layer's author defaults.** The `setup`
+  session read copier's `settings.defaults.get(name, question.default)` and concluded a settings
+  file overrides the base's `_external_data` defaults when the CLI task applies the base, so
+  `.copier-answers.base.yml` would disagree with `.copier-answers.yml`; it planned a `--data` fix
+  in the CLI repo's `_tasks`. Running it disproved that: with a settings file naming other values,
+  the base recorded the use case's answers. The reason: on `copy`, copier reads *last answers*
+  from `-a`, or else `.copier-answers.yml` — never from the template's `_answers_file`
+  (`Worker.subproject`, unchanged in 9.18.2 and 9.19.1). So the base's copy sees the use case's
+  answers file as its own last answers, and last answers outrank settings. Nothing to fix. It
+  also means the base's `_external_data` defaults never decide a layered copy; whether they still
+  earn their place is for a later review, not the helper.
 
 **Tests:** shellcheck with `--shell=sh` in the root gate. The shim's branches tested with a stub
 `uv` on PATH for each case (missing, not self-updatable, below the pin, at it, above it), plus one
