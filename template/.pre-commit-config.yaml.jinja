@@ -9,6 +9,13 @@
 # commit-msg check would never fire and `git merge --no-ff` into main would be
 # blocked by no-commit-to-branch:
 #   prek install -t pre-commit -t commit-msg -t pre-merge-commit
+
+# A hook with no `stages` of its own runs at these. Without the list it runs at every installed
+# stage, so a commit runs the whole gate again at commit-msg, and ty, which is always_run,
+# re-checks the whole project there. pre-merge-commit is the merge's gate; manual keeps
+# `prek run --hook-stage manual <id>` working. A hook's own `stages` still wins.
+default_stages: [pre-commit, pre-merge-commit, manual]
+
 repos:
   - repo: builtin
     hooks:

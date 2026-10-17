@@ -17,6 +17,10 @@
 #   rules that need a `.git` to act on.
 #
 # NOTE: `repo: builtin` is a prek extension and is NOT understood by plain `pre-commit`.
+
+# Hooks with no `stages` of their own skip commit-msg; see template/.pre-commit-config.yaml.jinja.
+default_stages: [pre-commit, pre-merge-commit, manual]
+
 repos:
   - repo: builtin
     hooks:
@@ -89,8 +93,9 @@ repos:
       # same paths; change both together. The PostToolUse hook in .claude/settings.json
       # skips it too, so a minute-long suite never runs on save. To skip it at commit as well:
       #   SKIP=generation-tests git commit ...
-      # `stages: [pre-commit]` is load-bearing. Without it the hook also fires at the commit-msg
-      # stage, running the whole minute-long suite a second time for a message check.
+      # `stages: [pre-commit]` is load-bearing. Without it the hook also fires at
+      # pre-merge-commit, running the whole suite again for a merge that finish_branch.py has
+      # already gated.
       - id: generation-tests
         name: generate projects and run their gates
         entry: uv run pytest tests
