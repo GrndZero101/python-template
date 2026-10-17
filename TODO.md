@@ -12,10 +12,22 @@ in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo
 `test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
 moving the pin here without the CLI repo fails this repo's CI). `setup`, `new` and `pins` were
 merged later that day; the settings-defaults fix planned with `new` proved unneeded (see "Built so
-far"). Read "Built so far" there first. Next:
+far"), and `update` after them. Read "Built so far" there first. Next, each in its own session,
+since each works in another directory:
 
-1. **`update`**, then the canary's `copier update` that closes the helper, since generated
-   projects now receive `required-version`.
+1. **In the CLI repo: `update` end to end**, as "Tests" below plans: a test beside the update
+   tests that snapshots both templates, moves both forward, and runs
+   `uv run --script <base_checkout>/bootstrap.py update <project> -- --defaults` (doctor needs
+   copier and prek as uv tools and git's identity, so it wants `requires_copier` and probably
+   CI-only, like the shim's real-uv test); assert both markers, two commits on
+   `chore/template-update`, a clean tree. It reads `bootstrap.py` from the base's `main` unless
+   `BASE_TEMPLATE_DIR` is set, so this repo's `update` must be pushed first (it is, once this
+   branch is merged and pushed). Whether the CLI's README and the generated `README.md.jinja`
+   name `sh bootstrap.sh update` beside the manual flow is the same session's call.
+2. **The canary's update, through the helper**, which closes the helper: from the canary,
+   `sh ../python-template-base/bootstrap.sh update . --finish`, interactive, so copier asks any
+   new question. Generated projects now receive `required-version`; check `git diff main` on
+   both answers files before finishing, then push.
 
 The pin itself has not moved: it is still 0.12.21, uv's latest 0.13.1. Moving it is a decision
 for the author, not a step: `sh bootstrap.sh pins --update uv`, after `uv self update 0.13.1`.
@@ -771,6 +783,25 @@ why:
     `GIT_INDEX_FILE`, which every git they start inherits, so the generation suite's projects
     failed with `invalid object` and `unable to read`. `pins` stages by name; so should anyone
     committing here by hand while `generation-tests` is in the gate.
+- **`update <project>`** (branch `feat/bootstrap-update`) runs the README's two-layer flow:
+  `doctor` and copier on PATH, as `new`; a clean checkout on `main` or `chore/template-update`
+  (anything else is refused, so a resumed run is the same command); then each answers file present,
+  `.copier-answers.yml` first, as `copier update --trust -a <file> [args after --] <project>` at
+  the terminal, `uv sync`, and `git add --all` plus a commit named for the layer and its new
+  `_commit` (`_src_path`'s last part: `python-template-base`). The branch is made only at the first
+  commit or conflict, so an update that changes nothing leaves none. Checked by hand on scratch
+  copies (2026-10-17) before it was written: **copier exits 0 on a conflict**, writing markers and
+  recording each file as unmerged, so the helper reads `git diff --name-only --diff-filter=U`; an
+  update already current exits 0 and changes nothing; an unknown `--data` key is ignored, so args
+  after `--` go to both layers; and `git switch --create` carries unmerged paths along. A conflict,
+  a failed `uv sync` or a commit the hooks refuse stops it with the steps to carry on (resolve,
+  `uv sync`, commit with the message it names, rerun). stdout is one report line per layer reached
+  (`a -> b`, or `already at`); `--finish` runs the project's `finish_branch.py`, otherwise it
+  prints that command. Run for real through the shim on a project generated from scratch clones of
+  both templates: no-op, conflict stop, resume with `--finish` (merged `--no-ff`), and a second
+  update without it. That run found **`uv run --script` exports `VIRTUAL_ENV`** for the helper's
+  own environment, and every uv in the project warned it was ignoring it; `uv sync`, the commit
+  and `finish_branch.py` now run without it. `Probe.attach` takes `env` for that, as `run` does.
 - **Not a bug after all: copier settings and the base layer's author defaults.** The `setup`
   session read copier's `settings.defaults.get(name, question.default)` and concluded a settings
   file overrides the base's `_external_data` defaults when the CLI task applies the base, so

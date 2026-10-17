@@ -12,6 +12,7 @@ Run it through the shim, never directly:
     sh bootstrap.sh doctor          # report what is installed and configured; change nothing
     sh bootstrap.sh setup           # install or upgrade the uv tools, write copier's settings
     sh bootstrap.sh new my-project  # generate a project from the CLI template, once doctor passes
+    sh bootstrap.sh update my-project  # update both layers, committed on chore/template-update
     sh bootstrap.sh pins            # show the uv pin beside uv's latest release
     sh bootstrap.sh pins --update uv  # move the pin everywhere it is written, here and in the CLI repo
 
@@ -26,6 +27,7 @@ import logging
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -78,13 +80,21 @@ def _run(
     return subprocess.run(command, capture_output=True, text=True, check=False, env=env)  # noqa: S603
 
 
-def _attach(command: list[str]) -> int:
+class Attacher(Protocol):
+    """Runs a command at the terminal and returns its exit code. `env` is as for a Runner."""
+
+    def __call__(self, command: list[str], env: Mapping[str, str] | None = None) -> int:
+        """Run `command`."""
+        ...
+
+
+def _attach(command: list[str], env: Mapping[str, str] | None = None) -> int:
     """Run `command` at the terminal, for the questions it asks, and return its exit code.
 
     Its stdout goes to stderr, which is still the terminal, so the helper's own stdout stays data.
     """
     logger.debug("running %s", command)
-    return subprocess.run(command, stdout=sys.stderr, check=False).returncode  # noqa: S603
+    return subprocess.run(command, stdout=sys.stderr, check=False, env=env).returncode  # noqa: S603
 
 
 def _fetch(url: str) -> bytes:
@@ -105,7 +115,7 @@ class Probe:
     """Everything the helper reads from the machine, or asks its user, so a test can fake it."""
 
     run: Runner = _run
-    attach: Callable[[list[str]], int] = _attach
+    attach: Attacher = _attach
     which: Callable[[str], str | None] = shutil.which
     env: Mapping[str, str] = field(default_factory=os.environ.copy)
     home: Path = field(default_factory=Path.home)
@@ -332,19 +342,29 @@ def _occupied(path: Path) -> bool:
     return path.exists() and (not path.is_dir() or any(path.iterdir()))
 
 
-def new(probe: Probe, destination: Path, *, template: str, copier_args: list[str]) -> bool:
-    """Generate a project at `destination` with copier, once doctor passes. Return whether it did."""
+def _ready_for_copier(probe: Probe) -> bool:
+    """Return whether doctor passes and copier is on PATH, saying what to do when not.
+
+    The report goes to stderr: the commands that check this keep stdout for their own data.
+    """
     checks = doctor(probe)
     failed = failed_checks(checks)
     if failed:
         sys.stderr.write(render(checks))
         logger.error("not ready (%s): run sh bootstrap.sh setup first", ", ".join(failed))
         return False
-    if _occupied(destination):
-        logger.error("%s is already there and not an empty directory; name a new one", destination)
-        return False
     if probe.which("copier") is None:
         logger.error("copier is not on PATH: run uv tool update-shell, then open a new shell")
+        return False
+    return True
+
+
+def new(probe: Probe, destination: Path, *, template: str, copier_args: list[str]) -> bool:
+    """Generate a project at `destination` with copier, once doctor passes. Return whether it did."""
+    if not _ready_for_copier(probe):
+        return False
+    if _occupied(destination):
+        logger.error("%s is already there and not an empty directory; name a new one", destination)
         return False
     command = ["copier", "copy", "--trust", *copier_args, template, str(destination)]
     returncode = probe.attach(command)
@@ -601,6 +621,221 @@ def _pins(probe: Probe, root: Path, args: argparse.Namespace) -> int:
     return 0 if move_uv(probe, root, cli.resolve(), new) else FAILED
 
 
+# What `update` brings up to date, in this order: the use case, then the base under it. A project
+# generated from the base alone has only the second.
+ANSWERS_FILES = (".copier-answers.yml", ".copier-answers.base.yml")
+UPDATE_BRANCH = "chore/template-update"
+UPDATE_SUMMARY = "chore(template): update from the templates"
+# The two keys read from an answers file are plain scalars, so there is no YAML library to need.
+_ANSWER = re.compile(r"^(?P<key>_commit|_src_path): (?P<value>.+?)\r?$", re.MULTILINE)
+
+UPDATE_RESUME = """
+To carry on, in {project}:
+  1. {first}
+  2. uv sync && git add -A && git commit -m "{message}"
+  3. {rerun}
+"""
+
+UPDATE_NEXT_STEPS = """
+Committed on {branch} in {project}. Review it: git diff main. A new key in an answers file is a
+question copier answered for you. Then finish it, which squashes, gates, tests and merges:
+  cd {project} && uv run python tools/finish_branch.py "{summary}"
+or rerun with --finish to have this run it.
+"""
+
+
+@dataclass(frozen=True)
+class Layer:
+    """One template a project was generated from, as its answers file records it."""
+
+    answers: str
+    source: str
+    commit: str
+
+    @property
+    def name(self) -> str:
+        """Return the template's repository name, the last part of its source."""
+        if not self.source:
+            return self.answers
+        return re.split(r"[/\\]", self.source.rstrip("/\\"))[-1].removesuffix(".git")
+
+
+@dataclass(frozen=True)
+class UpdateRun:
+    """What one `update` was asked to do, which a run resumed after a stop repeats."""
+
+    project: Path
+    copier_args: tuple[str, ...] = ()
+    finish: bool = False
+
+    def rerun(self) -> str:
+        """Return the command that carries on where this run stopped."""
+        command = ["sh", str(HERE / "bootstrap.sh"), "update", str(self.project)]
+        if self.finish:
+            command.append("--finish")
+        if self.copier_args:
+            command.extend(["--", *self.copier_args])
+        return shlex.join(command)
+
+
+def read_layer(project: Path, answers: str) -> Layer | None:
+    """Return the layer that `answers` records in `project`, or None when there is no such file."""
+    path = project / answers
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    found = {match["key"]: match["value"].strip("'\"") for match in _ANSWER.finditer(text)}
+    return Layer(answers, found.get("_src_path", ""), found.get("_commit", ""))
+
+
+def _branch(probe: Probe, root: Path) -> str:
+    """Return the branch checked out in `root`, or "" when there is none."""
+    completed = _git(probe, root, "branch", "--show-current")
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def _on_update_branch(probe: Probe, project: Path) -> bool:
+    """Move onto UPDATE_BRANCH from main, taking the working tree along, unless it is there already.
+
+    Left until there is something to commit, so an update that changes nothing leaves no branch.
+    """
+    if _branch(probe, project) == UPDATE_BRANCH:
+        return True
+    switched = _git(probe, project, "switch", "--create", UPDATE_BRANCH)
+    if switched.returncode != 0:
+        logger.error("%s: git switch failed: %s", project, switched.stderr.strip())
+        return False
+    logger.info("%s: on a new branch, %s", project, UPDATE_BRANCH)
+    return True
+
+
+def _layers_to_update(probe: Probe, project: Path) -> list[Layer] | None:
+    """Return the project's layers in update order, or None when it cannot be updated now."""
+    if not _ready_for_copier(probe) or not _clean_checkout(probe, project):
+        return None
+    branch = _branch(probe, project)
+    if branch not in {"main", UPDATE_BRANCH}:
+        logger.error(
+            "%s is on %s: switch to main first; update makes its own branch", project, branch
+        )
+        return None
+    layers: list[Layer] = []
+    for answers in ANSWERS_FILES:
+        layer = read_layer(project, answers)
+        if layer is not None:
+            layers.append(layer)
+    if not layers:
+        names = " or ".join(ANSWERS_FILES)
+        logger.error("%s has no %s: it was not generated from these templates", project, names)
+        return None
+    return layers
+
+
+def _project_env(probe: Probe) -> dict[str, str]:
+    """Return the environment for a command that runs uv in the project, the commit's hooks too.
+
+    `uv run --script` points VIRTUAL_ENV at the helper's own environment, and every uv run in the
+    project would warn that it ignores it.
+    """
+    return {name: value for name, value in probe.env.items() if name != "VIRTUAL_ENV"}
+
+
+def _stop(run: UpdateRun, layer: Layer, first: str) -> None:
+    """Log how to carry on after this layer stopped part way, its changes left in place."""
+    moved = read_layer(run.project, layer.answers) or layer
+    message = f"chore(template): update {layer.name} to {moved.commit}"
+    resume = UPDATE_RESUME.format(
+        project=run.project, first=first, message=message, rerun=run.rerun()
+    )
+    sys.stderr.write(resume)
+
+
+def _commit_layer(probe: Probe, run: UpdateRun, layer: Layer) -> Check:
+    """Commit what updating `layer` changed, on UPDATE_BRANCH."""
+    moved = read_layer(run.project, layer.answers) or layer
+    if not _on_update_branch(probe, run.project):
+        return Check(layer.name, ok=False, detail=f"could not switch to {UPDATE_BRANCH}")
+    # Added, then committed: never `commit --all`, which hands the hooks a temporary index.
+    staged = _git(probe, run.project, "add", "--all")
+    if staged.returncode != 0:
+        return Check(layer.name, ok=False, detail=f"git add failed: {staged.stderr.strip()}")
+    message = f"chore(template): update {layer.name} to {moved.commit}"
+    committed = _git(probe, run.project, "commit", "-m", message, env=_project_env(probe))
+    if committed.returncode != 0:
+        logger.error("the commit failed: %s", (committed.stdout + committed.stderr).strip())
+        _stop(run, layer, "fix what the commit's hooks reported above")
+        return Check(layer.name, ok=False, detail="the commit failed; its hooks' output is above")
+    return Check(layer.name, ok=True, detail=f"{layer.commit} -> {moved.commit}")
+
+
+def update_layer(probe: Probe, run: UpdateRun, layer: Layer) -> Check:
+    """Bring one layer up to date and commit it. A failed check means stop here."""
+    logger.info("%s: copier update from %s", layer.name, layer.commit)
+    command = ["copier", "update", "--trust", "-a", layer.answers, *run.copier_args]
+    returncode = probe.attach([*command, str(run.project)])
+    if returncode != 0:
+        detail = f"copier update exited {returncode}; its error is above, git status what it left"
+        return Check(layer.name, ok=False, detail=detail)
+    # copier exits 0 on a conflict: it writes the markers and records each file as unmerged.
+    conflicts = _git(probe, run.project, "diff", "--name-only", "--diff-filter=U")
+    if conflicts.stdout.strip():
+        _on_update_branch(probe, run.project)  # so the commit that resolves them lands off main
+        _stop(run, layer, 'resolve each conflict, then git add it (README: "Conflicts")')
+        detail = f"conflicts in {', '.join(conflicts.stdout.splitlines())}"
+        return Check(layer.name, ok=False, detail=detail)
+    # Before anything checks the update: a dependency the template dropped is still in .venv.
+    synced = probe.run(["uv", "sync", "--directory", str(run.project)], _project_env(probe))
+    if synced.returncode != 0:
+        _stop(run, layer, "fix what uv sync reported")
+        return Check(layer.name, ok=False, detail=f"uv sync failed: {synced.stderr.strip()}")
+    if not _git(probe, run.project, "status", "--porcelain").stdout.strip():
+        return Check(layer.name, ok=True, detail=f"already at {layer.commit}")
+    return _commit_layer(probe, run, layer)
+
+
+def update(probe: Probe, run: UpdateRun, layers: list[Layer]) -> list[Check]:
+    """Update each layer in turn, stopping at the first that does not finish cleanly."""
+    checks: list[Check] = []
+    for layer in layers:
+        check = update_layer(probe, run, layer)
+        checks.append(check)
+        if not check.ok:
+            break
+    return checks
+
+
+def finish_update(probe: Probe, project: Path) -> bool:
+    """Run the project's finish_branch.py on UPDATE_BRANCH, which merges it into main."""
+    command = ["uv", "run", "--directory", str(project), "python", "tools/finish_branch.py"]
+    returncode = probe.attach([*command, UPDATE_SUMMARY], _project_env(probe))
+    if returncode != 0:
+        logger.error("finish_branch.py exited %d; its output above says what to do", returncode)
+        return False
+    return True
+
+
+def _update(probe: Probe, args: argparse.Namespace) -> int:
+    """Run `update`: each layer, a report of them on stdout, then the finish or how to do it."""
+    run = UpdateRun(Path(args.project).resolve(), tuple(args.copier_args), finish=args.finish)
+    layers = _layers_to_update(probe, run.project)
+    if layers is None:
+        return FAILED
+    checks = update(probe, run, layers)
+    sys.stdout.write(render(checks))
+    if failed_checks(checks):
+        return FAILED
+    if _branch(probe, run.project) != UPDATE_BRANCH:
+        logger.info("every layer is up to date; nothing to commit")
+        return 0
+    if run.finish:
+        return 0 if finish_update(probe, run.project) else FAILED
+    next_steps = UPDATE_NEXT_STEPS.format(
+        branch=UPDATE_BRANCH, project=run.project, summary=UPDATE_SUMMARY
+    )
+    sys.stderr.write(next_steps)
+    return 0
+
+
 def failed_checks(checks: list[Check]) -> list[str]:
     """Return the names of the required checks that failed."""
     return [check.name for check in checks if check.required and not check.ok]
@@ -652,6 +887,19 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="-- COPIER_ARG",
         help="after --, passed to copier copy as is: -- --vcs-ref <commit>",
     )
+    update_parser = commands.add_parser(
+        "update", help="update a project from both its templates, committed on a branch"
+    )
+    update_parser.add_argument("project", help="the project's directory")
+    update_parser.add_argument(
+        "--finish", action="store_true", help="then merge the branch with tools/finish_branch.py"
+    )
+    update_parser.add_argument(
+        "copier_args",
+        nargs="*",
+        metavar="-- COPIER_ARG",
+        help="after --, passed to each copier update as is: -- --defaults",
+    )
     pins_parser = commands.add_parser(
         "pins", help="show the uv pin beside uv's latest release, or move it with --update"
     )
@@ -682,6 +930,8 @@ def main(argv: list[str] | None = None, probe: Probe | None = None, root: Path =
     probe = probe or Probe()
     if args.command == "pins":
         return _pins(probe, root, args)
+    if args.command == "update":
+        return _update(probe, args)
     if args.command == "new":
         # Resolved now, so stdout names it absolutely: cd "$(sh bootstrap.sh new my-project)".
         destination = Path(args.destination).resolve()

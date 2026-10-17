@@ -5,11 +5,13 @@ machine — commands, PATH lookups, the environment — is a `Probe` the test bu
 a real command; tests/test_bootstrap_sh.py runs the helper for real, through the shim.
 """
 
+import dataclasses
+import functools
 import json
 import shutil
 import subprocess
 import urllib.error
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,10 +24,14 @@ from bootstrap import (
     CLI_TEMPLATE,
     CLI_UV_SITES,
     PIN_COMMIT_BODY,
+    UPDATE_BRANCH,
+    UPDATE_SUMMARY,
     UV_RELEASES,
     Check,
+    Layer,
     PinSite,
     Probe,
+    UpdateRun,
     choose_email,
     copier_settings_path,
     doctor,
@@ -35,6 +41,7 @@ from bootstrap import (
     noreply_email,
     parse_tool_list,
     pin_checks,
+    read_layer,
     read_pin,
     render,
     resolve_target,
@@ -66,11 +73,18 @@ NOREPLY = "123+adev@users.noreply.github.com"
 class FakeMachine:
     """Answers commands from a table; a command missing from it fails, as an unknown one would.
 
+    A command in `queued` takes its answers from there in turn, until they run out. One in
+    `effects` does that to the files too, as copier would. `git branch --show-current` answers
+    with `branch`, which a `git switch --create` that succeeds moves.
+
     Questions get `agree` for an answer, and both they and the commands are kept, in order. PyPI
     answers with `latest` for uv's newest release, or cannot be reached when it is None.
     """
 
     answers: dict[tuple[str, ...], tuple[int, str]] = field(default_factory=dict)
+    queued: dict[tuple[str, ...], list[tuple[int, str]]] = field(default_factory=dict)
+    effects: dict[tuple[str, ...], Callable[[], None]] = field(default_factory=dict)
+    branch: str = "main"
     installed: set[str] = field(default_factory=ON_PATH.copy)
     agree: bool = False
     latest: str | None = PIN
@@ -78,12 +92,25 @@ class FakeMachine:
     envs: dict[tuple[str, ...], Mapping[str, str] | None] = field(default_factory=dict)
     asked: list[str] = field(default_factory=list)
 
+    def _answer(self, command: list[str], env: Mapping[str, str] | None) -> tuple[int, str]:
+        key = tuple(command)
+        self.ran.append(key)
+        self.envs[key] = env
+        effect = self.effects.get(key)
+        if effect is not None:
+            effect()
+        if command[3:] == ["branch", "--show-current"]:
+            return 0, f"{self.branch}\n"
+        queue = self.queued.get(key)
+        answer = queue.pop(0) if queue else self.answers.get(key, (1, ""))
+        if command[3:5] == ["switch", "--create"] and answer[0] == 0:
+            self.branch = command[5]
+        return answer
+
     def run(
         self, command: list[str], env: Mapping[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
-        self.ran.append(tuple(command))
-        self.envs[tuple(command)] = env
-        returncode, stdout = self.answers.get(tuple(command), (1, ""))
+        returncode, stdout = self._answer(command, env)
         return subprocess.CompletedProcess(command, returncode, stdout, "")
 
     def fetch(self, url: str) -> bytes:
@@ -92,9 +119,8 @@ class FakeMachine:
             raise urllib.error.URLError(url)
         return json.dumps({"info": {"version": self.latest}}).encode()
 
-    def attach(self, command: list[str]) -> int:
-        self.ran.append(tuple(command))
-        return self.answers.get(tuple(command), (1, ""))[0]
+    def attach(self, command: list[str], env: Mapping[str, str] | None = None) -> int:
+        return self._answer(command, env)[0]
 
     def confirm(self, question: str) -> bool:
         self.asked.append(question)
@@ -670,3 +696,262 @@ def test_main_pins_update_to_the_pin_is_nothing_to_do(tmp_path: Path) -> None:
     machine = FakeMachine()
     assert main(["pins", "--update", "uv", "--to", PIN], _probe(machine, tmp_path), base) == 0
     assert machine.ran == []
+
+
+# --- update -------------------------------------------------------------------------------
+
+USE_CASE = (".copier-answers.yml", "gh:GrndZero101/python-template-cli-typer", "aaa1111")
+BASE = (".copier-answers.base.yml", "gh:GrndZero101/python-template-base", "bbb2222")
+MOVED_TO = "ccc3333"
+CHANGED = (0, " M CLAUDE.md\n")
+UNCHANGED = (0, "")
+
+
+def _write_answers(project: Path, answers: str, source: str, commit: str) -> None:
+    text = f"# Changes here will be overwritten by Copier\n_commit: {commit}\n_src_path: {source}\n"
+    (project / answers).write_text(text, encoding="utf-8")
+
+
+def _project(tmp_path: Path, *layers: tuple[str, str, str]) -> Path:
+    """Return a project directory holding an answers file for each of `layers`."""
+    project = tmp_path / "my-project"
+    project.mkdir()
+    for answers, source, commit in layers:
+        _write_answers(project, answers, source, commit)
+    return project
+
+
+def _copier_update(project: Path, answers: str, *copier_args: str) -> tuple[str, ...]:
+    return ("copier", "update", "--trust", "-a", answers, *copier_args, str(project))
+
+
+def _updatable(
+    project: Path,
+    *layers: tuple[str, str, str],
+    after: list[tuple[int, str]],
+    copier_args: tuple[str, ...] = (),
+) -> FakeMachine:
+    """A ready machine on which `project` is clean on main and copier moves each layer.
+
+    `after` is what `git status --porcelain` says after each layer's update, in turn.
+    """
+    machine = _ready_machine()
+    status = _git(project, "status", "--porcelain")
+    machine.queued[status] = [UNCHANGED, *after]
+    for answers, source, _ in layers:
+        command = _copier_update(project, answers, *copier_args)
+        machine.answers[command] = (0, "")
+        machine.effects[command] = functools.partial(
+            _write_answers, project, answers, source, MOVED_TO
+        )
+        message = f"chore(template): update {Layer(answers, source, '').name} to {MOVED_TO}"
+        machine.answers[_git(project, "commit", "-m", message)] = (0, "")
+    machine.answers[_git(project, "diff", "--name-only", "--diff-filter=U")] = (0, "")
+    machine.answers["uv", "sync", "--directory", str(project)] = (0, "")
+    machine.answers[_git(project, "switch", "--create", UPDATE_BRANCH)] = (0, "")
+    machine.answers[_git(project, "add", "--all")] = (0, "")
+    return machine
+
+
+def _commits(machine: FakeMachine) -> list[str]:
+    return [command[-1] for command in machine.ran if command[3:5] == ("commit", "-m")]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "_commit: aaa1111\n_src_path: gh:GrndZero101/python-template-cli-typer\n",
+            Layer(".copier-answers.yml", "gh:GrndZero101/python-template-cli-typer", "aaa1111"),
+        ),
+        (
+            "_commit: '1234567'\r\n_src_path: /templates/python-template-base/\r\n",
+            Layer(".copier-answers.yml", "/templates/python-template-base/", "1234567"),
+        ),
+    ],
+)
+def test_read_layer_reads_the_commit_and_source(tmp_path: Path, text: str, expected: Layer) -> None:
+    (tmp_path / ".copier-answers.yml").write_text(text, encoding="utf-8", newline="")
+    assert read_layer(tmp_path, ".copier-answers.yml") == expected
+
+
+def test_read_layer_of_a_missing_file_is_none(tmp_path: Path) -> None:
+    assert read_layer(tmp_path, ".copier-answers.base.yml") is None
+
+
+@pytest.mark.parametrize(
+    ("source", "name"),
+    [
+        ("gh:GrndZero101/python-template-base", "python-template-base"),
+        ("https://github.com/GrndZero101/python-template-base.git", "python-template-base"),
+        ("C:\\templates\\python-template-base\\", "python-template-base"),
+        ("", ".copier-answers.yml"),
+    ],
+)
+def test_a_layer_is_named_for_its_repository(source: str, name: str) -> None:
+    assert Layer(".copier-answers.yml", source, "aaa1111").name == name
+
+
+def test_a_rerun_repeats_what_was_asked() -> None:
+    run = UpdateRun(Path("/p"), ("--defaults", "--data", "a=b c"), finish=True)
+    assert run.rerun().endswith(f"update {Path('/p')} --finish -- --defaults --data 'a=b c'")
+
+
+def test_main_update_commits_each_layer_on_a_branch_and_reports_both(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(tmp_path, USE_CASE, BASE)
+    machine = _updatable(project, USE_CASE, BASE, after=[CHANGED, CHANGED])
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 0
+    assert machine.branch == UPDATE_BRANCH
+    assert _commits(machine) == [
+        f"chore(template): update python-template-cli-typer to {MOVED_TO}",
+        f"chore(template): update python-template-base to {MOVED_TO}",
+    ]
+    captured = capsys.readouterr()
+    assert captured.out == (
+        f"ok   python-template-cli-typer  aaa1111 -> {MOVED_TO}\n"
+        f"ok   python-template-base       bbb2222 -> {MOVED_TO}\n"
+    )
+    assert "tools/finish_branch.py" in captured.err
+
+
+def test_main_update_runs_the_use_case_first_then_the_base(tmp_path: Path) -> None:
+    project = _project(tmp_path, USE_CASE, BASE)
+    machine = _updatable(project, USE_CASE, BASE, after=[CHANGED, CHANGED])
+    main(["update", str(project)], _probe(machine, tmp_path))
+    copier = [command[4] for command in machine.ran if command[0] == "copier"]
+    assert copier == [".copier-answers.yml", ".copier-answers.base.yml"]
+
+
+def test_main_update_with_nothing_new_makes_no_branch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(tmp_path, USE_CASE, BASE)
+    machine = _updatable(project, USE_CASE, BASE, after=[UNCHANGED, UNCHANGED])
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 0
+    assert machine.branch == "main"
+    assert _commits(machine) == []
+    assert "ok   python-template-base       already at bbb2222" in capsys.readouterr().out
+
+
+def test_main_update_of_a_project_from_the_base_alone_updates_the_base(tmp_path: Path) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 0
+    assert _commits(machine) == [f"chore(template): update python-template-base to {MOVED_TO}"]
+
+
+def test_main_update_passes_what_follows_the_dashes_to_each_copier_update(tmp_path: Path) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED], copier_args=("--defaults",))
+    assert main(["update", str(project), "--", "--defaults"], _probe(machine, tmp_path)) == 0
+    assert _copier_update(project, BASE[0], "--defaults") in machine.ran
+
+
+def test_main_update_stops_at_a_conflict_on_the_branch_and_says_how_to_carry_on(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(tmp_path, USE_CASE, BASE)
+    machine = _updatable(
+        project, USE_CASE, BASE, after=[CHANGED, CHANGED], copier_args=("--defaults",)
+    )
+    machine.answers[_git(project, "diff", "--name-only", "--diff-filter=U")] = (0, "README.md\n")
+    assert main(["update", str(project), "--", "--defaults"], _probe(machine, tmp_path)) == 1
+    assert machine.branch == UPDATE_BRANCH, "the commit that resolves it must land off main"
+    assert _commits(machine) == []
+    assert not any(command[4:5] == (BASE[0],) for command in machine.ran), "the base is next"
+    captured = capsys.readouterr()
+    assert captured.out == "FAIL python-template-cli-typer  conflicts in README.md\n"
+    assert f'git commit -m "chore(template): update python-template-cli-typer to {MOVED_TO}"' in (
+        captured.err
+    )
+    assert f"update {project} -- --defaults" in captured.err
+
+
+def test_main_update_stops_when_uv_sync_fails(tmp_path: Path) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    del machine.answers["uv", "sync", "--directory", str(project)]
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 1
+    assert _commits(machine) == []
+
+
+def test_main_update_reports_a_commit_its_hooks_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    message = f"chore(template): update python-template-base to {MOVED_TO}"
+    machine.answers[_git(project, "commit", "-m", message)] = (1, "ruff check....Failed")
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 1
+    captured = capsys.readouterr()
+    assert captured.out.startswith("FAIL python-template-base")
+    assert "ruff check....Failed" in captured.err
+
+
+def test_main_update_runs_uv_in_the_project_without_the_helpers_virtual_env(
+    tmp_path: Path,
+) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    probe = dataclasses.replace(
+        _probe(machine, tmp_path), env={"VIRTUAL_ENV": "/helper/env", "HOME": str(tmp_path)}
+    )
+    assert main(["update", str(project)], probe) == 0
+    for command in (
+        ("uv", "sync", "--directory", str(project)),
+        *(command for command in machine.ran if command[3:5] == ("commit", "-m")),
+    ):
+        assert machine.envs[command] == {"HOME": str(tmp_path)}
+
+
+@pytest.mark.parametrize("finished", [True, False])
+def test_main_update_finish_merges_with_finish_branch(tmp_path: Path, *, finished: bool) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    finish = (
+        "uv",
+        "run",
+        "--directory",
+        str(project),
+        "python",
+        "tools/finish_branch.py",
+        UPDATE_SUMMARY,
+    )
+    machine.answers[finish] = (0 if finished else 1, "")
+    assert main(["update", str(project), "--finish"], _probe(machine, tmp_path)) == (
+        0 if finished else 1
+    )
+    assert machine.ran[-1] == finish
+
+
+def test_main_update_finish_with_nothing_new_finishes_nothing(tmp_path: Path) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[UNCHANGED])
+    assert main(["update", str(project), "--finish"], _probe(machine, tmp_path)) == 0
+    assert not any("tools/finish_branch.py" in command for command in machine.ran)
+
+
+@pytest.mark.parametrize(
+    ("reason", "says"),
+    [
+        ("dirty", "uncommitted changes"),
+        ("on another branch", "switch to main first"),
+        ("no answers file", "not generated from these templates"),
+    ],
+)
+def test_main_update_refuses_a_project_it_cannot_update_and_runs_no_copier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], reason: str, says: str
+) -> None:
+    project = _project(tmp_path, BASE)
+    machine = _updatable(project, BASE, after=[CHANGED])
+    if reason == "dirty":
+        machine.queued[_git(project, "status", "--porcelain")] = [(0, "?? notes.txt\n")]
+    elif reason == "on another branch":
+        machine.branch = "feat/fetch-retry"
+    else:
+        (project / BASE[0]).unlink()
+    assert main(["update", str(project)], _probe(machine, tmp_path)) == 1
+    assert not any(command[0] == "copier" for command in machine.ran)
+    assert says in capsys.readouterr().err
