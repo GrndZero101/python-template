@@ -6,15 +6,18 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 
 ## Next up
 
-**The setup helper**, under "Setup helper (after step 9)", built by following the uv-script skill.
-Step 9 is done (2026-10-16): the base ships `python-uv-script` with a reference script and test, a
-ty hook that actually checks scripts, and the project root on pytest's path; the CLI repo's half
-(the skill set, `pythonpath`) is pushed too. Its acceptance test passed on 2026-10-17: the canary
-took both layers' updates with no conflicts, a green gate and suite, and a ty hook proven to fail
-on a broken script (step 9, "Acceptance test"). So the helper is next, here, with the notes under
-"What step 9 settled for the helper". The test turned up two small follow-ups, listed under step
-9; neither blocks the helper. Work runs sequentially, with no worktrees or side tracks. The rest
-of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+**The setup helper, `bootstrap.sh` and `bootstrap.py`**, under "Setup helper (after step 9)",
+built by following the uv-script skill. Its four open questions were decided on 2026-10-17
+(listed there), so nothing blocks it: start with the shim and the `uv` pin, then `doctor`. Read
+"What step 9 settled for the helper" first. Step 9 is done, acceptance test included, and its
+three follow-ups were cleared on 2026-10-17 (the `raw-httpx-client` message, the READMEs'
+`--trust` paragraph, `default_stages`). Work runs sequentially, with no worktrees or side tracks.
+The rest of phase 8 waits behind phase 10 so that nothing under `template/` moves twice.
+
+Running two generation suites at once failed the CLI repo's
+`test_generated_project_works_at_the_python_floor` once (2026-10-17); alone, and in a full rerun,
+it passed. Run suites one at a time, as "How work runs" already says, before reading a failure as
+real.
 
 The state to expect:
 
@@ -679,14 +682,16 @@ lowered with it: ruff rewrites syntax up to the target and ty checks the script 
 version. The header goes first in the file; the shim's `exec uv run --script <helper>` and the URL
 form are unaffected.
 
-**Open:**
+**Decided 2026-10-17** (were open):
 
-- Names for both files: corporate-neutral, and the subcommand name a user will type often.
-- Typer and rich as dependencies, or stdlib `argparse` to keep the first run's download small.
-- `copier` as a uv tool the helper drives, or as a library in the helper's own environment. A
-  tool keeps the READMEs' commands true; a library allows `user_defaults` without a settings file.
-- Hosting: run from a clone only, or also `curl … | sh` at a pinned ref. The second needs a tag
-  (phase 8's tagging) or a commit in the URL, never `main`.
+- **Names: `bootstrap.sh` and `bootstrap.py`**, at the root. Neutral, says what it does, and
+  avoids `setup.py`, which reads as setuptools.
+- **Stdlib `argparse`, no dependencies.** Nothing to download on a bare machine and nothing to
+  declare twice (header and the root's dev group); five subcommands do not need typer.
+- **copier as a uv tool the helper drives**, not a library: `setup` installs it anyway, and the
+  READMEs' `copier update` commands stay true.
+- **Run from a clone only, for now.** `curl … | sh` needs a tag or a commit in the URL, never
+  `main`, so it waits for phase 8's tagging. The shim's step 4 has the clone form only until then.
 
 **Tests:** shellcheck with `--shell=sh` in the root gate. The shim's branches tested with a stub
 `uv` on PATH for each case (missing, not self-updatable, below the pin, at it, above it), plus one
