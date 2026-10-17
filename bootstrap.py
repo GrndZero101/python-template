@@ -12,6 +12,8 @@ Run it through the shim, never directly:
     sh bootstrap.sh doctor          # report what is installed and configured; change nothing
     sh bootstrap.sh setup           # install or upgrade the uv tools, write copier's settings
     sh bootstrap.sh new my-project  # generate a project from the CLI template, once doctor passes
+    sh bootstrap.sh pins            # show the uv pin beside uv's latest release
+    sh bootstrap.sh pins --update uv  # move the pin everywhere it is written, here and in the CLI repo
 
 bootstrap.sh has already made sure of a standalone uv at or above its pin, so nothing here checks
 that again. Stdlib only, so there is nothing to download on a bare machine.
@@ -23,15 +25,19 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 FAILED = 1
+HERE = Path(__file__).resolve().parent
 
 # The uv tools a project's workflow runs: copier to generate and update, prek for the gate.
 UV_TOOLS = ("copier", "prek")
@@ -39,7 +45,14 @@ UV_TOOLS = ("copier", "prek")
 # What `new` copies: the CLI use case, which applies the base to the same directory itself.
 CLI_TEMPLATE = "gh:GrndZero101/python-template-cli-typer"
 
-Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
+# The latest uv release, from PyPI's JSON API, which needs no token.
+UV_RELEASES = "https://pypi.org/pypi/uv/json"
+
+# The CLI template's clone, which holds copies of the uv pin too. By default, beside this one.
+CLI_REPO_NAME = "python-template-cli-typer"
+
+# A version as uv numbers its releases: dot-separated numbers and nothing else.
+VERSION = re.compile(r"^\d+(\.\d+)*$")
 
 SETTINGS_HEADER = (
     "# Written by `sh bootstrap.sh setup`, from git's identity. copier uses these as the default\n"
@@ -47,10 +60,22 @@ SETTINGS_HEADER = (
 )
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
+class Runner(Protocol):
+    """Runs a command and captures its output. `env`, when given, is the whole environment."""
+
+    def __call__(
+        self, command: list[str], env: Mapping[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        """Run `command`."""
+        ...
+
+
+def _run(
+    command: list[str], env: Mapping[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run `command` and capture its output. Never a shell string."""
     logger.debug("running %s", command)
-    return subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
+    return subprocess.run(command, capture_output=True, text=True, check=False, env=env)  # noqa: S603
 
 
 def _attach(command: list[str]) -> int:
@@ -60,6 +85,12 @@ def _attach(command: list[str]) -> int:
     """
     logger.debug("running %s", command)
     return subprocess.run(command, stdout=sys.stderr, check=False).returncode  # noqa: S603
+
+
+def _fetch(url: str) -> bytes:
+    """Return the body at `url`."""
+    with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310 -- constant https URLs
+        return response.read()
 
 
 def _confirm(question: str) -> bool:
@@ -81,6 +112,7 @@ class Probe:
     system: str = field(default_factory=platform.system)
     confirm: Callable[[str], bool] = _confirm
     interactive: bool = field(default_factory=sys.stdin.isatty)
+    fetch: Callable[[str], bytes] = _fetch
 
 
 @dataclass(frozen=True)
@@ -322,6 +354,253 @@ def new(probe: Probe, destination: Path, *, template: str, copier_args: list[str
     return True
 
 
+@dataclass(frozen=True)
+class PinSite:
+    """One place a pin is written: a file in its repo, and a pattern whose `version` group is it.
+
+    An `at_least` site may run ahead of the pin, and is moved only when it would fall below it.
+    """
+
+    path: str
+    pattern: re.Pattern[str]
+    at_least: bool = False
+
+
+SHIM_PIN = re.compile(r"^UV_VERSION=(?P<version>\S+)\r?$", re.MULTILINE)
+_UV_FLOOR = re.compile(r'^required-version = ">=(?P<version>[^"]+)"\r?$', re.MULTILINE)
+_SETUP_UV = re.compile(r'^\s+version: "(?P<version>[^"]+)"\r?$', re.MULTILINE)
+# uv-pre-commit's uv-lock hook runs the uv of its own rev, which the floor stops below the pin.
+_UV_HOOK = re.compile(r"/uv-pre-commit\r?\n\s+rev: v?(?P<version>\d+(?:\.\d+)*)\r?$", re.MULTILINE)
+
+# Every copy of the uv pin, which a test in each repo holds to the shim's line. A copy added
+# without a line here fails that test the first time the pin moves.
+BASE_UV_SITES = (
+    PinSite("bootstrap.sh", SHIM_PIN),
+    PinSite("pyproject.toml", _UV_FLOOR),
+    PinSite("template/pyproject.toml.jinja", _UV_FLOOR),
+    PinSite(".github/workflows/ci.yml", _SETUP_UV),
+    PinSite("template/.pre-commit-config.yaml.jinja", _UV_HOOK, at_least=True),
+)
+CLI_UV_SITES = (
+    PinSite("pyproject.toml", _UV_FLOOR),
+    PinSite("template/pyproject.toml.jinja", _UV_FLOOR),
+    PinSite(".github/workflows/ci.yml", _SETUP_UV),
+)
+
+PIN_COMMIT_BODY = (
+    "Moved by `sh bootstrap.sh pins --update uv`. The generation suite was skipped at this\n"
+    "commit: finish_branch.py runs it, and trusts no hook."
+)
+
+
+PIN_NEXT_STEPS = """
+Next, in this order:
+  1. here:        uv run python template/tools/finish_branch.py --no-tests && git push
+  2. in {cli}:
+       BASE_TEMPLATE_DIR={base} uv run python {base}/template/tools/finish_branch.py --no-tests
+       git push
+  3. here: this repo's CI ran the CLI repo's suite before step 2 landed, so it failed on the pin;
+     gh run rerun <id> --failed
+"""
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """Return `version` as numbers, so that 0.13.0 sorts above 0.9.0."""
+    return tuple(int(part) for part in version.split("."))
+
+
+def read_pin(root: Path) -> str:
+    """Return the uv pin: the shim's UV_VERSION line."""
+    shim = root / "bootstrap.sh"
+    found = SHIM_PIN.search(shim.read_text(encoding="utf-8"))
+    if found is None:
+        message = f"no UV_VERSION= line in {shim}; restore it from git"
+        raise ValueError(message)
+    return found["version"]
+
+
+def latest_uv(probe: Probe) -> str:
+    """Return the newest uv release on PyPI."""
+    return json.loads(probe.fetch(UV_RELEASES))["info"]["version"]
+
+
+def pin_checks(probe: Probe, root: Path) -> list[Check]:
+    """Report each pin beside its latest release. Advice only: a pin is a floor, not a lag."""
+    pin = read_pin(root)
+    try:
+        latest = latest_uv(probe)
+    except OSError, ValueError, KeyError:
+        logger.exception("could not read uv's latest release from %s", UV_RELEASES)
+        return [Check("uv", ok=False, detail=f"{pin}, latest unknown", required=False)]
+    if version_key(pin) >= version_key(latest):
+        return [Check("uv", ok=True, detail=f"{pin}, the latest")]
+    detail = f"{pin}, latest {latest}: sh bootstrap.sh pins --update uv"
+    return [Check("uv", ok=False, detail=detail, required=False)]
+
+
+def rewrite_pin(text: str, site: PinSite, old: str, new: str) -> str | None:
+    """Return `text` with every match of the site's pattern moved from `old` to `new`.
+
+    An `at_least` site's matches are moved only when below `new`. Otherwise, None when nothing
+    matches or a match holds anything but `old`: the copies already disagree, which is for a
+    person to sort out, not for this to paper over.
+    """
+    matches = list(site.pattern.finditer(text))
+    if not matches:
+        return None
+    if site.at_least:
+        matches = [match for match in matches if version_key(match["version"]) < version_key(new)]
+    elif any(match["version"] != old for match in matches):
+        return None
+    pieces: list[str] = []
+    end = 0
+    for match in matches:
+        start, stop = match.span("version")
+        pieces.extend((text[end:start], new))
+        end = stop
+    pieces.append(text[end:])
+    return "".join(pieces)
+
+
+def plan_move(root: Path, sites: tuple[PinSite, ...], old: str, new: str) -> dict[Path, str] | None:
+    """Return each site's file under `root` with the pin moved, or None if one does not hold it."""
+    files: dict[Path, str] = {}
+    for site in sites:
+        path = root / site.path
+        # newline="": a file is written back with the line endings it was read with.
+        text = path.read_text(encoding="utf-8", newline="") if path.is_file() else ""
+        moved = rewrite_pin(text, site, old, new)
+        if moved is None:
+            logger.error("%s does not hold the uv pin %s; make every copy agree first", path, old)
+            return None
+        files[path] = moved
+    return files
+
+
+def _git(
+    probe: Probe, root: Path, *args: str, env: Mapping[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run git in `root`."""
+    return probe.run(["git", "-C", str(root), *args], env)
+
+
+def _clean_checkout(probe: Probe, root: Path) -> bool:
+    """Return whether `root` is a git checkout with nothing uncommitted, saying why not."""
+    completed = _git(probe, root, "status", "--porcelain")
+    if completed.returncode != 0:
+        logger.error("%s is not a git checkout: %s", root, completed.stderr.strip())
+        return False
+    if completed.stdout.strip():
+        logger.error("%s has uncommitted changes; commit or stash them first", root)
+        return False
+    return True
+
+
+def commit_move(probe: Probe, root: Path, files: dict[Path, str], new: str) -> bool:
+    """Write `files` on a new branch from main in `root`, and commit them there."""
+    branch = f"build/uv-{new}"
+    switched = _git(probe, root, "switch", "--create", branch, "main")
+    if switched.returncode != 0:
+        logger.error("%s: git switch failed: %s", root, switched.stderr.strip())
+        return False
+    for path, text in files.items():
+        path.write_text(text, encoding="utf-8", newline="")
+    # Staged by name, never `commit --all`: that hands the hooks a temporary GIT_INDEX_FILE, which
+    # every git they run inherits, in whatever repo it is run.
+    staged = _git(probe, root, "add", "--", *(str(path.relative_to(root)) for path in files))
+    if staged.returncode != 0:
+        logger.error("%s: git add failed: %s", root, staged.stderr.strip())
+        return False
+    # The CLI repo's suite would test against the base on GitHub, whose pin has not moved yet.
+    env = {**probe.env, "SKIP": "generation-tests"}
+    message = f"build(uv): raise the uv floor to {new}"
+    committed = _git(probe, root, "commit", "-m", message, "-m", PIN_COMMIT_BODY, env=env)
+    if committed.returncode != 0:
+        output = (committed.stdout + committed.stderr).strip()
+        logger.error(
+            "%s: the commit on %s failed, its changes left in place: %s", root, branch, output
+        )
+        return False
+    logger.info("%s: committed on %s", root, branch)
+    return True
+
+
+def resolve_target(probe: Probe, old: str, requested: str | None) -> str | None:
+    """Return the version to move the uv pin to, `old` itself when it is there already, or None."""
+    try:
+        new = requested or latest_uv(probe)
+    except OSError, ValueError, KeyError:
+        logger.exception(
+            "could not read uv's latest release from %s; name one with --to", UV_RELEASES
+        )
+        return None
+    if not VERSION.match(new):
+        logger.error("--to %s is not a version; name one like %s", new, old)
+        return None
+    if version_key(new) < version_key(old):
+        logger.error("%s is below the pin %s, and a floor only rises", new, old)
+        return None
+    return new
+
+
+def uv_reaches(probe: Probe, new: str) -> bool:
+    """Return whether the running uv is at or above `new`, saying what to do when it is not.
+
+    A floor above the running uv stops every `uv run` in both repos, the commit's own hooks first.
+    """
+    running = check_uv(probe)
+    if not running.ok:
+        logger.error("uv: %s", running.detail)
+        return False
+    if version_key(running.detail) < version_key(new):
+        logger.error("uv %s is below %s: run uv self update %s first", running.detail, new, new)
+        return False
+    return True
+
+
+def move_uv(probe: Probe, base: Path, cli: Path, new: str) -> bool:
+    """Move the uv pin to `new` in this repo and the CLI repo, committed on a branch in each.
+
+    Nothing changes until both checkouts are clean and every copy holds the current pin.
+    """
+    old = read_pin(base)
+    repos = ((base, BASE_UV_SITES), (cli, CLI_UV_SITES))
+    if not all(_clean_checkout(probe, root) for root, _ in repos):
+        return False
+    plans: list[tuple[Path, dict[Path, str]]] = []
+    for root, sites in repos:
+        files = plan_move(root, sites, old, new)
+        if files is None:
+            return False
+        plans.append((root, files))
+    for root, files in plans:
+        if not commit_move(probe, root, files, new):
+            return False
+    sys.stderr.write(PIN_NEXT_STEPS.format(base=base, cli=cli))
+    return True
+
+
+def _pins(probe: Probe, root: Path, args: argparse.Namespace) -> int:
+    """Run `pins`: the report, or with --update, the move."""
+    if args.update is None:
+        sys.stdout.write(render(pin_checks(probe, root)))
+        return 0
+    cli = args.cli_repo or root.parent / CLI_REPO_NAME
+    if not cli.is_dir():
+        logger.error("no CLI template clone at %s; name it with --cli-repo", cli)
+        return FAILED
+    old = read_pin(root)
+    new = resolve_target(probe, old, args.to)
+    if new is None:
+        return FAILED
+    if new == old:
+        logger.info("the uv pin is %s already", old)
+        return 0
+    if not uv_reaches(probe, new):
+        return FAILED
+    return 0 if move_uv(probe, root, cli.resolve(), new) else FAILED
+
+
 def failed_checks(checks: list[Check]) -> list[str]:
     """Return the names of the required checks that failed."""
     return [check.name for check in checks if check.required and not check.ok]
@@ -373,10 +652,26 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="-- COPIER_ARG",
         help="after --, passed to copier copy as is: -- --vcs-ref <commit>",
     )
+    pins_parser = commands.add_parser(
+        "pins", help="show the uv pin beside uv's latest release, or move it with --update"
+    )
+    pins_parser.add_argument(
+        "--update",
+        choices=["uv"],
+        help="move this pin everywhere it is written, on a branch here and in the CLI repo",
+    )
+    pins_parser.add_argument(
+        "--to", metavar="VERSION", help="with --update, the version to move to (default: latest)"
+    )
+    pins_parser.add_argument(
+        "--cli-repo",
+        type=Path,
+        help=f"with --update, the CLI template's clone (default: ../{CLI_REPO_NAME})",
+    )
     return parser
 
 
-def main(argv: list[str] | None = None, probe: Probe | None = None) -> int:
+def main(argv: list[str] | None = None, probe: Probe | None = None, root: Path = HERE) -> int:
     """Entry point. Returns an exit code; never calls sys.exit itself."""
     args = _build_parser().parse_args(argv)
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -385,6 +680,8 @@ def main(argv: list[str] | None = None, probe: Probe | None = None) -> int:
         level=level, stream=sys.stderr, format="%(levelname)s %(message)s", force=True
     )
     probe = probe or Probe()
+    if args.command == "pins":
+        return _pins(probe, root, args)
     if args.command == "new":
         # Resolved now, so stdout names it absolutely: cd "$(sh bootstrap.sh new my-project)".
         destination = Path(args.destination).resolve()
