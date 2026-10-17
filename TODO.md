@@ -10,13 +10,14 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo the same day
 (`db884f7` there: both pyprojects, both setup-uv steps, and
 `test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
-moving the pin here without the CLI repo fails this repo's CI). Read "Built so far" there first.
-Next, in order:
+moving the pin here without the CLI repo fails this repo's CI). `setup` was merged later that day.
+Read "Built so far" there first. Next, in order:
 
-1. **`setup`**, here: `uv tool install`/`upgrade` copier and prek, and copier's settings file.
-2. **`new`**, **`pins`**, **`update`**, then the canary's `copier update` that closes the helper,
-   since generated projects now receive `required-version`. `pins --update uv` must move the CLI
-   repo's four copies too, or this repo's CI fails on the CLI suite.
+1. **`new`**, here, and with it the settings-defaults fix in the CLI repo that "Built so far"
+   describes under `setup`: `new` is the first command whose output it changes.
+2. **`pins`**, **`update`**, then the canary's `copier update` that closes the helper, since
+   generated projects now receive `required-version`. `pins --update uv` must move the CLI repo's
+   four copies too, or this repo's CI fails on the CLI suite.
 
 Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
 so that nothing under `template/` moves twice.
@@ -725,6 +726,32 @@ why:
   per-platform path, or `COPIER_SETTINGS_PATH`) and `gh auth status`. The settings file and gh
   are advice (`warn`) and never fail it; anything else exits 1. Every probe of the machine is a
   `Probe` field, so the tests run it on a fake machine.
+- **`setup`** (branch `feat/bootstrap-setup`) runs `uv tool upgrade` for each tool `uv tool list`
+  shows and `uv tool install` for the rest, then writes copier's settings: `defaults:` with
+  `author_name` and `author_email` from `git config`, as JSON-quoted strings, which are valid YAML,
+  so there is still no dependency. It ends with `doctor`'s report and exits 1 if a step failed even
+  when the report is clean. Tool installs ask nothing: running `setup` is the consent. Only
+  replacing a settings file that differs asks, after a unified diff on stderr; with no terminal and
+  no `--yes` it refuses, names `--yes` and exits 1; a "no" at the prompt leaves the file and is not
+  a failure. No `user.name` means no settings file. The noreply address
+  (`<id>+<login>@users.noreply.github.com`, from `gh api user` as JSON) is offered only at a
+  terminal and only when it differs from git's email; `setup --noreply` takes it without asking,
+  and with no terminal git's email wins. `Probe` gained `confirm` and `interactive` for this. Run
+  for real through the shim with `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and `COPIER_SETTINGS_PATH`
+  pointed at a scratch directory: first run, rerun (`unchanged`) and refusal all as designed.
+- **Found while building `setup`: a settings default overrides the base layer's own defaults.**
+  copier reads `settings.defaults.get(name, question.default)` (`_user_data.py`, copier 9.19), so
+  the default is replaced, not just pre-filled, and ranks below only data passed in and recorded
+  answers. The base's `author_name` and `author_email` defaults, which read the use case's answers
+  through `_external_data`, therefore never render once the settings file names them. The CLI
+  task runs the base with `--defaults`, so the base records the settings value even when the user
+  typed something else at the CLI prompt: a blank email to leave it out, say. Today nothing
+  visible differs (the base's only use of either is its fallback `pyproject.toml`, which the use
+  case's replaces), but `.copier-answers.base.yml` disagrees with `.copier-answers.yml`, and any
+  future use renders the wrong value. Fix in the CLI repo's `_tasks`: pass each shared question as
+  `"--data", "author_name={{ author_name }}"` and so on, since data passed in outranks settings;
+  test it there with `COPIER_SETTINGS_PATH` set to a file naming values that differ from the
+  answers.
 
 **Tests:** shellcheck with `--shell=sh` in the root gate. The shim's branches tested with a stub
 `uv` on PATH for each case (missing, not self-updatable, below the pin, at it, above it), plus one
