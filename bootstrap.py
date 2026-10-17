@@ -10,12 +10,15 @@
 Run it through the shim, never directly:
 
     sh bootstrap.sh doctor          # report what is installed and configured; change nothing
+    sh bootstrap.sh setup           # install or upgrade the uv tools, write copier's settings
 
 bootstrap.sh has already made sure of a standalone uv at or above its pin, so nothing here checks
 that again. Stdlib only, so there is nothing to download on a bare machine.
 """
 
 import argparse
+import difflib
+import json
 import logging
 import os
 import platform
@@ -34,6 +37,11 @@ UV_TOOLS = ("copier", "prek")
 
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
+SETTINGS_HEADER = (
+    "# Written by `sh bootstrap.sh setup`, from git's identity. copier uses these as the default\n"
+    "# answer to every template question of the same name, in place of the template's own.\n"
+)
+
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     """Run `command` and capture its output. Never a shell string."""
@@ -41,15 +49,24 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, capture_output=True, text=True, check=False)  # noqa: S603
 
 
+def _confirm(question: str) -> bool:
+    """Ask `question` on stderr, which leaves stdout to the report, and read a yes or no."""
+    sys.stderr.write(f"bootstrap: {question}? [y/N] ")
+    sys.stderr.flush()
+    return sys.stdin.readline().strip().lower() in {"y", "yes"}
+
+
 @dataclass(frozen=True)
 class Probe:
-    """Everything `doctor` reads from the machine, so a test can hand it another one."""
+    """Everything the helper reads from the machine, or asks its user, so a test can fake it."""
 
     run: Runner = _run
     which: Callable[[str], str | None] = shutil.which
     env: Mapping[str, str] = field(default_factory=os.environ.copy)
     home: Path = field(default_factory=Path.home)
     system: str = field(default_factory=platform.system)
+    confirm: Callable[[str], bool] = _confirm
+    interactive: bool = field(default_factory=sys.stdin.isatty)
 
 
 @dataclass(frozen=True)
@@ -160,6 +177,110 @@ def doctor(probe: Probe) -> list[Check]:
     return checks
 
 
+def upgrade_uv_tools(probe: Probe) -> bool:
+    """Install each of UV_TOOLS that is missing and upgrade the rest. Return whether all worked."""
+    listed = probe.run(["uv", "tool", "list"])
+    installed = parse_tool_list(listed.stdout) if listed.returncode == 0 else {}
+    all_ok = True
+    for name in UV_TOOLS:
+        verb = "upgrade" if name in installed else "install"
+        logger.info("uv tool %s %s", verb, name)
+        completed = probe.run(["uv", "tool", verb, name])
+        if completed.returncode != 0:
+            logger.error("uv tool %s %s failed: %s", verb, name, completed.stderr.strip())
+            all_ok = False
+    return all_ok
+
+
+def git_config(probe: Probe, key: str) -> str:
+    """Return git's value for `key`, or "" when git is missing or the key is unset."""
+    if probe.which("git") is None:
+        return ""
+    completed = probe.run(["git", "config", "--get", key])
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def noreply_email(probe: Probe) -> str | None:
+    """Return the GitHub noreply address of gh's logged-in user, or None without one.
+
+    Built from the account's id and login, which gh's default token can read: the account's own
+    email it cannot, when that is private.
+    """
+    if probe.which("gh") is None:
+        return None
+    completed = probe.run(["gh", "api", "user"])
+    if completed.returncode != 0:
+        return None
+    user = json.loads(completed.stdout)
+    return f"{user['id']}+{user['login']}@users.noreply.github.com"
+
+
+def choose_email(probe: Probe, git_email: str, *, noreply: bool) -> str:
+    """Return git's email, or the GitHub noreply address when asked for it or agreed to."""
+    private = noreply_email(probe)
+    if private is None or private == git_email:
+        return git_email
+    if noreply:
+        return private
+    if probe.interactive and probe.confirm(
+        f"Use your GitHub noreply address {private} instead of {git_email or 'no email'}"
+    ):
+        return private
+    logger.info("using %s; setup --noreply would use %s", git_email or "no email", private)
+    return git_email
+
+
+def settings_text(name: str, email: str) -> str:
+    """Return copier's settings file answering the author questions.
+
+    YAML, written without a YAML library: a JSON string is a valid YAML double-quoted scalar.
+    """
+    return (
+        f"{SETTINGS_HEADER}defaults:\n"
+        f"  author_name: {json.dumps(name)}\n"
+        f"  author_email: {json.dumps(email)}\n"
+    )
+
+
+def write_settings(probe: Probe, path: Path, text: str, *, assume_yes: bool) -> bool:
+    """Write `text` to `path`, showing the diff and asking before replacing anything there.
+
+    Return False only when consent was needed and there was no way to ask; a "no" is an answer.
+    """
+    old = path.read_text(encoding="utf-8") if path.is_file() else None
+    if old == text:
+        logger.info("copier settings unchanged: %s", path)
+        return True
+    if old is not None:
+        diff = difflib.unified_diff(
+            old.splitlines(keepends=True), text.splitlines(keepends=True), str(path), "new"
+        )
+        sys.stderr.writelines(diff)
+        if not assume_yes and not probe.interactive:
+            logger.error("replacing %s needs consent; rerun as: sh bootstrap.sh --yes setup", path)
+            return False
+        if not assume_yes and not probe.confirm(f"Replace {path} as above"):
+            logger.info("left %s as it was", path)
+            return True
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    logger.info("wrote copier settings: %s", path)
+    return True
+
+
+def setup(probe: Probe, *, assume_yes: bool, noreply: bool) -> bool:
+    """Install or upgrade the uv tools and write copier's settings. Return whether all worked."""
+    tools_ok = upgrade_uv_tools(probe)
+    name = git_config(probe, "user.name")
+    if not name:
+        logger.error('no copier settings without a name: git config --global user.name "..."')
+        return False
+    email = choose_email(probe, git_config(probe, "user.email"), noreply=noreply)
+    path = copier_settings_path(probe.env, probe.home, probe.system)
+    settings_ok = write_settings(probe, path, settings_text(name, email), assume_yes=assume_yes)
+    return tools_ok and settings_ok
+
+
 def render(checks: list[Check]) -> str:
     """Return the report: one aligned line per check, `ok`, `FAIL`, or `warn` for advice."""
     width = max(len(check.name) for check in checks)
@@ -185,6 +306,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="log at DEBUG level")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="report what is installed and configured; change nothing")
+    setup_parser = commands.add_parser(
+        "setup", help="install or upgrade copier and prek, and write copier's settings"
+    )
+    setup_parser.add_argument(
+        "--noreply",
+        action="store_true",
+        help="answer author_email with your GitHub noreply address",
+    )
     return parser
 
 
@@ -196,11 +325,17 @@ def main(argv: list[str] | None = None, probe: Probe | None = None) -> int:
     logging.basicConfig(
         level=level, stream=sys.stderr, format="%(levelname)s %(message)s", force=True
     )
-    checks = doctor(probe or Probe())
+    probe = probe or Probe()
+    done = True
+    if args.command == "setup":
+        done = setup(probe, assume_yes=args.yes, noreply=args.noreply)
+    # setup ends with doctor's report too, so a run shows what it left.
+    checks = doctor(probe)
     sys.stdout.write(render(checks))
     failed = [check.name for check in checks if check.required and not check.ok]
     if failed:
         logger.error("not ready: %s", ", ".join(failed))
+    if failed or not done:
         return NOT_READY
     return 0
 

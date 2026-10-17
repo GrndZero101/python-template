@@ -15,9 +15,10 @@ for the conventions no linter covers, and the shared Claude Code skills.
 `uv` at or above the template's floor, installed by
 [the standalone installer](https://docs.astral.sh/uv/getting-started/installation/), so that
 `uv self update` works; then copier and prek as uv tools. From a clone of this repo, the setup
-helper checks all of it:
+helper does all of it:
 
 ```bash
+sh bootstrap.sh setup           # install or upgrade copier and prek, write copier's settings
 sh bootstrap.sh doctor          # report what is installed and configured; change nothing
 ```
 
@@ -25,12 +26,12 @@ With no `uv` it offers to install the pinned one, and with one below the floor i
 it (`--yes`, before the command, agrees in advance). A Homebrew or pip `uv` cannot update itself,
 so it stops and says how to move to the standalone install. Every generated project's
 `pyproject.toml` holds the same floor as `required-version`, so uv itself refuses to run below it.
-The rest is still by hand for now:
 
-```bash
-uv tool install copier
-uv tool install prek
-```
+`setup` is safe to rerun: it upgrades what it installed before. It writes copier's settings file
+with your `git config` name and email as the default author answers, offering your GitHub noreply
+address instead when `gh` is logged in (`setup --noreply` takes it without asking). It never
+replaces an existing settings file without showing the diff and asking, and it ends with the
+`doctor` report.
 
 ---
 
