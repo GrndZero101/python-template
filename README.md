@@ -134,6 +134,15 @@ uv run python tools/finish_branch.py "chore(template): update from the templates
 `<commit>` is the `_commit` value copier just wrote to that layer's answers file.
 `finish_branch.py` squashes the branch, runs the gate and the tests, and merges it into `main`.
 
+From a clone of this repo, `sh bootstrap.sh update my-project` runs that flow: each layer the
+project has, the use case first, committed on `chore/template-update`. A layer with nothing new is
+reported as current, and when no layer changes it makes no branch. It stops at a conflict, or at a
+commit the project's hooks refuse, leaves the changes in place, and prints how to carry on: resolve,
+commit, rerun the same command, which finds the finished layer current and moves on. It ends with
+a report of each layer on stdout and the command to finish the branch; `--finish` runs that too,
+after which `main` has the update. Anything after `--` goes to every `copier update`:
+`sh bootstrap.sh update my-project -- --defaults`.
+
 **`--trust` runs nothing on an update.** It lets a template run its `_tasks`, and copier asks for
 it whenever a template declares any, exiting 4 without it. Every task here is guarded to run on
 `copy` only, so an update runs none of them. An agent can run the update too, but it cannot answer
