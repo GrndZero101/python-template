@@ -113,5 +113,8 @@ jobs:
       # The CLI repo's own locked environment, with this checkout as the base under test.
       - run: uv sync --locked
         working-directory: cli
+      # One CLI test runs this checkout's bootstrap.py, whose doctor checks for these as uv tools.
+      - run: uv tool install copier
+      - run: uv tool install prek
       - run: uv run pytest -ra
         working-directory: cli

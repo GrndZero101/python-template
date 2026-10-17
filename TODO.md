@@ -12,22 +12,13 @@ in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo
 `test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
 moving the pin here without the CLI repo fails this repo's CI). `setup`, `new` and `pins` were
 merged later that day; the settings-defaults fix planned with `new` proved unneeded (see "Built so
-far"), and `update` after them. Read "Built so far" there first. Next, each in its own session,
-since each works in another directory:
+far"), and `update` after them, and its end-to-end test in the CLI repo on 2026-10-17. Read
+"Built so far" there first. Next, in its own session, since it works in another directory:
 
-1. **In the CLI repo: `update` end to end**, as "Tests" below plans: a test beside the update
-   tests that snapshots both templates, moves both forward, and runs
-   `uv run --script <base_checkout>/bootstrap.py update <project> -- --defaults` (doctor needs
-   copier and prek as uv tools and git's identity, so it wants `requires_copier` and probably
-   CI-only, like the shim's real-uv test); assert both markers, two commits on
-   `chore/template-update`, a clean tree. It reads `bootstrap.py` from the base's `main` unless
-   `BASE_TEMPLATE_DIR` is set, so this repo's `update` must be pushed first (it is, once this
-   branch is merged and pushed). Whether the CLI's README and the generated `README.md.jinja`
-   name `sh bootstrap.sh update` beside the manual flow is the same session's call.
-2. **The canary's update, through the helper**, which closes the helper: from the canary,
-   `sh ../python-template-base/bootstrap.sh update . --finish`, interactive, so copier asks any
-   new question. Generated projects now receive `required-version`; check `git diff main` on
-   both answers files before finishing, then push.
+- **The canary's update, through the helper**, which closes the helper: from the canary,
+  `sh ../python-template-base/bootstrap.sh update . --finish`, interactive, so copier asks any
+  new question. Generated projects now receive `required-version`; check `git diff main` on
+  both answers files before finishing, then push.
 
 The pin is 0.12.24, the last 0.12 release, moved by `pins --update uv --to 0.12.24` on
 2026-10-17 in both repos; uv's latest is 0.13.1. It stays static by decision: `required-version`
@@ -51,7 +42,7 @@ The state to expect:
   `prek run --all-files` is the whole gate. Finish a branch with
   `uv run python template/tools/finish_branch.py --no-tests "<type(scope): summary>"`.
 - The CLI repo is the sibling directory `../python-template-cli-typer`, seeded from this repo's
-  history (a plain clone, so every old hash survives). Its suite (40 tests) generates through the
+  history (a plain clone, so every old hash survives). Its suite (44 tests) generates through the
   CLI template with the base layered on; `BASE_TEMPLATE_DIR` names the base checkout, and without
   it the tests use the base on GitHub. It has no `tools/` and no hooks of its own, by decision: the
   root gate there is prek hygiene, ruff, rumdl and the generation tests.
@@ -805,6 +796,16 @@ why:
   update without it. That run found **`uv run --script` exports `VIRTUAL_ENV`** for the helper's
   own environment, and every uv in the project warned it was ignoring it; `uv sync`, the commit
   and `finish_branch.py` now run without it. `Probe.attach` takes `env` for that, as `run` does.
+- **`update` end to end** (CLI repo, branch `test/bootstrap-update`):
+  `test_the_setup_helper_updates_both_layers_on_a_branch` snapshots both templates, moves each
+  forward, and runs `uv run --script <base_checkout>/bootstrap.py update <project> -- --defaults`;
+  it asserts both markers, the branch, one commit per layer by subject (the base's newest) and a
+  clean tree. About five seconds warm. Not CI-only after all: it skips locally unless copier and
+  prek are uv tools, and on CI both workflows `uv tool install` them for it. doctor's git identity
+  comes from `git config`, which never sees CI's `GIT_AUTHOR_*`, so the test hands the helper a
+  `GIT_CONFIG_GLOBAL` file. The CLI README now names `sh bootstrap.sh update` beside the manual
+  flow, linking to the base README's details; the generated `README.md.jinja` does not, since a
+  project ships no `bootstrap.sh` and its README already links to the CLI README's section.
 - **Not a bug after all: copier settings and the base layer's author defaults.** The `setup`
   session read copier's `settings.defaults.get(name, question.default)` and concluded a settings
   file overrides the base's `_external_data` defaults when the CLI task applies the base, so
