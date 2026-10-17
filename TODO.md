@@ -7,17 +7,16 @@ new session would otherwise relearn. The detail of finished work is in `git log`
 ## Next up
 
 **The setup helper's next pieces**, under "Setup helper (after step 9)". The shim, the `uv` pin
-in this repo and `doctor` were merged on 2026-10-17; read "Built so far" there first. Next, in
-order:
+in this repo and `doctor` were merged on 2026-10-17, and the pin in the CLI repo the same day
+(`db884f7` there: both pyprojects, both setup-uv steps, and
+`test_every_copy_of_the_uv_pin_agrees_with_the_base`, which reads this repo's `bootstrap.sh`, so
+moving the pin here without the CLI repo fails this repo's CI). Read "Built so far" there first.
+Next, in order:
 
-1. **The pin in the CLI repo** — a session started in `../python-template-cli-typer`, since hooks
-   and memory belong to the directory a session starts in. `[tool.uv] required-version` in its
-   `template/pyproject.toml.jinja` and its root `pyproject.toml`, `version:` on both setup-uv
-   steps of its CI, and a test there holding them to `UV_VERSION` in the base's `bootstrap.sh`
-   (the checkout `BASE_TEMPLATE_DIR` names, or `base/` on CI). Push the base first, as ever.
-2. **`setup`**, back here: `uv tool install`/`upgrade` copier and prek, and copier's settings file.
-3. **`new`**, **`pins`**, **`update`**, then the canary's `copier update` that closes the helper,
-   since generated projects now receive `required-version`.
+1. **`setup`**, here: `uv tool install`/`upgrade` copier and prek, and copier's settings file.
+2. **`new`**, **`pins`**, **`update`**, then the canary's `copier update` that closes the helper,
+   since generated projects now receive `required-version`. `pins --update uv` must move the CLI
+   repo's four copies too, or this repo's CI fails on the CLI suite.
 
 Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
 so that nothing under `template/` moves twice.
