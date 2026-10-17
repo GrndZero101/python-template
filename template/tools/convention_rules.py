@@ -330,8 +330,10 @@ def client_hits(tree: ast.Module) -> list[Hit]:
         message = (
             f"`{built}` builds a client with no retries, no User-Agent and default timeouts. "
             f"Call `{CLIENT_FACTORY}()` and pass the client down. No `{CLIENT_FACTORY}` yet? "
-            "Copy `http_client.py` and its test from the project's CLI skill, "
-            '`.claude/skills/*/reference/`, "Recipe: call an HTTP API".'
+            "Copy `http_client.py` and its test from a CLI skill's `.claude/skills/*/reference/`, "
+            '"Recipe: call an HTTP API". A uv script, or a project with no such reference, '
+            f"defines its own `{CLIENT_FACTORY}` in the module instead: per-phase "
+            "`httpx.Timeout`, a User-Agent header, and `transport=` for tests."
         )
         hits.append(Hit(call.lineno, "raw-httpx-client", message))
     return hits
