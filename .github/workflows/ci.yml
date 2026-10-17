@@ -72,7 +72,7 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           # The floor bootstrap.sh pins, so CI runs what it enforces. A test keeps them in step.
-          version: "0.12.21"
+          version: "0.12.24"
       - run: uv sync --locked
       # no-commit-to-branch refuses work on main, which is what a push to main checks out.
       - run: uv run prek run --all-files --show-diff-on-failure --skip no-commit-to-branch --skip generation-tests
@@ -105,7 +105,7 @@ jobs:
       # project's .python-version and quietly turn the 3.12 floor test into a 3.14 one.
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          version: "0.12.21"
+          version: "0.12.24"
           cache-python: true
       - run: uv sync --locked
       # prek and copier come from the dev group, so the suite finds them on the venv's PATH.

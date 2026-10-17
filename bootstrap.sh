@@ -18,7 +18,7 @@ set -eu
 
 # The uv floor. tests/test_bootstrap_sh.py holds every other copy to this line: `required-version`
 # in the pyprojects, and setup-uv's `version` in CI.
-UV_VERSION=0.12.21
+UV_VERSION=0.12.24
 
 say() {
     printf 'bootstrap: %s\n' "$*" >&2

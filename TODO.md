@@ -29,8 +29,11 @@ since each works in another directory:
    new question. Generated projects now receive `required-version`; check `git diff main` on
    both answers files before finishing, then push.
 
-The pin itself has not moved: it is still 0.12.21, uv's latest 0.13.1. Moving it is a decision
-for the author, not a step: `sh bootstrap.sh pins --update uv`, after `uv self update 0.13.1`.
+The pin is 0.12.24, the last 0.12 release, moved by `pins --update uv --to 0.12.24` on
+2026-10-17 in both repos; uv's latest is 0.13.1. It stays static by decision: `required-version`
+can take a range but a `<0.13` cap would refuse a newer uv, and the shim's installer, `uv self
+update` and `uv-pre-commit`'s `rev` take exact versions, so only setup-uv could float, at the cost
+of reproducible CI. Moving it again is a decision for the author, not a step.
 
 Work runs sequentially, with no worktrees or side tracks. The rest of phase 8 waits behind phase 10
 so that nothing under `template/` moves twice.
@@ -721,7 +724,7 @@ root and template pyprojects and both setup-uv steps here. What differs from the
 why:
 
 - **The pin is 0.12.21**, the uv every test had run on, not the latest (0.13.1): a floor, so
-  nobody is pushed to update for nothing. `pins --update uv` moves it later.
+  nobody is pushed to update for nothing. `pins --update uv` moved it to 0.12.24 on 2026-10-17.
 - **The shim checks the version first, then `--dry-run` only at or above the pin.** In the
   planned order, a uv older than 0.7.3 fails `--dry-run` with the same exit 2 as a Homebrew uv,
   and telling them apart would mean parsing text. Below the pin, `uv self update <pin>` is itself
