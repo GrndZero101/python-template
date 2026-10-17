@@ -48,6 +48,11 @@ copier copy --trust gh:GrndZero101/python-template-cli-typer my-project     # an
 cd my-project
 ```
 
+From a clone of this repo, `sh bootstrap.sh new my-project` runs that same copy once `doctor`
+passes, refuses a directory that already has something in it, and prints the project's path, so
+`cd "$(sh bootstrap.sh new my-project)"` works. Anything after `--` goes to `copier copy` as is:
+`sh bootstrap.sh new my-project -- --vcs-ref <commit>`.
+
 The base also works alone, for a prototype or a repo adopting the guards:
 
 ```bash

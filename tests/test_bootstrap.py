@@ -13,12 +13,14 @@ import pytest
 import yaml
 
 from bootstrap import (
+    CLI_TEMPLATE,
     Check,
     Probe,
     choose_email,
     copier_settings_path,
     doctor,
     main,
+    new,
     noreply_email,
     parse_tool_list,
     render,
@@ -35,7 +37,7 @@ prek v0.5.4
 ruff v0.16.10
 - ruff
 """
-ON_PATH = {"uv", "git", "gh"}
+ON_PATH = {"uv", "git", "gh", "copier"}
 GH_USER = '{"id": 123, "login": "adev", "email": null}'
 NOREPLY = "123+adev@users.noreply.github.com"
 
@@ -57,6 +59,10 @@ class FakeMachine:
         self.ran.append(tuple(command))
         returncode, stdout = self.answers.get(tuple(command), (1, ""))
         return subprocess.CompletedProcess(command, returncode, stdout, "")
+
+    def attach(self, command: list[str]) -> int:
+        self.ran.append(tuple(command))
+        return self.answers.get(tuple(command), (1, ""))[0]
 
     def confirm(self, question: str) -> bool:
         self.asked.append(question)
@@ -84,6 +90,7 @@ def _ready_machine() -> FakeMachine:
 def _probe(machine: FakeMachine, home: Path, *, interactive: bool = False) -> Probe:
     return Probe(
         run=machine.run,
+        attach=machine.attach,
         which=machine.which,
         env={},
         home=home,
@@ -313,6 +320,54 @@ def test_setup_without_a_git_name_writes_no_settings(tmp_path: Path) -> None:
     assert not _settings(tmp_path).exists()
 
 
+# --- new ---------------------------------------------------------------------------------
+
+
+def _copy(destination: Path, *copier_args: str) -> tuple[str, ...]:
+    return ("copier", "copy", "--trust", *copier_args, CLI_TEMPLATE, str(destination))
+
+
+def test_new_copies_the_cli_template_into_a_new_directory(tmp_path: Path) -> None:
+    machine = _ready_machine()
+    destination = tmp_path / "my-project"
+    machine.answers[_copy(destination)] = (0, "")
+    assert new(_probe(machine, tmp_path), destination, template=CLI_TEMPLATE, copier_args=[])
+    assert machine.ran[-1] == _copy(destination)
+
+
+def test_new_accepts_an_existing_empty_directory(tmp_path: Path) -> None:
+    machine = _ready_machine()
+    machine.answers[_copy(tmp_path)] = (0, "")
+    assert new(_probe(machine, tmp_path), tmp_path, template=CLI_TEMPLATE, copier_args=[])
+
+
+@pytest.mark.parametrize("occupant", ["a file", "a directory with a file in it"])
+def test_new_refuses_a_destination_with_something_there(tmp_path: Path, occupant: str) -> None:
+    machine = _ready_machine()
+    destination = tmp_path / "my-project"
+    if occupant == "a file":
+        destination.write_text("", encoding="utf-8")
+    else:
+        destination.mkdir()
+        (destination / "README.md").write_text("", encoding="utf-8")
+    assert not new(_probe(machine, tmp_path), destination, template=CLI_TEMPLATE, copier_args=[])
+    assert machine.ran[-1][0] != "copier"
+
+
+def test_new_needs_copier_on_path(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    machine = _ready_machine()
+    machine.installed.discard("copier")
+    assert not new(_probe(machine, tmp_path), tmp_path / "p", template=CLI_TEMPLATE, copier_args=[])
+    assert "uv tool update-shell" in caplog.text
+
+
+def test_new_reports_copiers_failure(tmp_path: Path) -> None:
+    machine = _ready_machine()
+    destination = tmp_path / "my-project"
+    machine.answers[_copy(destination)] = (4, "")
+    assert not new(_probe(machine, tmp_path), destination, template=CLI_TEMPLATE, copier_args=[])
+
+
 # --- through main -------------------------------------------------------------------------
 
 
@@ -357,3 +412,28 @@ def test_main_setup_exits_1_when_a_tool_fails_even_if_doctor_passes(tmp_path: Pa
     machine = _ready_machine()
     del machine.answers["uv", "tool", "upgrade", "prek"]
     assert main(["setup"], _probe(machine, tmp_path)) == 1
+
+
+def test_main_new_writes_the_projects_path_and_nothing_else_to_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    machine = _ready_machine()
+    destination = tmp_path / "my-project"
+    machine.answers[_copy(destination, "--defaults", "--vcs-ref", "abc123")] = (0, "")
+    monkeypatch.chdir(tmp_path)
+    argv = ["new", "my-project", "--", "--defaults", "--vcs-ref", "abc123"]
+    assert main(argv, _probe(machine, tmp_path)) == 0
+    assert capsys.readouterr().out == f"{destination}\n"
+
+
+def test_main_new_on_a_machine_doctor_fails_runs_no_copier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    machine = _ready_machine()
+    machine.answers["uv", "tool", "list"] = (0, "")
+    assert main(["new", str(tmp_path / "p")], _probe(machine, tmp_path)) == 1
+    assert not any(command[0] == "copier" for command in machine.ran)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "FAIL copier" in captured.err
+    assert "bootstrap.sh setup" in captured.err
